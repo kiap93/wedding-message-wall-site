@@ -1,0 +1,6 @@
+{
+  "name": "Wedding Message Wall",
+  "description": "A serverless wedding guestbook and real-time message display system built with React and Cloudflare Workers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
