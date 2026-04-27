@@ -57,13 +57,6 @@ app.get('/api/auth/callback', async (c) => {
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET, APP_URL } = c.env;
 
   try {
-    return c.json({
-        code,
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri: `${APP_URL}/api/auth/callback`,
-        grant_type: 'authorization_code',
-      });
     // Exchange code for tokens
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -76,7 +69,9 @@ app.get('/api/auth/callback', async (c) => {
         grant_type: 'authorization_code',
       }),
     });
-
+return c.json({
+        code: tokenResponse
+      });
     const tokens = await tokenResponse.json() as any;
     if (!tokenResponse.ok) {
       // This will tell you if it's "invalid_client" or "invalid_grant"
