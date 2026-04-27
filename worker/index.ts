@@ -78,7 +78,7 @@ app.get('/api/auth/callback', async (c) => {
     });
     
     const userPayload = await userResponse.json() as any;
-
+    console.log('userPayload', userPayload)
     const user = {
       id: userPayload.sub,
       sub: userPayload.sub,
