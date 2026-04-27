@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { TEMPLATES, WeddingTemplate } from '../types';
-import { Heart, Camera, Mail, Star, Leaf, Flower, Palette } from 'lucide-react';
+import { Heart, Camera, Mail, Star, Leaf, Flower, Palette, User } from 'lucide-react';
 
 export default function TemplateSelector() {
   const navigate = useNavigate();
@@ -14,6 +14,15 @@ export default function TemplateSelector() {
   return (
     <div className="min-h-screen bg-[#FDFCF0] text-[#2D2424] p-8 md:p-16">
       <div className="max-w-7xl mx-auto">
+        <div className="flex justify-end mb-8">
+           <button 
+            onClick={() => navigate('/admin')}
+            className="flex items-center gap-2 px-6 py-3 bg-white border border-[#C5A059]/30 rounded-2xl text-[#C5A059] font-bold uppercase tracking-widest text-xs hover:bg-[#C5A059] hover:text-white transition-all shadow-sm"
+          >
+            <User className="w-4 h-4" />
+            Create My Celebration
+          </button>
+        </div>
         <header className="text-center mb-16">
           <motion.div
             initial={{ opacity: 0, y: -20 }}

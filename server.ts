@@ -2,15 +2,105 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { OAuth2Client } from 'google-auth-library';
+import jwt from 'jsonwebtoken';
+import cookieParser from 'cookie-parser';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+
+const oauth2Client = new OAuth2Client(
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  `${APP_URL}/api/auth/callback`
+);
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
   app.use(express.json());
+  app.use(cookieParser());
+
+  // --- Auth Routes ---
+
+  app.get('/api/auth/google', (req, res) => {
+    if (!GOOGLE_CLIENT_ID) {
+      return res.status(500).json({ error: 'Google Client ID not configured' });
+    }
+    const authorizeUrl = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: ['https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/userinfo.email'],
+      prompt: 'consent'
+    });
+    res.json({ url: authorizeUrl });
+  });
+
+  app.get('/api/auth/callback', async (req, res) => {
+    const { code } = req.query;
+    if (!code) return res.redirect('/login?error=no_code');
+
+    try {
+      const { tokens } = await oauth2Client.getToken(code as string);
+      const ticket = await oauth2Client.verifyIdToken({
+        idToken: tokens.id_token!,
+        audience: GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+
+      if (!payload) throw new Error('No payload');
+
+      // Create our own JWT session
+      const user = {
+        id: payload.sub,
+        email: payload.email,
+        name: payload.name,
+        picture: payload.picture,
+      };
+
+      const token = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
+
+      // Set secure cookie
+      res.cookie('wedding_session', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
+      res.redirect('/admin');
+    } catch (error) {
+      console.error('OAuth callback error:', error);
+      res.redirect('/login?error=auth_failed');
+    }
+  });
+
+  app.get('/api/auth/me', (req, res) => {
+    const token = req.cookies.wedding_session;
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      res.json({ user: decoded });
+    } catch (error) {
+      res.status(401).json({ error: 'Invalid session' });
+    }
+  });
+
+  app.post('/api/auth/logout', (req, res) => {
+    res.clearCookie('wedding_session');
+    res.json({ success: true });
+  });
+
+  // --- End Auth Routes ---
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
@@ -29,8 +119,6 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Development server running on http://localhost:${PORT}`);
-    console.log(`- Guest Page: http://localhost:${PORT}/guest`);
-    console.log(`- Display Page: http://localhost:${PORT}/display`);
   });
 }
 

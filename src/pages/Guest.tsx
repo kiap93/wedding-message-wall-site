@@ -16,8 +16,11 @@ export default function Guest() {
   const [error, setError] = useState<string | null>(null);
   
   const [searchParams] = useSearchParams();
-  const templateId = (searchParams.get('template') as TemplateId) || 'minimal_luxury';
+  const templateId = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
   const template = TEMPLATES.find(t => t.id === templateId) || TEMPLATES[0];
+
+  const groom = searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
+  const bride = searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
 
   const currentUrl = window.location.origin + window.location.pathname + window.location.search;
 
@@ -85,7 +88,9 @@ export default function Guest() {
             >
               <Icon className={`w-10 h-10 fill-current bg-opacity-20`} />
             </motion.div>
-            <h1 className={`text-5xl ${template.fontSerif} ${template.colors.headerText} mb-4 tracking-tight`}>Bless Our Union</h1>
+            <h1 className={`text-5xl ${template.fontSerif} ${template.colors.headerText} mb-4 tracking-tight`}>
+              {groom} & {bride}
+            </h1>
             <p className={`text-base ${template.colors.subtleText} tracking-wide font-medium`}>Leave a message for the happy couple</p>
           </div>
 

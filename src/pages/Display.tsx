@@ -13,8 +13,11 @@ export default function Display() {
   const [showQR, setShowQR] = useState(false);
   const navigate = useNavigate();
   
-  const templateId = (searchParams.get('template') as TemplateId) || 'minimal_luxury';
+  const templateId = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
   const template = TEMPLATES.find(t => t.id === templateId) || TEMPLATES[0];
+
+  const groom = searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
+  const bride = searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
 
   // Derive guest URL
   const guestUrl = window.location.origin + '/guest' + window.location.search;
@@ -130,10 +133,10 @@ export default function Display() {
         <header className="flex flex-col md:flex-row items-center justify-between mb-16 gap-6">
           <div className="space-y-2 text-center md:text-left">
             <h1 className={`text-6xl md:text-7xl ${template.fontSerif} tracking-tight ${template.colors.headerText}`}>
-              The Wedding Wall
+              {groom} & {bride}
             </h1>
             <p className={`text-sm uppercase tracking-[0.4em] ${template.colors.accent} font-medium`}>
-              Celebrating Love Together
+              The Wedding Wall
             </p>
           </div>
           <div className="hidden md:flex flex-col items-end">
@@ -141,7 +144,7 @@ export default function Display() {
                <Heart className={`w-5 h-5 fill-current animate-pulse`} />
                <span className={`${template.fontSerif} italic text-2xl`}>Forever & Always</span>
              </div>
-             <p className={`text-xs ${template.colors.subtleText} mt-1 uppercase tracking-widest`}>April 24, 2026</p>
+             <p className={`text-xs ${template.colors.subtleText} mt-1 uppercase tracking-widest`}>Celebrating Our Love</p>
           </div>
         </header>
 
