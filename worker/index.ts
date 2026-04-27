@@ -88,16 +88,16 @@ app.get('/api/auth/callback', async (c) => {
     // Sign our session JWT
     const token = await sign(user, JWT_SECRET, 'HS256');
 
-    // Set cookie
+    // Set cookie with SameSite=None for cross-domain support
     setCookie(c, 'wedding_session', token, {
       httpOnly: true,
       secure: true,
-      sameSite: 'Lax',
+      sameSite: 'None',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: '/',
     });
 
-    return c.redirect('/admin');
+    return c.redirect(`${APP_URL}/admin`);
   } catch (error) {
     console.error('Worker Auth Error:', error);
     return c.redirect('/login?error=auth_failed');
@@ -119,7 +119,11 @@ app.get('/api/auth/me', async (c) => {
 
 // 4. Logout
 app.post('/api/auth/logout', (c) => {
-  deleteCookie(c, 'wedding_session', { path: '/' });
+  deleteCookie(c, 'wedding_session', { 
+    path: '/',
+    secure: true,
+    sameSite: 'None'
+  });
   return c.json({ success: true });
 });
 
