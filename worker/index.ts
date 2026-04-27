@@ -70,7 +70,7 @@ app.get('/api/auth/callback', async (c) => {
       }),
     });
 return c.json({
-        code: tokenResponse
+        code: tokenResponse.toString()
       });
     const tokens = await tokenResponse.json() as any;
     if (!tokenResponse.ok) {
