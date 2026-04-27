@@ -1,6 +1,7 @@
 name = "wedding-auth-worker"
 main = "worker/index.ts"
 compatibility_date = "2024-04-01"
+account_id = "4c4c40d838a6dcea0783b300a9718180"
 
 [vars]
 GOOGLE_CLIENT_ID = "946837250683-434o0vtdrkoe2092vghh65md9nfr8hpu.apps.googleusercontent.com"
