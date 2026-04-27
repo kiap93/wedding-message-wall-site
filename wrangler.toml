@@ -3,6 +3,7 @@ main = "worker/index.ts"
 compatibility_date = "2024-04-01"
 
 [vars]
+GOOGLE_CLIENT_ID = "946837250683-434o0vtdrkoe2092vghh65md9nfr8hpu.apps.googleusercontent.com"
 APP_URL = "https://wedding-tools.buildsiteasia.com/"
 
 # Secrets (Set these using 'wrangler secret put')
