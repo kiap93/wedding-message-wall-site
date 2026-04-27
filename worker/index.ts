@@ -58,13 +58,6 @@ app.get('/api/auth/callback', async (c) => {
 
   try {
     // Exchange code for tokens
-    return c.json({
-        code,
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri: `${APP_URL}/api/auth/callback`,
-        grant_type: 'authorization_code',
-      });
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -78,7 +71,11 @@ app.get('/api/auth/callback', async (c) => {
     });
 
     const tokens = await tokenResponse.json() as any;
-    
+    if (!tokenResponse.ok) {
+      // This will tell you if it's "invalid_client" or "invalid_grant"
+      console.error("Google Error Details:", tokens);
+      return c.json({ error: "Google rejected the exchange", details: tokens }, 400);
+    }
     // Get user info from ID Token (or skip and fetch userinfo)
     const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
