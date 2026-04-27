@@ -100,23 +100,23 @@ if (!tokenResponse.ok) {
     };
 
     // // Sign our session JWT
-    // const token = await sign(user, JWT_SECRET, 'HS256');
+    const token = await sign(user, JWT_SECRET, 'HS256');
 
-    // // Set cookie with SameSite=None for cross-domain support (legacy support)
-    // setCookie(c, 'wedding_session', token, {
-    //   httpOnly: true,
-    //   secure: true,
-    //   sameSite: 'None',
-    //   maxAge: 60 * 60 * 24 * 7, // 7 days
-    //   path: '/',
-    // });
+    // Set cookie with SameSite=None for cross-domain support (legacy support)
+    setCookie(c, 'wedding_session', token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'None',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
+    });
 
-    // // Get Frontend URL from environment or fallback
-    // const FRONTEND_URL = c.env.FRONTEND_URL || 'https://wedding-tools.buildsiteasia.com';
+    // Get Frontend URL from environment or fallback
+    const FRONTEND_URL = c.env.FRONTEND_URL || 'https://wedding-tools.buildsiteasia.com';
     
-    // // Also pass the token in the URL so the frontend can save it to LocalStorage
-    // // (This avoids third-party cookie blocking issues)
-    // return c.redirect(`${FRONTEND_URL}/admin?token=${token}`);
+    // Also pass the token in the URL so the frontend can save it to LocalStorage
+    // (This avoids third-party cookie blocking issues)
+    return c.redirect(`${FRONTEND_URL}/admin?token=${token}`);
   } catch (error) {
     console.error('Worker Auth Error:', error);
     return c.redirect('/login?error=auth_failed');
