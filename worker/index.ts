@@ -71,14 +71,15 @@ app.get('/api/auth/callback', async (c) => {
     });
 
     const tokens = await tokenResponse.json() as any;
-    
+    // console.log()
+    return c.json({ user: tokens.access_token });
     // Get user info from ID Token (or skip and fetch userinfo)
     const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
     
     const userPayload = await userResponse.json() as any;
-    console.log('userPayload', userPayload)
+
     const user = {
       id: userPayload.sub,
       sub: userPayload.sub,
@@ -86,7 +87,7 @@ app.get('/api/auth/callback', async (c) => {
       name: userPayload.name,
       picture: userPayload.picture,
     };
-return c.json({ user: userPayload });
+
     // // Sign our session JWT
     // const token = await sign(user, JWT_SECRET, 'HS256');
 
