@@ -30,11 +30,16 @@ async function startServer() {
   app.use(express.json());
   app.use(cookieParser());
 
+  app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', time: new Date().toISOString() });
+  });
+
   // --- Auth Routes ---
 
   app.get('/api/auth/google', (req, res) => {
+    res.setHeader('X-Wedding-API', 'hit');
     if (!GOOGLE_CLIENT_ID) {
-      return res.status(500).json({ error: 'Google Client ID not configured' });
+      return res.status(500).json({ error: 'Google Client ID not configured. Please set GOOGLE_CLIENT_ID in your environment variables.' });
     }
     const authorizeUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',
@@ -98,6 +103,10 @@ async function startServer() {
   app.post('/api/auth/logout', (req, res) => {
     res.clearCookie('wedding_session');
     res.json({ success: true });
+  });
+
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
   });
 
   // --- End Auth Routes ---

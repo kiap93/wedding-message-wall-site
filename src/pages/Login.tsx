@@ -34,7 +34,17 @@ export default function Login() {
       setError(null);
       
       const response = await fetch('/api/auth/google');
-      const data = await response.json();
+      const text = await response.text();
+      const apiHeader = response.headers.get('X-Wedding-API');
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error('Failed to parse JSON. Response text:', text);
+        const source = apiHeader ? 'Express' : 'Vite/Unknown';
+        throw new Error(`Auth API failed. Source: ${source}. Status: ${response.status}. Response: ${text.substring(0, 50)}...`);
+      }
       
       if (data.url) {
         window.location.href = data.url;
