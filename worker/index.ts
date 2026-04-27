@@ -141,4 +141,12 @@ app.post('/api/auth/logout', (c) => {
   return c.json({ success: true });
 });
 
+app.get('/api/debug-env', (c) => {
+  return c.json({
+    has_jwt_secret: !!c.env.JWT_SECRET,
+    has_google_secret: !!c.env.GOOGLE_CLIENT_SECRET,
+    app_url: c.env.APP_URL
+  });
+});
+
 export default app;
