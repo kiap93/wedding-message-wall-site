@@ -5,39 +5,42 @@ export interface Message {
   name: string;
   message: string;
   timestamp: number;
+  project_id?: string;
 }
 
 const MOCK_MESSAGES: Message[] = [
   { id: 'm1', name: 'Alex & Sam', message: 'Wishing you a lifetime of love and happiness! Beautiful ceremony.', timestamp: Date.now() - 500000 },
   { id: 'm2', name: 'Emma Wilson', message: 'So happy for both of you! May your journey together be magical.', timestamp: Date.now() - 1200000 },
-  { id: 'm3', name: 'The Peterson Family', message: 'Congratulations! Thank you for letting us share in your special day.', timestamp: Date.now() - 3600000 },
-  { id: 'm4', name: 'Grandma Betty', message: 'You both look stunning. A perfect match made in heaven.', timestamp: Date.now() - 7200000 },
-  { id: 'm5', name: 'Best Man Mike', message: 'To my best friend and his beautiful bride - to a night we will never forget!', timestamp: Date.now() - 150000 },
-  { id: 'm6', name: 'Grace & Thomas', message: 'May your love grow stronger with every passing year. Cheers!', timestamp: Date.now() - 900000 },
 ];
 
-export async function fetchMessages(): Promise<Message[]> {
+export async function fetchMessages(projectId?: string): Promise<Message[]> {
   try {
     const supabase = getSupabase();
-    const { data, error } = await supabase
+    let query = supabase
       .from('messages')
       .select('*')
       .order('timestamp', { ascending: false })
       .limit(50);
-
-    if (error) {
-      console.error('Supabase fetch error, falling back to mock data:', error);
-      return MOCK_MESSAGES;
+    
+    if (projectId) {
+      query = query.eq('project_id', projectId);
     }
 
-    return data && data.length > 0 ? data : MOCK_MESSAGES;
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Supabase fetch error:', error);
+      return [];
+    }
+
+    return data && data.length > 0 ? data : (projectId ? [] : MOCK_MESSAGES);
   } catch (err) {
-    console.warn('Supabase not configured or unreachable, using mock data.');
-    return MOCK_MESSAGES;
+    console.warn('Supabase not configured or unreachable.');
+    return projectId ? [] : MOCK_MESSAGES;
   }
 }
 
-export async function postMessage(name: string, message: string): Promise<void> {
+export async function postMessage(name: string, message: string, projectId?: string): Promise<void> {
   try {
     const supabase = getSupabase();
     const { error } = await supabase
@@ -46,7 +49,8 @@ export async function postMessage(name: string, message: string): Promise<void> 
         { 
           name: name || 'Anonymous Guest', 
           message, 
-          timestamp: Date.now() 
+          timestamp: Date.now(),
+          project_id: projectId
         }
       ]);
     

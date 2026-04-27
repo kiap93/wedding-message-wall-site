@@ -1,3 +1,16 @@
+export interface Project {
+  id: string;
+  user_id: string;
+  name: string;
+  groom_name: string;
+  bride_name: string;
+  wedding_date: string;
+  location: string;
+  theme_id: TemplateId;
+  created_at: string;
+  updated_at: string;
+}
+
 export type TemplateId = 
   | 'garden' 
   | 'minimal_luxury' 

@@ -1,32 +1,60 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, Palette, QrCode, Leaf, Star, Mail, Camera, Flower } from 'lucide-react';
 import { fetchMessages, Message } from '../lib/api';
 import { getSupabase } from '../lib/supabase';
-import { TEMPLATES, TemplateId, WeddingTemplate } from '../types';
+import { Project, TEMPLATES, TemplateId, WeddingTemplate } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 
 export default function Display() {
+  const { projectId } = useParams();
+  const [project, setProject] = useState<Project | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchParams] = useSearchParams();
   const [showQR, setShowQR] = useState(false);
+  const [isLoading, setIsLoading] = useState(!!projectId);
   const navigate = useNavigate();
   
-  const templateId = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
-  const template = TEMPLATES.find(t => t.id === templateId) || TEMPLATES[0];
+  // Fallback defaults if no project loaded
+  const templateIdFromUrl = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
+  
+  const activeTemplateId = project?.theme_id || templateIdFromUrl;
+  const template = TEMPLATES.find(t => t.id === activeTemplateId) || TEMPLATES[0];
 
-  const groom = searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
-  const bride = searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
+  const groom = project?.groom_name || searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
+  const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
 
   // Derive guest URL
-  const guestUrl = window.location.origin + '/guest' + window.location.search;
+  const guestUrl = window.location.origin + (projectId ? `/guest/${projectId}` : '/guest' + window.location.search);
+
+  const loadProject = async (id: string) => {
+    try {
+      const supabase = getSupabase();
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) throw error;
+      setProject(data);
+    } catch (err) {
+      console.error('Error loading project:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
+    if (projectId) {
+      loadProject(projectId);
+    }
+    
     // Initial fetch
     const loadInitialMessages = async () => {
       try {
-        const data = await fetchMessages();
+        const data = await fetchMessages(projectId);
         setMessages(data);
       } catch (err) {
         console.error('Initial fetch error:', err);
@@ -40,13 +68,14 @@ export default function Display() {
     try {
       const supabase = getSupabase();
       channel = supabase
-        .channel('schema-db-changes')
+        .channel(`project-messages-${projectId || 'default'}`)
         .on(
           'postgres_changes',
           {
             event: 'INSERT',
             schema: 'public',
             table: 'messages',
+            filter: projectId ? `project_id=eq.${projectId}` : undefined
           },
           (payload) => {
             const newMessage = payload.new as Message;
@@ -73,7 +102,15 @@ export default function Display() {
         }
       }
     };
-  }, []);
+  }, [projectId]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FDFCF0]">
+        <div className="w-12 h-12 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen ${template.colors.background} transition-colors duration-700 relative ${template.fontSans} ${template.colors.text}`}>

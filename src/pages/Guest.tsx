@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, Send, CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower } from 'lucide-react';
 import { postMessage } from '../lib/api';
 import confetti from 'canvas-confetti';
-import { TEMPLATES, TemplateId, WeddingTemplate } from '../types';
+import { Project, TEMPLATES, TemplateId, WeddingTemplate } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
+import { getSupabase } from '../lib/supabase';
 
 export default function Guest() {
+  const { projectId } = useParams();
+  const [project, setProject] = useState<Project | null>(null);
+  const [isLoading, setIsLoading] = useState(!!projectId);
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -16,19 +20,53 @@ export default function Guest() {
   const [error, setError] = useState<string | null>(null);
   
   const [searchParams] = useSearchParams();
-  const templateId = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
-  const template = TEMPLATES.find(t => t.id === templateId) || TEMPLATES[0];
+  
+  const templateIdFromUrl = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
+  const activeTemplateId = project?.theme_id || templateIdFromUrl;
+  const template = TEMPLATES.find(t => t.id === activeTemplateId) || TEMPLATES[0];
 
-  const groom = searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
-  const bride = searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
+  const groom = project?.groom_name || searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
+  const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
 
   const currentUrl = window.location.origin + window.location.pathname + window.location.search;
+
+  useEffect(() => {
+    if (projectId) {
+      loadProject(projectId);
+    }
+  }, [projectId]);
+
+  const loadProject = async (id: string) => {
+    try {
+      const supabase = getSupabase();
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) throw error;
+      setProject(data);
+    } catch (err) {
+      console.error('Error loading project:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const Icon = template.iconType === 'leaf' ? Leaf :
                template.iconType === 'star' ? Star :
                template.iconType === 'mail' ? Mail :
                template.iconType === 'camera' ? Camera :
                template.iconType === 'flower' ? Flower : Heart;
+
+  if (isLoading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${template.colors.background}`}>
+        <div className="w-12 h-12 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +76,7 @@ export default function Guest() {
     setError(null);
 
     try {
-      await postMessage(name, message);
+      await postMessage(name, message, projectId);
       confetti({
         particleCount: 150,
         spread: 70,

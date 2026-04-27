@@ -68,10 +68,12 @@ export default function App() {
             </AuthGuard>
           } 
         />
+        <Route path="/guest/:projectId" element={<Guest />} />
+        <Route path="/display/:projectId" element={<Display />} />
         <Route path="/guest" element={<Guest />} />
         <Route path="/display" element={<Display />} />
-        <Route path="/" element={<Navigate to="/templates" replace />} />
-        <Route path="*" element={<Navigate to="/templates" replace />} />
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
   );

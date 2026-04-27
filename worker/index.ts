@@ -81,6 +81,7 @@ app.get('/api/auth/callback', async (c) => {
 
     const user = {
       id: userPayload.sub,
+      sub: userPayload.sub,
       email: userPayload.email,
       name: userPayload.name,
       picture: userPayload.picture,
