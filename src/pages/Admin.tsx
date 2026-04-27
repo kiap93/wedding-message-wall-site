@@ -16,15 +16,6 @@ export default function Admin() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check for token in URL (from Worker redirect)
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
-    if (token) {
-      setAuthToken(token);
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-
     authenticatedFetch(`${API_BASE}/api/auth/me`)
       .then(res => res.json())
       .then(data => {

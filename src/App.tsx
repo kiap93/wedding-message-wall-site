@@ -8,13 +8,23 @@ import Admin from './pages/Admin';
 import Login from './pages/Login';
 
 import { API_BASE } from './lib/config';
-import { authenticatedFetch } from './lib/auth';
+import { authenticatedFetch, setAuthToken } from './lib/auth';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // 1. Capture token from URL if present (Worker redirect)
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get('token');
+    if (urlToken) {
+      setAuthToken(urlToken);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    // 2. Fetch user
     authenticatedFetch(`${API_BASE}/api/auth/me`)
       .then(res => res.json())
       .then(data => {
