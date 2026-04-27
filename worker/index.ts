@@ -69,11 +69,15 @@ app.get('/api/auth/callback', async (c) => {
         grant_type: 'authorization_code',
       }),
     });
-return c.json({
-        ok: tokenResponse.ok,
-        code: tokenResponse.toString(),
-        json: JSON.stringify(tokenResponse)
-      });
+if (!tokenResponse.ok) {
+  const errorBody = await tokenResponse.json() as any;
+  console.error("GOOGLE REJECTION:", errorBody); // This will show in 'wrangler tail'
+  return c.json({ 
+    success: false, 
+    message: "Google rejected token exchange", 
+    google_says: errorBody 
+  }, 401);
+}
     const tokens = await tokenResponse.json() as any;
     if (!tokenResponse.ok) {
       // This will tell you if it's "invalid_client" or "invalid_grant"
