@@ -6,7 +6,8 @@ type Bindings = {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   JWT_SECRET: string;
-  APP_URL: string;
+  APP_URL: string;      // The Worker URL (for Google callback)
+  FRONTEND_URL: string; // The Website URL (for final redirect)
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -97,7 +98,9 @@ app.get('/api/auth/callback', async (c) => {
       path: '/',
     });
 
-    return c.redirect(`${APP_URL}/admin`);
+    // Get Frontend URL from environment or fallback
+    const FRONTEND_URL = c.env.FRONTEND_URL || 'https://wedding-tools.buildsiteasia.com';
+    return c.redirect(`${FRONTEND_URL}/admin`);
   } catch (error) {
     console.error('Worker Auth Error:', error);
     return c.redirect('/login?error=auth_failed');
