@@ -1,84 +1,111 @@
-/**
- * Cloudflare Worker for Wedding Message Wall
- * Bindings:
- * - WEDDING_KV: KV Namespace
- */
+import { Hono } from 'hono';
+import { googleAuth } from '@hono/google-auth'; // Note: You can use standard fetch or a library
+import { sign, verify } from 'hono/jwt';
+import { cookie } from 'hono/cookie';
+import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
 
-export interface Message {
-  id: string;
-  name: string;
-  message: string;
-  timestamp: number;
-}
+type Bindings = {
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  JWT_SECRET: string;
+  APP_URL: string;
+};
 
-export default {
-  async fetch(request: Request, env: any, ctx: any): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname;
+const app = new Hono<{ Bindings: Bindings }>();
 
-    // CORS Headers
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+// Health check
+app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
+
+// 1. Redirect to Google
+app.get('/api/auth/google', async (c) => {
+  const GOOGLE_CLIENT_ID = c.env.GOOGLE_CLIENT_ID;
+  const APP_URL = c.env.APP_URL;
+
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: `${APP_URL}/api/auth/callback`,
+    response_type: 'code',
+    scope: 'openid email profile',
+    access_type: 'offline',
+    prompt: 'consent',
+  });
+
+  return c.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
+});
+
+// 2. Google Callback
+app.get('/api/auth/callback', async (c) => {
+  const code = c.req.query('code');
+  if (!code) return c.redirect('/login?error=no_code');
+
+  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET, APP_URL } = c.env;
+
+  try {
+    // Exchange code for tokens
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: `${APP_URL}/api/auth/callback`,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    const tokens = await tokenResponse.json() as any;
+    
+    // Get user info from ID Token (or skip and fetch userinfo)
+    const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    
+    const userPayload = await userResponse.json() as any;
+
+    const user = {
+      id: userPayload.sub,
+      email: userPayload.email,
+      name: userPayload.name,
+      picture: userPayload.picture,
     };
 
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
-    }
+    // Sign our session JWT
+    const token = await sign(user, JWT_SECRET);
 
-    // GET /api/messages
-    if (request.method === 'GET' && path === '/api/messages') {
-      const messagesStr = await env.WEDDING_KV.get('wedding_messages');
-      const messages = messagesStr ? JSON.parse(messagesStr) : [];
-      return new Response(JSON.stringify(messages), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // Set cookie
+    setCookie(c, 'wedding_session', token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Lax',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
+    });
 
-    // POST /api/messages
-    if (request.method === 'POST' && path === '/api/messages') {
-      try {
-        const body: any = await request.json();
-        const { name, message } = body;
+    return c.redirect('/admin');
+  } catch (error) {
+    console.error('Worker Auth Error:', error);
+    return c.redirect('/login?error=auth_failed');
+  }
+});
 
-        if (!message || typeof message !== 'string' || message.trim().length === 0) {
-          return new Response(JSON.stringify({ error: 'Message is required' }), {
-            status: 400,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
+// 3. Get Current User
+app.get('/api/auth/me', async (c) => {
+  const token = getCookie(c, 'wedding_session');
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
 
-        const sanitizedName = name?.substring(0, 30) || '';
-        const sanitizedMessage = message.substring(0, 150);
+  try {
+    const payload = await verify(token, c.env.JWT_SECRET);
+    return c.json({ user: payload });
+  } catch (e) {
+    return c.json({ error: 'Invalid session' }, 401);
+  }
+});
 
-        const newMessage: Message = {
-          id: crypto.randomUUID(),
-          name: sanitizedName,
-          message: sanitizedMessage,
-          timestamp: Date.now(),
-        };
+// 4. Logout
+app.post('/api/auth/logout', (c) => {
+  deleteCookie(c, 'wedding_session', { path: '/' });
+  return c.json({ success: true });
+});
 
-        // Fetch existing, add new, keep last 50
-        const messagesStr = await env.WEDDING_KV.get('wedding_messages');
-        let messages: Message[] = messagesStr ? JSON.parse(messagesStr) : [];
-        
-        messages.unshift(newMessage);
-        messages = messages.slice(0, 50);
-
-        await env.WEDDING_KV.put('wedding_messages', JSON.stringify(messages));
-
-        return new Response(JSON.stringify({ success: true }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: 'Invalid request' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-    }
-
-    return new Response('Not Found', { status: 404 });
-  },
-};
+export default app;

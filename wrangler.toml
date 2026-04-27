@@ -1,0 +1,11 @@
+name = "wedding-auth-worker"
+main = "worker/index.ts"
+compatibility_date = "2024-04-01"
+
+[vars]
+GOOGLE_CLIENT_ID = env.GOOGLE_CLIENT_ID
+APP_URL = "https://wedding-tools.buildsiteasia.com/"
+
+# Secrets (Set these using 'wrangler secret put')
+# GOOGLE_CLIENT_SECRET
+# JWT_SECRET

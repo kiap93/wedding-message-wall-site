@@ -30,17 +30,33 @@ async function startServer() {
   app.use(express.json());
   app.use(cookieParser());
 
-  app.get('/api/health', (req, res) => {
+  // Diagnostics middleware
+  app.use((req, res, next) => {
+    if (req.url.startsWith('/api')) {
+      console.log(`[API Request] ${req.method} ${req.url}`);
+    }
+    next();
+  });
+
+  const apiRouter = express.Router();
+
+  apiRouter.get('/health', (req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() });
   });
 
   // --- Auth Routes ---
-
-  app.get('/api/auth/google', (req, res) => {
+  apiRouter.get('/auth/google', (req, res) => {
     res.setHeader('X-Wedding-API', 'hit');
+    console.log('Hitting /api/auth/google');
+    
     if (!GOOGLE_CLIENT_ID) {
-      return res.status(500).json({ error: 'Google Client ID not configured. Please set GOOGLE_CLIENT_ID in your environment variables.' });
+      console.error('Missing GOOGLE_CLIENT_ID');
+      return res.status(500).json({ 
+        error: 'Google Client ID not configured',
+        details: 'Please set GOOGLE_CLIENT_ID in your .env or Settings menu.' 
+      });
     }
+
     const authorizeUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: ['https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/userinfo.email'],
@@ -49,7 +65,7 @@ async function startServer() {
     res.json({ url: authorizeUrl });
   });
 
-  app.get('/api/auth/callback', async (req, res) => {
+  apiRouter.get('/auth/callback', async (req, res) => {
     const { code } = req.query;
     if (!code) return res.redirect('/login?error=no_code');
 
@@ -63,7 +79,6 @@ async function startServer() {
 
       if (!payload) throw new Error('No payload');
 
-      // Create our own JWT session
       const user = {
         id: payload.sub,
         email: payload.email,
@@ -73,12 +88,11 @@ async function startServer() {
 
       const token = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
 
-      // Set secure cookie
       res.cookie('wedding_session', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: true,
         sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
       res.redirect('/admin');
@@ -88,7 +102,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/auth/me', (req, res) => {
+  apiRouter.get('/auth/me', (req, res) => {
     const token = req.cookies.wedding_session;
     if (!token) return res.status(401).json({ error: 'Not authenticated' });
 
@@ -100,11 +114,15 @@ async function startServer() {
     }
   });
 
-  app.post('/api/auth/logout', (req, res) => {
+  apiRouter.post('/auth/logout', (req, res) => {
     res.clearCookie('wedding_session');
     res.json({ success: true });
   });
 
+  // Mount API router
+  app.use('/api', apiRouter);
+
+  // Fallback for unmatched API routes
   app.all('/api/*', (req, res) => {
     res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
   });
