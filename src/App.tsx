@@ -8,13 +8,14 @@ import Admin from './pages/Admin';
 import Login from './pages/Login';
 
 import { API_BASE } from './lib/config';
+import { authenticatedFetch } from './lib/auth';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
+    authenticatedFetch(`${API_BASE}/api/auth/me`)
       .then(res => res.json())
       .then(data => {
         if (data.user) {

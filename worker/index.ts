@@ -89,7 +89,7 @@ app.get('/api/auth/callback', async (c) => {
     // Sign our session JWT
     const token = await sign(user, JWT_SECRET, 'HS256');
 
-    // Set cookie with SameSite=None for cross-domain support
+    // Set cookie with SameSite=None for cross-domain support (legacy support)
     setCookie(c, 'wedding_session', token, {
       httpOnly: true,
       secure: true,
@@ -100,7 +100,10 @@ app.get('/api/auth/callback', async (c) => {
 
     // Get Frontend URL from environment or fallback
     const FRONTEND_URL = c.env.FRONTEND_URL || 'https://wedding-tools.buildsiteasia.com';
-    return c.redirect(`${FRONTEND_URL}/admin`);
+    
+    // Also pass the token in the URL so the frontend can save it to LocalStorage
+    // (This avoids third-party cookie blocking issues)
+    return c.redirect(`${FRONTEND_URL}/admin?token=${token}`);
   } catch (error) {
     console.error('Worker Auth Error:', error);
     return c.redirect('/login?error=auth_failed');
@@ -109,7 +112,14 @@ app.get('/api/auth/callback', async (c) => {
 
 // 3. Get Current User
 app.get('/api/auth/me', async (c) => {
-  const token = getCookie(c, 'wedding_session');
+  // Check both Cookie and Authorization Header
+  let token = getCookie(c, 'wedding_session');
+  
+  const authHeader = c.req.header('Authorization');
+  if (!token && authHeader?.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  }
+
   if (!token) return c.json({ error: 'Not authenticated' }, 401);
 
   try {

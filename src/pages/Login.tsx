@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { Mail, Chrome, Heart } from 'lucide-react';
 
 import { API_BASE } from '../lib/config';
+import { authenticatedFetch } from '../lib/auth';
 
 export default function Login() {
   const [loading, setLoading] = useState(false);
@@ -20,7 +21,7 @@ export default function Login() {
 
   // Check if session already exists
   useEffect(() => {
-    fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
+    authenticatedFetch(`${API_BASE}/api/auth/me`)
       .then(res => res.json())
       .then(data => {
         if (data.user) {

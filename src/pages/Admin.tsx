@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { Save, LogOut, Layout, Heart, ArrowRight } from 'lucide-react';
 import { TEMPLATES, TemplateId } from '../types';
 import { API_BASE } from '../lib/config';
+import { authenticatedFetch, setAuthToken, removeAuthToken } from '../lib/auth';
 
 export default function Admin() {
   const [groomName, setGroomName] = useState(localStorage.getItem('groomName') || 'Alex');
@@ -15,7 +16,16 @@ export default function Admin() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
+    // Check for token in URL (from Worker redirect)
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      setAuthToken(token);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    authenticatedFetch(`${API_BASE}/api/auth/me`)
       .then(res => res.json())
       .then(data => {
         if (data.user) {
@@ -37,7 +47,8 @@ export default function Admin() {
   };
 
   const handleLogout = async () => {
-    await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+    await authenticatedFetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
+    removeAuthToken();
     navigate('/login');
   };
 
