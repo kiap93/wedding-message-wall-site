@@ -7,13 +7,14 @@ import TemplateSelector from './pages/TemplateSelector';
 import Admin from './pages/Admin';
 import Login from './pages/Login';
 
+import { API_BASE } from './lib/config';
+
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/auth/me')
+    fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         if (data.user) {

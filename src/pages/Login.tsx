@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Mail, Chrome, Heart } from 'lucide-react';
 
+import { API_BASE } from '../lib/config';
+
 export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +20,7 @@ export default function Login() {
 
   // Check if session already exists
   useEffect(() => {
-    fetch('/api/auth/me')
+    fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         if (data.user) {
@@ -33,7 +35,7 @@ export default function Login() {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('/api/auth/google');
+      const response = await fetch(`${API_BASE}/api/auth/google`);
       const text = await response.text();
       const apiHeader = response.headers.get('X-Wedding-API');
       

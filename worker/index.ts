@@ -1,7 +1,5 @@
 import { Hono } from 'hono';
-import { googleAuth } from '@hono/google-auth'; // Note: You can use standard fetch or a library
 import { sign, verify } from 'hono/jwt';
-import { cookie } from 'hono/cookie';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
 
 type Bindings = {
@@ -12,6 +10,23 @@ type Bindings = {
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
+
+// CORS Middleware
+app.use('*', async (c, next) => {
+  const origin = c.req.header('Origin');
+  // In production, you might want to restrict this to wedding-tools.buildsiteasia.com
+  if (origin) {
+    c.res.headers.set('Access-Control-Allow-Origin', origin);
+    c.res.headers.set('Access-Control-Allow-Credentials', 'true');
+    c.res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  }
+  
+  if (c.req.method === 'OPTIONS') {
+    return c.body(null, 204);
+  }
+  await next();
+});
 
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
@@ -71,7 +86,7 @@ app.get('/api/auth/callback', async (c) => {
     };
 
     // Sign our session JWT
-    const token = await sign(user, JWT_SECRET);
+    const token = await sign(user, JWT_SECRET, 'HS256');
 
     // Set cookie
     setCookie(c, 'wedding_session', token, {
@@ -95,7 +110,7 @@ app.get('/api/auth/me', async (c) => {
   if (!token) return c.json({ error: 'Not authenticated' }, 401);
 
   try {
-    const payload = await verify(token, c.env.JWT_SECRET);
+    const payload = await verify(token, c.env.JWT_SECRET, 'HS256');
     return c.json({ user: payload });
   } catch (e) {
     return c.json({ error: 'Invalid session' }, 401);

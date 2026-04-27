@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Save, LogOut, Layout, Heart, ArrowRight } from 'lucide-react';
 import { TEMPLATES, TemplateId } from '../types';
+import { API_BASE } from '../lib/config';
 
 export default function Admin() {
   const [groomName, setGroomName] = useState(localStorage.getItem('groomName') || 'Alex');
@@ -14,7 +15,7 @@ export default function Admin() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch('/api/auth/me')
+    fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         if (data.user) {
@@ -36,7 +37,7 @@ export default function Admin() {
   };
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' });
     navigate('/login');
   };
 
