@@ -20,7 +20,7 @@ export default function TemplateSelector() {
             className="flex items-center gap-2 px-6 py-3 bg-white border border-[#C5A059]/30 rounded-2xl text-[#C5A059] font-bold uppercase tracking-widest text-xs hover:bg-[#C5A059] hover:text-white transition-all shadow-sm"
           >
             <User className="w-4 h-4" />
-            Create My Celebration
+            Manage Event Space
           </button>
         </div>
         <header className="text-center mb-16">
@@ -31,8 +31,8 @@ export default function TemplateSelector() {
           >
             <Palette className="w-10 h-10 text-[#C5A059]" />
           </motion.div>
-          <h1 className="text-5xl md:text-6xl font-serif mb-4 tracking-tight">Choose Your Theme</h1>
-          <p className="text-lg opacity-60 font-sans tracking-[0.2em] uppercase">Tailored styles for your special day</p>
+          <h1 className="text-5xl md:text-6xl font-serif mb-4 tracking-tight">Organization Templates</h1>
+          <p className="text-lg opacity-60 font-sans tracking-[0.2em] uppercase">Premium white-label styles for event organizers</p>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">

@@ -15,7 +15,7 @@ import {
   Calendar,
   MapPin
 } from 'lucide-react';
-import { Project, TEMPLATES, TemplateId } from '../types';
+import { WeddingEvent, TEMPLATES, TemplateId } from '../types';
 import { API_BASE } from '../lib/config';
 import { authenticatedFetch, removeAuthToken } from '../lib/auth';
 import { getSupabase } from '../lib/supabase';
@@ -26,27 +26,29 @@ export default function Admin() {
   const [view, setView] = useState<'list' | 'editor'>('list');
   const navigate = useNavigate();
 
-  // Project List
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  // Event List
+  const [events, setEvents] = useState<WeddingEvent[]>([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(true);
 
   // Current Editor State
-  const [editingProject, setEditingProject] = useState<Partial<Project> | null>(null);
+  const [editingEvent, setEditingEvent] = useState<Partial<WeddingEvent> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    fetchUserAndProjects();
+    fetchUserAndEvents();
   }, []);
 
-  const fetchUserAndProjects = async () => {
+  const fetchUserAndEvents = async () => {
     try {
       const res = await authenticatedFetch(`${API_BASE}/api/auth/me`);
       const data = await res.json();
       
-      if (data.user) {
-        setUser(data.user);
-        await fetchProjects(data.user.sub);
+      if (data.user && (data.user.sub || data.user.id)) {
+        const userData = { ...data.user, sub: data.user.sub || data.user.id };
+        setUser(userData);
+        await fetchEvents(userData.sub);
       } else {
+        console.error('Invalid user data received:', data);
         navigate('/login');
       }
     } catch (error) {
@@ -55,79 +57,81 @@ export default function Admin() {
     }
   };
 
-  const fetchProjects = async (userId: string) => {
-    setIsLoadingProjects(true);
+  const fetchEvents = async (userId: string) => {
+    setIsLoadingEvents(true);
     const supabase = getSupabase();
     const { data, error } = await supabase
-      .from('projects')
+      .from('projects') // Keeping table name as 'projects' for now or mapping it to 'events' if changed
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching projects:', error);
+      console.error('Error fetching events:', error);
     } else {
-      setProjects(data || []);
+      setEvents(data || []);
     }
-    setIsLoadingProjects(false);
+    setIsLoadingEvents(false);
   };
 
   const handleCreateNew = () => {
-    const newProject: Partial<Project> = {
-      name: 'New Journey',
-      groom_name: 'Groom',
-      bride_name: 'Bride',
+    const newEvent: Partial<WeddingEvent> = {
+      name: 'New Celebration',
+      slug: `event-${Math.random().toString(36).substring(2, 7)}`,
+      groom_name: 'Partner A',
+      bride_name: 'Partner B',
       wedding_date: new Date().toISOString().split('T')[0],
       location: 'Venue Name',
       theme_id: 'minimal_luxury',
       user_id: user.sub
     };
-    setEditingProject(newProject);
+    setEditingEvent(newEvent);
     setView('editor');
   };
 
-  const handleEdit = (project: Project) => {
-    setEditingProject({ ...project });
+  const handleEdit = (event: WeddingEvent) => {
+    setEditingEvent({ ...event });
     setView('editor');
   };
 
   const handleSave = async () => {
-    if (!editingProject || !user) return;
+    if (!editingEvent || !user) return;
     setIsSaving(true);
 
     const supabase = getSupabase();
-    const projectData = {
-      ...editingProject,
+    const eventData = {
+      ...editingEvent,
+      user_id: user.sub || user.id,
       updated_at: new Date().toISOString()
     };
 
     let error;
-    if (projectData.id) {
+    if (eventData.id) {
       // Update
       const { error: updateError } = await supabase
         .from('projects')
-        .update(projectData)
-        .eq('id', projectData.id);
+        .update(eventData)
+        .eq('id', eventData.id);
       error = updateError;
     } else {
       // Insert
       const { error: insertError } = await supabase
         .from('projects')
-        .insert([projectData]);
+        .insert([eventData]);
       error = insertError;
     }
 
     if (error) {
-      alert('Error saving project: ' + error.message);
+      alert('Error saving event: ' + error.message);
     } else {
-      await fetchProjects(user.sub);
+      await fetchEvents(user.sub);
       setView('list');
     }
     setIsSaving(false);
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this project?')) return;
+    if (!window.confirm('Are you sure you want to delete this event?')) return;
     
     const supabase = getSupabase();
     const { error } = await supabase
@@ -136,9 +140,9 @@ export default function Admin() {
       .eq('id', id);
 
     if (error) {
-      alert('Error deleting project');
+      alert('Error deleting event');
     } else {
-      setProjects(projects.filter(p => p.id !== id));
+      setEvents(events.filter(e => e.id !== id));
     }
   };
 
@@ -187,57 +191,57 @@ export default function Admin() {
             >
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
-                  <h2 className="text-4xl font-serif mb-2 text-[#2D2424]">Your Celebrations</h2>
-                  <p className="text-gray-500">Manage multiple wedding projects and landing pages.</p>
+                  <h2 className="text-4xl font-serif mb-2 text-[#2D2424]">Organization Events</h2>
+                  <p className="text-gray-500">Manage white-label wedding events and guest experiences.</p>
                 </div>
                 <button 
                   onClick={handleCreateNew}
                   className="bg-[#C5A059] text-white px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 hover:bg-[#B38D45] transition-all shadow-xl active:scale-95"
                 >
                   <Plus className="w-5 h-5" />
-                  New Project
+                  New Event
                 </button>
               </div>
 
-              {isLoadingProjects ? (
+              {isLoadingEvents ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {[1, 2, 3].map(i => (
                     <div key={i} className="h-64 bg-white/50 animate-pulse rounded-[2rem] border border-[#C5A059]/10" />
                   ))}
                 </div>
-              ) : projects.length === 0 ? (
+              ) : events.length === 0 ? (
                 <div className="bg-white p-16 rounded-[3rem] border-2 border-dashed border-[#C5A059]/30 flex flex-col items-center text-center">
                   <div className="w-20 h-20 bg-[#C5A059]/10 rounded-full flex items-center justify-center mb-6">
                     <Heart className="w-10 h-10 text-[#C5A059] opacity-20" />
                   </div>
-                  <h3 className="text-2xl font-serif mb-2">No projects yet</h3>
-                  <p className="text-gray-400 max-w-sm mb-8">Ready to start planning? Create your first wedding project to begin customizing your page.</p>
+                  <h3 className="text-2xl font-serif mb-2">No events created</h3>
+                  <p className="text-gray-400 max-w-sm mb-8">Ready to start planning? Create your first branded event to begin customizing the experience.</p>
                   <button onClick={handleCreateNew} className="text-[#C5A059] font-bold uppercase tracking-widest flex items-center gap-2 hover:translate-x-1 transition-transform">
-                    Get Started <ArrowRight className="w-5 h-5" />
+                    Initialize Event <ArrowRight className="w-5 h-5" />
                   </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  {projects.map((project) => (
+                  {events.map((event) => (
                     <motion.div 
-                      key={project.id}
+                      key={event.id}
                       whileHover={{ y: -8 }}
                       className="bg-white rounded-[2.5rem] shadow-xl border border-[#C5A059]/10 overflow-hidden flex flex-col group"
                     >
                       <div className="p-8 flex-1">
                         <div className="flex items-center justify-between mb-6">
                           <span className="text-[10px] font-black uppercase tracking-widest bg-[#C5A059]/10 text-[#C5A059] px-3 py-1 rounded-full">
-                            {TEMPLATES.find(t => t.id === project.theme_id)?.name || 'Classic'}
+                            {TEMPLATES.find(t => t.id === event.theme_id)?.name || 'Classic'}
                           </span>
                           <div className="flex gap-2">
                             <button 
-                              onClick={() => handleEdit(project)}
+                              onClick={() => handleEdit(event)}
                               className="p-2 hover:bg-[#C5A059]/10 rounded-lg text-gray-400 hover:text-[#C5A059] transition-colors"
                             >
                               <Settings className="w-4 h-4" />
                             </button>
                             <button 
-                              onClick={() => handleDelete(project.id)}
+                              onClick={() => handleDelete(event.id)}
                               className="p-2 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-500 transition-colors"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -245,32 +249,35 @@ export default function Admin() {
                           </div>
                         </div>
                         
-                        <h3 className="text-2xl font-serif mb-4 leading-tight">
-                          {project.groom_name} <span className="text-[#C5A059]">&</span> {project.bride_name}
+                        <h3 className="text-2xl font-serif mb-2 leading-tight">
+                          {event.groom_name} <span className="text-[#C5A059]">&</span> {event.bride_name}
                         </h3>
+                        <p className="text-[10px] font-bold text-[#C5A059] uppercase tracking-widest mb-6 opacity-60">
+                          {event.slug}.wedding-tools.com
+                        </p>
 
                         <div className="space-y-2 text-sm text-gray-500 mb-8">
                           <div className="flex items-center gap-2">
                             <Calendar className="w-3.5 h-3.5 opacity-50" />
-                            <span>{new Date(project.wedding_date).toLocaleDateString(undefined, { dateStyle: 'long' })}</span>
+                            <span>{new Date(event.wedding_date).toLocaleDateString(undefined, { dateStyle: 'long' })}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <MapPin className="w-3.5 h-3.5 opacity-50" />
-                            <span className="truncate">{project.location}</span>
+                            <span className="truncate">{event.location}</span>
                           </div>
                         </div>
                       </div>
 
                       <div className="px-8 pb-8 flex gap-3">
                         <button 
-                          onClick={() => window.open(`/display/${project.id}`, '_blank')}
+                          onClick={() => window.open(`/e/${event.slug}`, '_blank')}
                           className="flex-1 bg-[#2D2424] text-white py-3 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black transition-colors"
                         >
                           <ArrowRight className="w-3 h-3" />
-                          View Page
+                          Launch Space
                         </button>
                         <button 
-                          onClick={() => window.open(`/guest/${project.id}`, '_blank')}
+                          onClick={() => window.open(`/guest/${event.id}`, '_blank')}
                           className="bg-[#C5A059]/10 text-[#C5A059] p-3 rounded-xl hover:bg-[#C5A059]/20 transition-colors"
                         >
                           <ExternalLink className="w-4 h-4" />
@@ -310,43 +317,57 @@ export default function Admin() {
                   
                   <div className="space-y-6">
                     <div>
-                      <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Project Name</label>
+                      <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Domain Slug</label>
+                      <div className="flex items-center">
+                        <input 
+                          type="text" 
+                          placeholder="wedding-slug"
+                          value={editingEvent?.slug || ''}
+                          onChange={(e) => setEditingEvent({ ...editingEvent!, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                          className="flex-1 px-5 py-4 rounded-l-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-mono text-sm"
+                        />
+                        <span className="bg-gray-100 px-4 py-4 rounded-r-2xl border border-l-0 border-gray-100 text-[10px] font-bold text-gray-400">.wedding-tools.com</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Name</label>
                       <input 
                         type="text" 
                         placeholder="e.g. Summer Wedding 2026"
-                        value={editingProject?.name || ''}
-                        onChange={(e) => setEditingProject({ ...editingProject!, name: e.target.value })}
+                        value={editingEvent?.name || ''}
+                        onChange={(e) => setEditingEvent({ ...editingEvent!, name: e.target.value })}
                         className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
                       />
                     </div>
                     
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Groom</label>
+                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Groom / Partner A</label>
                         <input 
                           type="text" 
-                          value={editingProject?.groom_name || ''}
-                          onChange={(e) => setEditingProject({ ...editingProject!, groom_name: e.target.value })}
+                          value={editingEvent?.groom_name || ''}
+                          onChange={(e) => setEditingEvent({ ...editingEvent!, groom_name: e.target.value })}
                           className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Bride</label>
+                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Bride / Partner B</label>
                         <input 
                           type="text" 
-                          value={editingProject?.bride_name || ''}
-                          onChange={(e) => setEditingProject({ ...editingProject!, bride_name: e.target.value })}
+                          value={editingEvent?.bride_name || ''}
+                          onChange={(e) => setEditingEvent({ ...editingEvent!, bride_name: e.target.value })}
                           className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Wedding Date</label>
+                      <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Date</label>
                       <input 
                         type="date" 
-                        value={editingProject?.wedding_date || ''}
-                        onChange={(e) => setEditingProject({ ...editingProject!, wedding_date: e.target.value })}
+                        value={editingEvent?.wedding_date || ''}
+                        onChange={(e) => setEditingEvent({ ...editingEvent!, wedding_date: e.target.value })}
                         className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
                       />
                     </div>
@@ -355,8 +376,8 @@ export default function Admin() {
                       <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Location</label>
                       <input 
                         type="text" 
-                        value={editingProject?.location || ''}
-                        onChange={(e) => setEditingProject({ ...editingProject!, location: e.target.value })}
+                        value={editingEvent?.location || ''}
+                        onChange={(e) => setEditingEvent({ ...editingEvent!, location: e.target.value })}
                         className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
                       />
                     </div>
@@ -386,9 +407,9 @@ export default function Admin() {
                   {TEMPLATES.map((t) => (
                     <button 
                       key={t.id}
-                      onClick={() => setEditingProject({ ...editingProject!, theme_id: t.id })}
+                      onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
                       className={`relative overflow-hidden rounded-3xl border-2 transition-all group text-left
-                        ${editingProject?.theme_id === t.id ? 'border-[#C5A059] shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
+                        ${editingEvent?.theme_id === t.id ? 'border-[#C5A059] shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
                       `}
                     >
                       <div className={`${t.colors.background} ${t.colors.text} p-8 rounded-[calc(1.5rem-4px)] min-h-[240px] flex flex-col justify-between`}>
@@ -406,7 +427,7 @@ export default function Admin() {
                         </div>
                       </div>
 
-                      {editingProject?.theme_id === t.id && (
+                      {editingEvent?.theme_id === t.id && (
                         <div className="absolute top-6 right-6 bg-[#C5A059] text-white p-2 rounded-full shadow-lg">
                           <Save className="w-4 h-4" />
                         </div>

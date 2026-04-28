@@ -4,14 +4,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Heart, Send, CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower } from 'lucide-react';
 import { postMessage } from '../lib/api';
 import confetti from 'canvas-confetti';
-import { Project, TEMPLATES, TemplateId, WeddingTemplate } from '../types';
+import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 import { getSupabase } from '../lib/supabase';
 
 export default function Guest() {
-  const { projectId } = useParams();
-  const [project, setProject] = useState<Project | null>(null);
-  const [isLoading, setIsLoading] = useState(!!projectId);
+  const { projectId, slug } = useParams();
+  const [project, setProject] = useState<WeddingEvent | null>(null);
+  const [isLoading, setIsLoading] = useState(!!projectId || !!slug);
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,24 +31,30 @@ export default function Guest() {
   const currentUrl = window.location.origin + window.location.pathname + window.location.search;
 
   useEffect(() => {
-    if (projectId) {
-      loadProject(projectId);
+    if (projectId || slug) {
+      loadProject(projectId, slug);
     }
-  }, [projectId]);
+  }, [projectId, slug]);
 
-  const loadProject = async (id: string) => {
+  const loadProject = async (id?: string, slugName?: string) => {
     try {
       const supabase = getSupabase();
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('id', id)
-        .single();
+      let query = supabase.from('projects').select('*');
+      
+      if (id) {
+        query = query.eq('id', id);
+      } else if (slugName) {
+        query = query.eq('slug', slugName);
+      } else {
+        return;
+      }
+
+      const { data, error } = await query.single();
       
       if (error) throw error;
       setProject(data);
     } catch (err) {
-      console.error('Error loading project:', err);
+      console.error('Error loading event:', err);
     } finally {
       setIsLoading(false);
     }
@@ -76,7 +82,8 @@ export default function Guest() {
     setError(null);
 
     try {
-      await postMessage(name, message, projectId);
+      const targetId = project?.id || projectId;
+      await postMessage(name, message, targetId);
       confetti({
         particleCount: 150,
         spread: 70,

@@ -70,6 +70,8 @@ export default function App() {
         />
         <Route path="/guest/:projectId" element={<Guest />} />
         <Route path="/display/:projectId" element={<Display />} />
+        <Route path="/e/:slug" element={<Display />} />
+        <Route path="/g/:slug" element={<Guest />} />
         <Route path="/guest" element={<Guest />} />
         <Route path="/display" element={<Display />} />
         <Route path="/" element={<Navigate to="/login" replace />} />

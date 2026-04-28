@@ -69,37 +69,28 @@ app.get('/api/auth/callback', async (c) => {
         grant_type: 'authorization_code',
       }),
     });
-if (!tokenResponse.ok) {
-  const errorBody = await tokenResponse.json() as any;
-  console.error("GOOGLE REJECTION:", errorBody); // This will show in 'wrangler tail'
-  return c.json({ 
-    success: false, 
-    message: "Google rejected token exchange", 
-    google_says: errorBody 
-  }, 401);
-}
+
     const tokens = await tokenResponse.json() as any;
-    if (!tokenResponse.ok) {
-      // This will tell you if it's "invalid_client" or "invalid_grant"
-      console.error("Google Error Details:", tokens);
-      return c.json({ error: "Google rejected the exchange", details: tokens }, 400);
-    }
+    
     // Get user info from ID Token (or skip and fetch userinfo)
     const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
     
     const userPayload = await userResponse.json() as any;
+    console.log('Google User Payload:', JSON.stringify(userPayload));
 
     const user = {
-      id: userPayload.sub,
-      sub: userPayload.sub,
+      id: userPayload.sub || userPayload.id,
+      sub: userPayload.sub || userPayload.id,
       email: userPayload.email,
       name: userPayload.name,
       picture: userPayload.picture,
     };
 
-    // // Sign our session JWT
+    console.log('Signing User JWT:', JSON.stringify(user));
+
+    // Sign our session JWT
     const token = await sign(user, JWT_SECRET, 'HS256');
 
     // Set cookie with SameSite=None for cross-domain support (legacy support)
@@ -137,6 +128,7 @@ app.get('/api/auth/me', async (c) => {
 
   try {
     const payload = await verify(token, c.env.JWT_SECRET, 'HS256');
+    console.log('Verified Session Payload:', JSON.stringify(payload));
     return c.json({ user: payload });
   } catch (e) {
     return c.json({ error: 'Invalid session' }, 401);

@@ -4,19 +4,19 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Heart, Palette, QrCode, Leaf, Star, Mail, Camera, Flower } from 'lucide-react';
 import { fetchMessages, Message } from '../lib/api';
 import { getSupabase } from '../lib/supabase';
-import { Project, TEMPLATES, TemplateId, WeddingTemplate } from '../types';
+import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 
 export default function Display() {
-  const { projectId } = useParams();
-  const [project, setProject] = useState<Project | null>(null);
+  const { projectId, slug } = useParams();
+  const [project, setProject] = useState<WeddingEvent | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchParams] = useSearchParams();
   const [showQR, setShowQR] = useState(false);
-  const [isLoading, setIsLoading] = useState(!!projectId);
+  const [isLoading, setIsLoading] = useState(!!projectId || !!slug);
   const navigate = useNavigate();
   
-  // Fallback defaults if no project loaded
+  // Fallback defaults if no event loaded
   const templateIdFromUrl = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
   
   const activeTemplateId = project?.theme_id || templateIdFromUrl;
@@ -26,35 +26,42 @@ export default function Display() {
   const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
 
   // Derive guest URL
-  const guestUrl = window.location.origin + (projectId ? `/guest/${projectId}` : '/guest' + window.location.search);
+  const guestUrl = window.location.origin + (project?.id ? `/guest/${project.id}` : slug ? `/g/${slug}` : '/guest' + window.location.search);
 
-  const loadProject = async (id: string) => {
+  const loadProject = async (id?: string, slugName?: string) => {
     try {
       const supabase = getSupabase();
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('id', id)
-        .single();
+      let query = supabase.from('projects').select('*');
+      
+      if (id) {
+        query = query.eq('id', id);
+      } else if (slugName) {
+        query = query.eq('slug', slugName);
+      } else {
+        return;
+      }
+
+      const { data, error } = await query.single();
       
       if (error) throw error;
       setProject(data);
     } catch (err) {
-      console.error('Error loading project:', err);
+      console.error('Error loading event:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (projectId) {
-      loadProject(projectId);
+    if (projectId || slug) {
+      loadProject(projectId, slug);
     }
     
     // Initial fetch
     const loadInitialMessages = async () => {
       try {
-        const data = await fetchMessages(projectId);
+        const targetId = project?.id || projectId;
+        const data = await fetchMessages(targetId);
         setMessages(data);
       } catch (err) {
         console.error('Initial fetch error:', err);
@@ -67,15 +74,16 @@ export default function Display() {
     let channel: any = null;
     try {
       const supabase = getSupabase();
+      const targetId = project?.id || projectId;
       channel = supabase
-        .channel(`project-messages-${projectId || 'default'}`)
+        .channel(`event-messages-${targetId || 'default'}`)
         .on(
           'postgres_changes',
           {
             event: 'INSERT',
             schema: 'public',
             table: 'messages',
-            filter: projectId ? `project_id=eq.${projectId}` : undefined
+            filter: targetId ? `project_id=eq.${targetId}` : undefined
           },
           (payload) => {
             const newMessage = payload.new as Message;
@@ -102,7 +110,7 @@ export default function Display() {
         }
       }
     };
-  }, [projectId]);
+  }, [projectId, slug, project?.id]);
 
   if (isLoading) {
     return (

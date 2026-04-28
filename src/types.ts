@@ -1,7 +1,8 @@
-export interface Project {
+export interface WeddingEvent {
   id: string;
   user_id: string;
   name: string;
+  slug: string;
   groom_name: string;
   bride_name: string;
   wedding_date: string;
