@@ -159,14 +159,17 @@ app.get('/api/auth/me', async (c) => {
     token = authHeader.substring(7);
   }
 
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+  if (!token) {
+    console.log('Auth Me: No token found in cookie or header');
+    return c.json({ error: 'Not authenticated', details: 'No session token presented' }, 401);
+  }
 
   try {
     const payload = await verify(token, c.env.JWT_SECRET, 'HS256');
-    console.log('Verified Session Payload:', JSON.stringify(payload));
     return c.json({ user: payload });
   } catch (e) {
-    return c.json({ error: 'Invalid session' }, 401);
+    console.error('Auth Me: JWT Verification Failed', e);
+    return c.json({ error: 'Invalid session', details: 'Token verification failed' }, 401);
   }
 });
 
@@ -195,20 +198,24 @@ app.get('/api/debug-env', (c) => {
 app.all('*', async (c) => {
   const url = new URL(c.req.url);
   
-  // Skip proxying if it's an API call that wasn't handled (e.g. 404 API)
-  if (url.pathname.startsWith('/api/')) {
-    return c.json({ error: 'API route not found' }, 404);
+  // Skip proxying if it's an API call that wasn't handled by specific routes above
+  // This prevents accidentally serving HTML for broken API calls
+  if (url.pathname.startsWith('/api')) {
+    console.log(`API 404: ${url.pathname}`);
+    return c.json({ 
+      error: 'API route not found', 
+      path: url.pathname,
+      method: c.req.method 
+    }, 404);
   }
 
   // The ORIGIN_URL is where the React code is hosted (AI Studio)
   const originUrl = c.env.APP_URL || 'https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app';
   const originHost = new URL(originUrl).hostname;
 
-  // CRITICAL: Prevent circular proxying if the user points APP_URL to the custom domain itself
-  if (url.hostname === originHost || url.hostname === 'eventframe.io' || url.hostname.endsWith('.eventframe.io')) {
-    if (url.hostname === originHost && !originHost.includes('run.app')) {
-       return c.text('Configuration Error: APP_URL in Cloudflare must point to the AI Studio URL (e.g., xxx.run.app), not your custom domain.', 400);
-    }
+  // CRITICAL: Prevent circular proxying
+  if (url.hostname === originHost) {
+     return c.text('Configuration Error: APP_URL in Cloudflare must point to the AI Studio URL (e.g., xxx.run.app), not the worker domain.', 400);
   }
   
   const targetUrl = new URL(url.pathname + url.search, originUrl);
@@ -240,7 +247,7 @@ app.all('*', async (c) => {
     return newResponse;
   } catch (error) {
     console.error('Proxy Error:', error);
-    return c.text(`Backend unreachable. Please ensure APP_URL is set to ${originUrl} in Cloudflare variables.`, 504);
+    return c.text(`Backend unreachable. Please ensure Cloudflare Variable APP_URL is correctly set: ${originUrl}`, 504);
   }
 });
 
