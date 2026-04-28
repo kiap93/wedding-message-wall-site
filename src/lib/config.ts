@@ -8,8 +8,8 @@ const isAiStudio =
 // If in AI Studio, we point directly to the worker for auth to work (CORS).
 // If on eventframe.io (root or subdomain), we use relative paths so cookies are shared safely.
 export const API_BASE = isAiStudio 
-  ? 'https://wedding-auth-worker.kiap93-kmj.workers.dev' 
-  : '';
+  ? 'https://api.eventframe.io' 
+  : 'https://api.eventframe.io';
 
 console.log('[Config] API_BASE detected as:', API_BASE || '(relative)');
 console.log('[Config] Hostname:', window.location.hostname);
