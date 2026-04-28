@@ -313,6 +313,7 @@ app.all('*', async (c) => {
   const targetUrl = new URL(url.pathname + url.search, originUrl);
   
   // Extract tenant from subdomain (e.g., john.eventframe.io -> john)
+  /*
   let tenantId = null;
   const hostname = url.hostname;
   if (hostname.endsWith('.eventframe.io')) {
@@ -321,6 +322,7 @@ app.all('*', async (c) => {
       tenantId = parts[0];
     }
   }
+  */
 
   const headers = new Headers(c.req.header());
   headers.set('Host', originHost);
@@ -328,10 +330,12 @@ app.all('*', async (c) => {
   headers.set('X-Forwarded-Proto', 'https');
   headers.set('X-Proxy-By', 'Eventframe-Worker');
   
+  /*
   if (tenantId) {
     headers.set('X-Tenant-ID', tenantId);
     console.log(`[Worker] Detected Tenant: ${tenantId}`);
   }
+  */
 
   try {
     const response = await fetch(targetUrl.toString(), {
