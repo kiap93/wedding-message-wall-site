@@ -15,7 +15,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 // CORS Middleware
 app.use('*', async (c, next) => {
   const origin = c.req.header('Origin');
-  // In production, you might want to restrict this to wedding-tools.buildsiteasia.com
+  // In production, you might want to restrict this to eventframe.io
   if (origin) {
     c.res.headers.set('Access-Control-Allow-Origin', origin);
     c.res.headers.set('Access-Control-Allow-Credentials', 'true');
@@ -81,8 +81,8 @@ app.get('/api/auth/callback', async (c) => {
     console.log('Google User Payload:', JSON.stringify(userPayload));
 
     const user = {
-      id: userPayload.sub || userPayload.id,
-      sub: userPayload.sub || userPayload.id,
+      id: userPayload.sub || userPayload.id || String(Math.random()),
+      sub: userPayload.sub || userPayload.id || String(Math.random()),
       email: userPayload.email,
       name: userPayload.name,
       picture: userPayload.picture,
@@ -91,7 +91,8 @@ app.get('/api/auth/callback', async (c) => {
     console.log('Signing User JWT:', JSON.stringify(user));
 
     // Sign our session JWT
-    const token = await sign(user, JWT_SECRET, 'HS256');
+    // Use an object that definitely has keys to avoid empty payload issues
+    const token = await sign({ ...user, iat: Math.floor(Date.now() / 1000) }, JWT_SECRET, 'HS256');
 
     // Set cookie with SameSite=None for cross-domain support (legacy support)
     setCookie(c, 'wedding_session', token, {
@@ -103,7 +104,7 @@ app.get('/api/auth/callback', async (c) => {
     });
 
     // Get Frontend URL from environment or fallback
-    const FRONTEND_URL = c.env.FRONTEND_URL || 'https://wedding-tools.buildsiteasia.com';
+    const FRONTEND_URL = c.env.FRONTEND_URL || 'https://eventframe.io';
     
     // Also pass the token in the URL so the frontend can save it to LocalStorage
     // (This avoids third-party cookie blocking issues)

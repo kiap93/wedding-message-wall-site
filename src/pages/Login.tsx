@@ -24,7 +24,7 @@ export default function Login() {
     authenticatedFetch(`${API_BASE}/api/auth/me`)
       .then(res => res.json())
       .then(data => {
-        if (data.user) {
+        if (data.user && (data.user.sub || data.user.id)) {
           navigate('/admin', { replace: true });
         }
       })

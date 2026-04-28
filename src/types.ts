@@ -1,6 +1,22 @@
-export interface WeddingEvent {
+export interface Agency {
   id: string;
   user_id: string;
+  name: string;
+  slug: string;
+  logo_url?: string;
+  domain?: string;
+  theme?: string; // Aesthetic preset or custom JSON
+  theme_config?: {
+    primaryColor?: string;
+    fontFamily?: string;
+    accentColor?: string;
+  };
+  created_at: string;
+}
+
+export interface WeddingEvent {
+  id: string;
+  agency_id: string;
   name: string;
   slug: string;
   groom_name: string;

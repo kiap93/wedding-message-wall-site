@@ -4,13 +4,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Heart, Send, CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower } from 'lucide-react';
 import { postMessage } from '../lib/api';
 import confetti from 'canvas-confetti';
-import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate } from '../types';
+import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 import { getSupabase } from '../lib/supabase';
+import { getAgencyById } from '../lib/agency';
 
 export default function Guest() {
   const { projectId, slug } = useParams();
   const [project, setProject] = useState<WeddingEvent | null>(null);
+  const [agency, setAgency] = useState<Agency | null>(null);
   const [isLoading, setIsLoading] = useState(!!projectId || !!slug);
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
@@ -53,6 +55,12 @@ export default function Guest() {
       
       if (error) throw error;
       setProject(data);
+
+      // Fetch Agency branding
+      if (data.agency_id) {
+        const agencyData = await getAgencyById(data.agency_id);
+        setAgency(agencyData);
+      }
     } catch (err) {
       console.error('Error loading event:', err);
     } finally {
@@ -113,7 +121,15 @@ export default function Guest() {
   };
 
   return (
-    <div className={`min-h-screen flex items-center justify-center p-6 ${template.colors.background} transition-colors duration-700 relative overflow-hidden ${template.fontSans} ${template.colors.text}`}>
+    <div className={`min-h-screen flex flex-col items-center justify-center p-6 ${template.colors.background} transition-colors duration-700 relative overflow-hidden ${template.fontSans} ${template.colors.text}`}>
+      {/* Agency Branding */}
+      {agency && (
+        <div className="absolute top-8 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-white/20 backdrop-blur-md px-6 py-2 rounded-full border border-white/30">
+          {agency.logo_url && <img src={agency.logo_url} alt={agency.name} className="h-4 w-auto" />}
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Created by {agency.name}</span>
+        </div>
+      )}
+
       {/* Decorative Background Elements */}
       <div className={`absolute top-[-10%] right-[-10%] w-64 h-64 rounded-full blur-3xl opacity-20 ${template.id === 'starry' ? 'bg-blue-500' : 'bg-pink-300'}`} />
       <div className={`absolute bottom-[-10%] left-[-10%] w-96 h-96 rounded-full blur-3xl opacity-10 ${template.id === 'starry' ? 'bg-indigo-500' : 'bg-yellow-200'}`} />

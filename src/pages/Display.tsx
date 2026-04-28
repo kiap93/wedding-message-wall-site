@@ -4,12 +4,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Heart, Palette, QrCode, Leaf, Star, Mail, Camera, Flower } from 'lucide-react';
 import { fetchMessages, Message } from '../lib/api';
 import { getSupabase } from '../lib/supabase';
-import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate } from '../types';
+import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
+import { getAgencyById } from '../lib/agency';
 
 export default function Display() {
   const { projectId, slug } = useParams();
   const [project, setProject] = useState<WeddingEvent | null>(null);
+  const [agency, setAgency] = useState<Agency | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchParams] = useSearchParams();
   const [showQR, setShowQR] = useState(false);
@@ -45,6 +47,12 @@ export default function Display() {
       
       if (error) throw error;
       setProject(data);
+      
+      // Fetch Agency branding
+      if (data.agency_id) {
+        const agencyData = await getAgencyById(data.agency_id);
+        setAgency(agencyData);
+      }
     } catch (err) {
       console.error('Error loading event:', err);
     } finally {
@@ -122,6 +130,14 @@ export default function Display() {
 
   return (
     <div className={`min-h-screen ${template.colors.background} transition-colors duration-700 relative ${template.fontSans} ${template.colors.text}`}>
+      {/* Agency Branding Overlay */}
+      {agency && (
+        <div className="absolute top-8 left-8 z-40 flex items-center gap-3 bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/30">
+          {agency.logo_url && <img src={agency.logo_url} alt={agency.name} className="h-6 w-auto" />}
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Hosted by {agency.name}</span>
+        </div>
+      )}
+
       {/* Back to Templates Floating UI */}
       <div className="fixed bottom-8 left-8 z-[100]">
         <button

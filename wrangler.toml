@@ -6,7 +6,7 @@ account_id = "4c4c40d838a6dcea0783b300a9718180"
 [vars]
 GOOGLE_CLIENT_ID = "946837250683-434o0vtdrkoe2092vghh65md9nfr8hpu.apps.googleusercontent.com"
 APP_URL = "https://wedding-auth-worker.kiap93-kmj.workers.dev"
-FRONTEND_URL = "https://wedding-tools.buildsiteasia.com"
+FRONTEND_URL = "https://eventframe.io"
 
 # Secrets (Set these using 'wrangler secret put')
 # GOOGLE_CLIENT_SECRET
