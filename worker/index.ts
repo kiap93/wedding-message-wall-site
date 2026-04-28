@@ -67,7 +67,7 @@ app.get('/api/auth/google', async (c) => {
 app.get('/api/auth/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
-  
+  return c.json({ success: true });
   let redirectUrl = c.env.FRONTEND_URL || 'https://eventframe.io';
   if (state) {
     try {
