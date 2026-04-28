@@ -132,8 +132,8 @@ app.get('/api/auth/callback', async (c) => {
         const parts = url.hostname.split('.');
         if (parts.length >= 2) {
           const baseDomain = parts.slice(-2).join('.');
-          // Don't set domain for standard TLDs or localhost to avoid issues
-          if (!['localhost', '127.0.0.1'].includes(baseDomain)) {
+          // Don't set domain for standard TLDs, workers.dev, or localhost to avoid blocks
+          if (!['localhost', '127.0.0.1', 'workers.dev'].includes(baseDomain)) {
             cookieOptions.domain = `.${baseDomain}`;
           }
         }
@@ -201,13 +201,15 @@ app.all('*', async (c) => {
   // Skip proxying if it's an API call that wasn't handled by specific routes above
   // This prevents accidentally serving HTML for broken API calls
   if (url.pathname.startsWith('/api')) {
-    console.log(`API 404: ${url.pathname}`);
+    console.log(`[Worker] API 404: Not handled by routes: ${url.pathname}`);
     return c.json({ 
-      error: 'API route not found', 
+      error: 'API route not found on worker', 
       path: url.pathname,
       method: c.req.method 
     }, 404);
   }
+
+  console.log(`[Worker] Proxying request for: ${url.pathname}`);
 
   // The ORIGIN_URL is where the React code is hosted (AI Studio)
   const originUrl = c.env.APP_URL || 'https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app';
