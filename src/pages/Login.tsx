@@ -36,7 +36,8 @@ export default function Login() {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`${API_BASE}/api/auth/google`);
+      const source = window.location.origin;
+      const response = await fetch(`${API_BASE}/api/auth/google?source=${encodeURIComponent(source)}`);
       const text = await response.text();
       
       let data;

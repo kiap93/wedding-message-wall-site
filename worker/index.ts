@@ -15,12 +15,24 @@ const app = new Hono<{ Bindings: Bindings }>();
 // CORS Middleware
 app.use('*', async (c, next) => {
   const origin = c.req.header('Origin');
-  // In production, you might want to restrict this to eventframe.io
+  
   if (origin) {
-    c.res.headers.set('Access-Control-Allow-Origin', origin);
-    c.res.headers.set('Access-Control-Allow-Credentials', 'true');
-    c.res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    const url = new URL(origin);
+    const domain = url.hostname;
+    
+    // Check if it's our main domain or a subdomain
+    const isAllowed = 
+      domain === 'eventframe.io' || 
+      domain.endsWith('.eventframe.io') || 
+      domain.includes('ais-dev-') || 
+      domain.includes('localhost');
+
+    if (isAllowed) {
+      c.res.headers.set('Access-Control-Allow-Origin', origin);
+      c.res.headers.set('Access-Control-Allow-Credentials', 'true');
+      c.res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    }
   }
   
   if (c.req.method === 'OPTIONS') {
@@ -36,6 +48,7 @@ app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
 app.get('/api/auth/google', async (c) => {
   const GOOGLE_CLIENT_ID = c.env.GOOGLE_CLIENT_ID;
   const APP_URL = c.env.APP_URL;
+  const source = c.req.query('source') || c.env.FRONTEND_URL || 'https://eventframe.io';
 
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
@@ -44,6 +57,7 @@ app.get('/api/auth/google', async (c) => {
     scope: 'openid email profile',
     access_type: 'offline',
     prompt: 'consent',
+    state: btoa(JSON.stringify({ source })), // Pass redirect source in state
   });
 
   return c.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
@@ -52,7 +66,17 @@ app.get('/api/auth/google', async (c) => {
 // 2. Google Callback
 app.get('/api/auth/callback', async (c) => {
   const code = c.req.query('code');
-  if (!code) return c.redirect('/login?error=no_code');
+  const state = c.req.query('state');
+  
+  let redirectUrl = c.env.FRONTEND_URL || 'https://eventframe.io';
+  if (state) {
+    try {
+      const decodedState = JSON.parse(atob(state));
+      if (decodedState.source) redirectUrl = decodedState.source;
+    } catch (e) {}
+  }
+
+  if (!code) return c.redirect(`${redirectUrl}/login?error=no_code`);
 
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET, APP_URL } = c.env;
 
@@ -72,46 +96,43 @@ app.get('/api/auth/callback', async (c) => {
 
     const tokens = await tokenResponse.json() as any;
     
-    // Get user info from ID Token (or skip and fetch userinfo)
+    // Get user info
     const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
     
     const userPayload = await userResponse.json() as any;
-    console.log('Google User Payload:', JSON.stringify(userPayload));
-
+    
     const user = {
-      id: userPayload.sub || userPayload.id || String(Math.random()),
-      sub: userPayload.sub || userPayload.id || String(Math.random()),
+      id: userPayload.sub || userPayload.id,
+      sub: userPayload.sub || userPayload.id,
       email: userPayload.email,
       name: userPayload.name,
       picture: userPayload.picture,
     };
 
-    console.log('Signing User JWT:', JSON.stringify(user));
-
-    // Sign our session JWT
-    // Use an object that definitely has keys to avoid empty payload issues
     const token = await sign({ ...user, iat: Math.floor(Date.now() / 1000) }, JWT_SECRET, 'HS256');
 
-    // Set cookie with SameSite=None for cross-domain support (legacy support)
-    setCookie(c, 'wedding_session', token, {
+    // Set cookie on base domain for wildcard support
+    const cookieOptions: any = {
       httpOnly: true,
       secure: true,
       sameSite: 'None',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 60 * 60 * 24 * 7,
       path: '/',
-    });
+    };
 
-    // Get Frontend URL from environment or fallback
-    const FRONTEND_URL = c.env.FRONTEND_URL || 'https://eventframe.io';
-    
-    // Also pass the token in the URL so the frontend can save it to LocalStorage
-    // (This avoids third-party cookie blocking issues)
-    return c.redirect(`${FRONTEND_URL}/admin?token=${token}`);
+    // If on eventframe.io, allow subdomains to see the cookie
+    if (redirectUrl.includes('eventframe.io')) {
+      cookieOptions.domain = '.eventframe.io';
+    }
+
+    setCookie(c, 'wedding_session', token, cookieOptions);
+
+    return c.redirect(`${redirectUrl}/admin?token=${token}`);
   } catch (error) {
     console.error('Worker Auth Error:', error);
-    return c.redirect('/login?error=auth_failed');
+    return c.redirect(`${redirectUrl}/login?error=auth_failed`);
   }
 });
 
