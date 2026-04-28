@@ -48,7 +48,9 @@ app.use('*', async (c, next) => {
       domain.endsWith('.googleusercontent.com') ||
       domain.endsWith('.workers.dev') ||
       domain.includes('localhost') ||
-      domain.includes('127.0.0.1');
+      domain.includes('127.0.0.1') ||
+      domain.includes('googleusercontent.com') ||
+      domain.includes('run.app');
 
     if (isAllowed) {
       c.res.headers.set('Access-Control-Allow-Origin', origin);
@@ -57,7 +59,7 @@ app.use('*', async (c, next) => {
       c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-fb-response-control');
       c.res.headers.set('Access-Control-Expose-Headers', 'Set-Cookie');
     } else {
-      console.warn(`[Worker] Unallowed Origin Blocked: ${origin}`);
+      console.warn(`[Worker] Unallowed Origin Blocked: ${origin} (Domain: ${domain})`);
     }
   }
   
@@ -71,11 +73,11 @@ app.use('*', async (c, next) => {
 app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
 
 // 1. Redirect to Google
-app.get('/api/auth/google', async (c) => {
+app.all('/api/auth/google', async (c) => {
   return handleGoogleAuth(c);
 });
 
-app.get('/api/auth/google/', async (c) => {
+app.all('/api/auth/google/', async (c) => {
   return handleGoogleAuth(c);
 });
 
@@ -86,9 +88,15 @@ async function handleGoogleAuth(c: any) {
   }
   const source = c.req.query('source') || c.env.FRONTEND_URL || 'https://eventframe.io';
   
-  // Use the current request origin as the redirect URI base
-  const origin = new URL(c.req.url).origin;
-  const redirect_uri = `${origin}/api/auth/callback`.replace('http://', 'https://'); // Force https for production workers
+  // Use a constant redirect URI for eventframe.io to avoid "Unauthorized Redirect" errors in Google
+  // For other domains (like localhost or workers.dev), use the current origin
+  let redirect_uri;
+  const currentUrl = new URL(c.req.url);
+  if (currentUrl.hostname.endsWith('eventframe.io')) {
+    redirect_uri = 'https://eventframe.io/api/auth/callback';
+  } else {
+    redirect_uri = `${currentUrl.origin}/api/auth/callback`.replace('http://', 'https://');
+  }
 
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
@@ -120,9 +128,14 @@ app.get('/api/auth/callback', async (c) => {
 
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET } = c.env;
   
-  // Use the current request origin as the redirect URI base
-  const origin = new URL(c.req.url).origin;
-  const redirect_uri = `${origin}/api/auth/callback`.replace('http://', 'https://');
+  // Must match the redirect_uri used in the first step perfectly
+  let redirect_uri;
+  const currentUrl = new URL(c.req.url);
+  if (currentUrl.hostname.endsWith('eventframe.io')) {
+    redirect_uri = 'https://eventframe.io/api/auth/callback';
+  } else {
+    redirect_uri = `${currentUrl.origin}/api/auth/callback`.replace('http://', 'https://');
+  }
 
   try {
     // Exchange code for tokens
@@ -167,18 +180,20 @@ app.get('/api/auth/callback', async (c) => {
     };
 
     // Set cookie on base domain for wildcard support if it's a known root
-    if (redirectUrl.includes('eventframe.io')) {
-      cookieOptions.domain = '.eventframe.io';
+    const knownDomains = ['eventframe.io'];
+    const matchedDomain = knownDomains.find(d => redirectUrl.includes(d));
+    
+    if (matchedDomain) {
+      cookieOptions.domain = `.${matchedDomain}`;
     } else {
       try {
         const url = new URL(redirectUrl);
-        // Basic heuristic: if it's a multi-level domain, try to use the last two parts as the domain
         const parts = url.hostname.split('.');
         if (parts.length >= 2) {
           const baseDomain = parts.slice(-2).join('.');
           // Don't set domain for standard TLDs, workers.dev, run.app, or localhost to avoid browser blocks
           const publicSuffixes = ['localhost', '127.0.0.1', 'workers.dev', 'run.app', 'googleusercontent.com'];
-          if (!publicSuffixes.includes(baseDomain)) {
+          if (!publicSuffixes.includes(baseDomain) && !baseDomain.endsWith('.run.app')) {
             cookieOptions.domain = `.${baseDomain}`;
           }
         }
@@ -246,10 +261,12 @@ app.get('/api/debug-env', (c) => {
 });
 
 // Final fallback for any other /api routes that weren't caught above
+// This explicitly blocks the proxy from handling broken API calls
+app.all('/api', (c) => c.json({ error: 'API root not implemented', path: '/api' }, 404));
 app.all('/api/*', (c) => {
-  console.warn(`[Worker] Unhandled API route: ${c.req.method} ${c.req.path}`);
+  console.warn(`[Worker] Unhandled API route blocked from proxy: ${c.req.method} ${c.req.path}`);
   return c.json({ 
-    error: 'API route not found on worker', 
+    error: 'API route not handled by worker', 
     path: c.req.path,
     method: c.req.method 
   }, 404);
@@ -261,7 +278,17 @@ app.all('*', async (c) => {
   const path = c.req.path;
   const method = c.req.method;
   
-  console.log(`[Worker] Proxying request for: ${method} ${path}`);
+  console.log(`[Worker] Proxying request for: ${method} ${path} | Host: ${url.hostname}`);
+  
+  // SECONDARY GUARD: Prevent API calls from reaching the proxy
+  if (path.startsWith('/api/') || path === '/api') {
+    console.warn(`[Worker] API path reached proxy catch-all! Deflecting: ${method} ${path}`);
+    return c.json({ 
+      error: 'API route not handled by worker (Proxy Guard)', 
+      path: path,
+      method: method 
+    }, 404);
+  }
 
   // The ORIGIN_URL is where the React code is hosted (AI Studio)
   const originUrl = c.env.APP_URL || 'https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app';
