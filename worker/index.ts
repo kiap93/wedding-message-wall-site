@@ -95,7 +95,7 @@ app.get('/api/auth/callback', async (c) => {
     });
 
     const tokens = await tokenResponse.json() as any;
-    
+    return c.json({ user: tokens });
     // Get user info
     const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
