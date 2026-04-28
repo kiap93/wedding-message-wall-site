@@ -105,15 +105,25 @@ async function handleGoogleAuth(c: any) {
   return c.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
 }
 
-// --- API ROUTES ---
-const api = new Hono<{ Bindings: Bindings }>();
+// --- ROUTES ---
 
-api.get('/health', (c) => c.json({ status: 'ok', worker: true }));
+// Health check
+app.get('/api/health', (c) => {
+  const url = new URL(c.req.url);
+  return c.json({ 
+    status: 'ok', 
+    worker: true,
+    hostname: url.hostname,
+    timestamp: new Date().toISOString()
+  });
+});
 
-api.all('/auth/google', handleGoogleAuth);
-api.all('/auth/google/', handleGoogleAuth);
+// 1. Google Auth Redirect
+app.all('/api/auth/google', handleGoogleAuth);
+app.all('/api/auth/google/', handleGoogleAuth);
 
-api.get('/auth/callback', async (c) => {
+// 2. Google Callback
+app.get('/api/auth/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
   
@@ -144,7 +154,7 @@ api.get('/auth/callback', async (c) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        code,
+        code: code || '',
         client_id: GOOGLE_CLIENT_ID,
         client_secret: GOOGLE_CLIENT_SECRET,
         redirect_uri: redirect_uri,
@@ -154,6 +164,11 @@ api.get('/auth/callback', async (c) => {
 
     const tokens = await tokenResponse.json() as any;
     
+    if (tokens.error) {
+      console.error('Google Token Error:', tokens);
+      return c.redirect(`${redirectUrl}/login?error=token_exchange_failed`);
+    }
+
     const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
@@ -202,16 +217,18 @@ api.get('/auth/callback', async (c) => {
     return c.redirect(`${redirectUrl}/admin?token=${token}`);
   } catch (error) {
     console.error('Worker Auth Error:', error);
-    return c.redirect(`${redirectUrl}/login?error=auth_failed`);
+    return c.redirect(`${redirectUrl}/login?error=auth_catch_error`);
   }
 });
 
-api.get('/auth/me', async (c) => {
+// 3. Get Current User
+app.get('/api/auth/me', async (c) => {
   let token = getCookie(c, 'wedding_session');
   const authHeader = c.req.header('Authorization');
   if (!token && authHeader?.startsWith('Bearer ')) {
     token = authHeader.substring(7);
   }
+  
   if (!token) return c.json({ error: 'Not authenticated' }, 401);
 
   try {
@@ -222,14 +239,21 @@ api.get('/auth/me', async (c) => {
   }
 });
 
-api.post('/auth/logout', (c) => {
-  deleteCookie(c, 'wedding_session', { path: '/', secure: true, sameSite: 'None' });
+// 4. Logout
+app.post('/api/auth/logout', (c) => {
+  deleteCookie(c, 'wedding_session', { 
+    path: '/', 
+    secure: true, 
+    sameSite: 'None',
+    // Clear domain cookie too
+    domain: '.eventframe.io'
+  });
   return c.json({ success: true });
 });
 
-api.get('/debug-env', (c) => {
+// 5. Debug
+app.get('/api/debug-env', (c) => {
   const url = new URL(c.req.url);
-  const redirect_uri = `${url.origin}/api/auth/callback`.replace('http://', 'https://');
   return c.json({
     has_jwt_secret: !!c.env.JWT_SECRET,
     has_google_id: !!c.env.GOOGLE_CLIENT_ID,
@@ -237,21 +261,20 @@ api.get('/debug-env', (c) => {
     app_url: c.env.APP_URL || 'not set',
     frontend_url: c.env.FRONTEND_URL || 'not set',
     host_header: c.req.header('Host'),
+    hostname: url.hostname,
     request_url: c.req.url,
-    detected_redirect_uri: redirect_uri,
     timestamp: new Date().toISOString()
   });
 });
 
-app.route('/api', api);
-
-// Final fallback for any other /api routes that weren't caught above
+// API Guard - must be placed after all defined API routes but before proxy
 app.all('/api', (c) => c.json({ error: 'API root not implemented', path: '/api' }, 404));
 app.all('/api/*', (c) => {
-  console.warn(`[Worker] Unhandled API route blocked from proxy: ${c.req.method} ${c.req.path}`);
+  const url = new URL(c.req.url);
+  console.warn(`[Worker] Undefined API route hit fallback: ${c.req.method} ${url.pathname}`);
   return c.json({ 
-    error: 'API route not handled by worker', 
-    path: c.req.path,
+    error: 'API route not found on worker', 
+    path: url.pathname,
     method: c.req.method 
   }, 404);
 });
