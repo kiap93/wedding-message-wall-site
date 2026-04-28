@@ -132,6 +132,7 @@ app.get('/api/auth/callback', async (c) => {
     return c.redirect(`${redirectUrl}/admin?token=${token}`);
   } catch (error) {
     console.error('Worker Auth Error:', error);
+    return c.json({ user: 'tokens' });
     return c.redirect(`${redirectUrl}/login?error=auth_failed`);
   }
 });
