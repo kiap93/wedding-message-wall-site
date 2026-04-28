@@ -67,7 +67,7 @@ app.get('/api/auth/google', async (c) => {
 app.get('/api/auth/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
-  return c.json({ success: true });
+  
   let redirectUrl = c.env.FRONTEND_URL || 'https://eventframe.io';
   if (state) {
     try {
@@ -122,9 +122,22 @@ app.get('/api/auth/callback', async (c) => {
       path: '/',
     };
 
-    // If on eventframe.io, allow subdomains to see the cookie
+    // Set cookie on base domain for wildcard support if it's a known root
     if (redirectUrl.includes('eventframe.io')) {
       cookieOptions.domain = '.eventframe.io';
+    } else {
+      try {
+        const url = new URL(redirectUrl);
+        // Basic heuristic: if it's a multi-level domain, try to use the last two parts as the domain
+        const parts = url.hostname.split('.');
+        if (parts.length >= 2) {
+          const baseDomain = parts.slice(-2).join('.');
+          // Don't set domain for standard TLDs or localhost to avoid issues
+          if (!['localhost', '127.0.0.1'].includes(baseDomain)) {
+            cookieOptions.domain = `.${baseDomain}`;
+          }
+        }
+      } catch (e) {}
     }
 
     setCookie(c, 'wedding_session', token, cookieOptions);
