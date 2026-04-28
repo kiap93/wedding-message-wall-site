@@ -167,6 +167,45 @@ app.post('/api/auth/logout', (c) => {
   return c.json({ success: true });
 });
 
+// 5. Proxy all other requests to the AI Studio frontend
+app.all('*', async (c) => {
+  const url = new URL(c.req.url);
+  
+  // Prevent circular proxying if APP_URL is misconfigured
+  const originUrl = c.env.APP_URL || 'https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app';
+  if (url.hostname === new URL(originUrl).hostname) {
+    return c.text('Circular proxy detected', 508);
+  }
+  
+  const targetUrl = new URL(url.pathname + url.search, originUrl);
+  
+  // Clone request headers and adjust
+  const headers = new Headers(c.req.header());
+  headers.set('Host', new URL(originUrl).hostname);
+  headers.set('X-Forwarded-Host', url.hostname);
+  headers.set('X-Forwarded-Proto', 'https');
+
+  try {
+    const response = await fetch(targetUrl.toString(), {
+      method: c.req.method,
+      headers: headers,
+      body: c.req.method !== 'GET' && c.req.method !== 'HEAD' ? await c.req.blob() : undefined,
+      redirect: 'manual'
+    });
+    
+    const newResponse = new Response(response.body, response);
+    
+    // Fix CORS on the proxy response
+    newResponse.headers.set('Access-Control-Allow-Origin', url.origin);
+    newResponse.headers.set('Access-Control-Allow-Credentials', 'true');
+    
+    return newResponse;
+  } catch (error) {
+    console.error('Proxy Error:', error);
+    return c.text('Origin unreachable or timed out', 504);
+  }
+});
+
 app.get('/api/debug-env', (c) => {
   return c.json({
     has_jwt_secret: !!c.env.JWT_SECRET,

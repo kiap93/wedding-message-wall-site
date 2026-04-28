@@ -39,6 +39,15 @@ export default function Admin() {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
+    // Check for token in URL (from auth redirect)
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      localStorage.setItem('wedding_session_token', token);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    
     fetchUserAndContext();
   }, []);
 
