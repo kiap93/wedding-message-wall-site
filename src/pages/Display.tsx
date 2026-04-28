@@ -8,14 +8,14 @@ import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate, Agency } from '..
 import { QRCodeSVG } from 'qrcode.react';
 import { getAgencyById } from '../lib/agency';
 
-export default function Display() {
+export default function Display({ tenant }: { tenant?: string }) {
   const { projectId, slug } = useParams();
   const [project, setProject] = useState<WeddingEvent | null>(null);
   const [agency, setAgency] = useState<Agency | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchParams] = useSearchParams();
   const [showQR, setShowQR] = useState(false);
-  const [isLoading, setIsLoading] = useState(!!projectId || !!slug);
+  const [isLoading, setIsLoading] = useState(!!projectId || !!slug || !!tenant);
   const navigate = useNavigate();
   
   // Fallback defaults if no event loaded
@@ -28,17 +28,17 @@ export default function Display() {
   const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
 
   // Derive guest URL
-  const guestUrl = window.location.origin + (project?.id ? `/guest/${project.id}` : slug ? `/g/${slug}` : '/guest' + window.location.search);
+  const guestUrl = window.location.origin + (project?.id ? `/guest/${project.id}` : tenant ? `/g/${tenant}` : slug ? `/g/${slug}` : '/guest' + window.location.search);
 
-  const loadProject = async (id?: string, slugName?: string) => {
+  const loadProject = async (id?: string, slugName?: string, tenantName?: string) => {
     try {
       const supabase = getSupabase();
       let query = supabase.from('projects').select('*');
       
       if (id) {
         query = query.eq('id', id);
-      } else if (slugName) {
-        query = query.eq('slug', slugName);
+      } else if (slugName || tenantName) {
+        query = query.eq('slug', slugName || tenantName);
       } else {
         return;
       }
@@ -61,8 +61,8 @@ export default function Display() {
   };
 
   useEffect(() => {
-    if (projectId || slug) {
-      loadProject(projectId, slug);
+    if (projectId || slug || tenant) {
+      loadProject(projectId, slug, tenant);
     }
     
     // Initial fetch
@@ -118,7 +118,7 @@ export default function Display() {
         }
       }
     };
-  }, [projectId, slug, project?.id]);
+  }, [projectId, slug, tenant, project?.id]);
 
   if (isLoading) {
     return (

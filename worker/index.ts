@@ -12,6 +12,26 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+// Global Error Handler
+app.onError((err, c) => {
+  console.error(`[Worker Error] ${c.req.method} ${c.req.path} | Origin: ${c.req.header('Origin')}:`, err);
+  return c.json({ 
+    error: 'Internal Server Error', 
+    message: err.message,
+    stack: err.stack,
+    path: c.req.path
+  }, 500);
+});
+
+// 404 Handler for API routes specifically
+app.notFound((c) => {
+  if (c.req.path.startsWith('/api')) {
+    console.warn(`[Worker] 404 Not Found: ${c.req.method} ${c.req.path}`);
+    return c.json({ error: 'Route Not Found', path: c.req.path }, 404);
+  }
+  return undefined as any; 
+});
+
 // CORS Middleware
 app.use('*', async (c, next) => {
   const origin = c.req.header('Origin');
@@ -20,18 +40,24 @@ app.use('*', async (c, next) => {
     const url = new URL(origin);
     const domain = url.hostname;
     
-    // Check if it's our main domain or a subdomain
+    // Check if it's our main domain or a known/local environment
     const isAllowed = 
       domain === 'eventframe.io' || 
       domain.endsWith('.eventframe.io') || 
-      domain.includes('ais-dev-') || 
-      domain.includes('localhost');
+      domain.endsWith('.run.app') || 
+      domain.endsWith('.googleusercontent.com') ||
+      domain.endsWith('.workers.dev') ||
+      domain.includes('localhost') ||
+      domain.includes('127.0.0.1');
 
     if (isAllowed) {
       c.res.headers.set('Access-Control-Allow-Origin', origin);
       c.res.headers.set('Access-Control-Allow-Credentials', 'true');
       c.res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+      c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-fb-response-control');
+      c.res.headers.set('Access-Control-Expose-Headers', 'Set-Cookie');
+    } else {
+      console.warn(`[Worker] Unallowed Origin Blocked: ${origin}`);
     }
   }
   
@@ -46,13 +72,27 @@ app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
 
 // 1. Redirect to Google
 app.get('/api/auth/google', async (c) => {
+  return handleGoogleAuth(c);
+});
+
+app.get('/api/auth/google/', async (c) => {
+  return handleGoogleAuth(c);
+});
+
+async function handleGoogleAuth(c: any) {
   const GOOGLE_CLIENT_ID = c.env.GOOGLE_CLIENT_ID;
-  const APP_URL = c.env.APP_URL;
+  if (!GOOGLE_CLIENT_ID) {
+    return c.json({ error: 'Config Error', details: 'GOOGLE_CLIENT_ID is not set in Worker environment variables.' }, 500);
+  }
   const source = c.req.query('source') || c.env.FRONTEND_URL || 'https://eventframe.io';
+  
+  // Use the current request origin as the redirect URI base
+  const origin = new URL(c.req.url).origin;
+  const redirect_uri = `${origin}/api/auth/callback`.replace('http://', 'https://'); // Force https for production workers
 
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: 'https://eventframe.io/api/auth/callback',
+    redirect_uri: redirect_uri,
     response_type: 'code',
     scope: 'openid email profile',
     access_type: 'offline',
@@ -61,7 +101,7 @@ app.get('/api/auth/google', async (c) => {
   });
 
   return c.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
-});
+}
 
 // 2. Google Callback
 app.get('/api/auth/callback', async (c) => {
@@ -78,7 +118,11 @@ app.get('/api/auth/callback', async (c) => {
 
   if (!code) return c.redirect(`${redirectUrl}/login?error=no_code`);
 
-  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET, APP_URL } = c.env;
+  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET } = c.env;
+  
+  // Use the current request origin as the redirect URI base
+  const origin = new URL(c.req.url).origin;
+  const redirect_uri = `${origin}/api/auth/callback`.replace('http://', 'https://');
 
   try {
     // Exchange code for tokens
@@ -89,7 +133,7 @@ app.get('/api/auth/callback', async (c) => {
         code,
         client_id: GOOGLE_CLIENT_ID,
         client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri: 'https://eventframe.io/api/auth/callback',
+        redirect_uri: redirect_uri,
         grant_type: 'authorization_code',
       }),
     });
@@ -132,8 +176,9 @@ app.get('/api/auth/callback', async (c) => {
         const parts = url.hostname.split('.');
         if (parts.length >= 2) {
           const baseDomain = parts.slice(-2).join('.');
-          // Don't set domain for standard TLDs, workers.dev, or localhost to avoid blocks
-          if (!['localhost', '127.0.0.1', 'workers.dev'].includes(baseDomain)) {
+          // Don't set domain for standard TLDs, workers.dev, run.app, or localhost to avoid browser blocks
+          const publicSuffixes = ['localhost', '127.0.0.1', 'workers.dev', 'run.app', 'googleusercontent.com'];
+          if (!publicSuffixes.includes(baseDomain)) {
             cookieOptions.domain = `.${baseDomain}`;
           }
         }
@@ -185,31 +230,38 @@ app.post('/api/auth/logout', (c) => {
 
 // 5. Debug
 app.get('/api/debug-env', (c) => {
+  const url = new URL(c.req.url);
+  const redirect_uri = `${url.origin}/api/auth/callback`.replace('http://', 'https://');
   return c.json({
     has_jwt_secret: !!c.env.JWT_SECRET,
+    has_google_id: !!c.env.GOOGLE_CLIENT_ID,
     has_google_secret: !!c.env.GOOGLE_CLIENT_SECRET,
-    app_url: c.env.APP_URL,
-    frontend_url: c.env.FRONTEND_URL,
-    host: c.req.header('Host')
+    app_url: c.env.APP_URL || 'not set',
+    frontend_url: c.env.FRONTEND_URL || 'not set',
+    host_header: c.req.header('Host'),
+    request_url: c.req.url,
+    detected_redirect_uri: redirect_uri,
+    timestamp: new Date().toISOString()
   });
+});
+
+// Final fallback for any other /api routes that weren't caught above
+app.all('/api/*', (c) => {
+  console.warn(`[Worker] Unhandled API route: ${c.req.method} ${c.req.path}`);
+  return c.json({ 
+    error: 'API route not found on worker', 
+    path: c.req.path,
+    method: c.req.method 
+  }, 404);
 });
 
 // 6. Proxy all other requests to the AI Studio frontend
 app.all('*', async (c) => {
   const url = new URL(c.req.url);
+  const path = c.req.path;
+  const method = c.req.method;
   
-  // Skip proxying if it's an API call that wasn't handled by specific routes above
-  // This prevents accidentally serving HTML for broken API calls
-  if (url.pathname.startsWith('/api')) {
-    console.log(`[Worker] API 404: Not handled by routes: ${url.pathname}`);
-    return c.json({ 
-      error: 'API route not found on worker', 
-      path: url.pathname,
-      method: c.req.method 
-    }, 404);
-  }
-
-  console.log(`[Worker] Proxying request for: ${url.pathname}`);
+  console.log(`[Worker] Proxying request for: ${method} ${path}`);
 
   // The ORIGIN_URL is where the React code is hosted (AI Studio)
   const originUrl = c.env.APP_URL || 'https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app';
@@ -222,11 +274,26 @@ app.all('*', async (c) => {
   
   const targetUrl = new URL(url.pathname + url.search, originUrl);
   
+  // Extract tenant from subdomain (e.g., john.eventframe.io -> john)
+  let tenantId = null;
+  const hostname = url.hostname;
+  if (hostname.endsWith('.eventframe.io')) {
+    const parts = hostname.split('.');
+    if (parts.length > 2) {
+      tenantId = parts[0];
+    }
+  }
+
   const headers = new Headers(c.req.header());
   headers.set('Host', originHost);
   headers.set('X-Forwarded-Host', url.hostname);
   headers.set('X-Forwarded-Proto', 'https');
   headers.set('X-Proxy-By', 'Eventframe-Worker');
+  
+  if (tenantId) {
+    headers.set('X-Tenant-ID', tenantId);
+    console.log(`[Worker] Detected Tenant: ${tenantId}`);
+  }
 
   try {
     const response = await fetch(targetUrl.toString(), {
