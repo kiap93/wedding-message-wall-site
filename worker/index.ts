@@ -25,9 +25,11 @@ app.onError((err, c) => {
 
 // 404 Handler for API routes specifically
 app.notFound((c) => {
-  if (c.req.path.startsWith('/api')) {
-    console.warn(`[Worker] 404 Not Found: ${c.req.method} ${c.req.path}`);
-    return c.json({ error: 'Route Not Found', path: c.req.path }, 404);
+  const url = new URL(c.req.url);
+  const path = url.pathname;
+  if (path === '/api' || path.startsWith('/api/')) {
+    console.warn(`[Worker] API 404 Not Found: ${c.req.method} ${path}`);
+    return c.json({ error: 'API Route Not Found', path }, 404);
   }
   return undefined as any; 
 });
@@ -35,6 +37,8 @@ app.notFound((c) => {
 // CORS Middleware
 app.use('*', async (c, next) => {
   const origin = c.req.header('Origin');
+  const url = new URL(c.req.url);
+  console.log(`[Worker] Incoming: ${c.req.method} ${url.pathname}${url.search} | Host: ${url.hostname} | Origin: ${origin || 'none'}`);
   
   if (origin) {
     const url = new URL(origin);
@@ -69,18 +73,7 @@ app.use('*', async (c, next) => {
   await next();
 });
 
-// Health check
-app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
-
-// 1. Redirect to Google
-app.all('/api/auth/google', async (c) => {
-  return handleGoogleAuth(c);
-});
-
-app.all('/api/auth/google/', async (c) => {
-  return handleGoogleAuth(c);
-});
-
+// Helper for Google Auth
 async function handleGoogleAuth(c: any) {
   const GOOGLE_CLIENT_ID = c.env.GOOGLE_CLIENT_ID;
   if (!GOOGLE_CLIENT_ID) {
@@ -88,12 +81,12 @@ async function handleGoogleAuth(c: any) {
   }
   const source = c.req.query('source') || c.env.FRONTEND_URL || 'https://eventframe.io';
   
-  // Use a constant redirect URI for eventframe.io to avoid "Unauthorized Redirect" errors in Google
-  // For other domains (like localhost or workers.dev), use the current origin
   let redirect_uri;
   const currentUrl = new URL(c.req.url);
   if (currentUrl.hostname.endsWith('eventframe.io')) {
     redirect_uri = 'https://eventframe.io/api/auth/callback';
+  } else if (currentUrl.hostname.endsWith('workers.dev')) {
+    redirect_uri = `https://${currentUrl.hostname}/api/auth/callback`;
   } else {
     redirect_uri = `${currentUrl.origin}/api/auth/callback`.replace('http://', 'https://');
   }
@@ -101,18 +94,26 @@ async function handleGoogleAuth(c: any) {
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: redirect_uri,
+    uint: '1',
     response_type: 'code',
     scope: 'openid email profile',
     access_type: 'offline',
     prompt: 'consent',
-    state: btoa(JSON.stringify({ source })), // Pass redirect source in state
+    state: btoa(JSON.stringify({ source })),
   });
 
   return c.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
 }
 
-// 2. Google Callback
-app.get('/api/auth/callback', async (c) => {
+// --- API ROUTES ---
+const api = new Hono<{ Bindings: Bindings }>();
+
+api.get('/health', (c) => c.json({ status: 'ok', worker: true }));
+
+api.all('/auth/google', handleGoogleAuth);
+api.all('/auth/google/', handleGoogleAuth);
+
+api.get('/auth/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
   
@@ -128,17 +129,17 @@ app.get('/api/auth/callback', async (c) => {
 
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET } = c.env;
   
-  // Must match the redirect_uri used in the first step perfectly
   let redirect_uri;
   const currentUrl = new URL(c.req.url);
   if (currentUrl.hostname.endsWith('eventframe.io')) {
     redirect_uri = 'https://eventframe.io/api/auth/callback';
+  } else if (currentUrl.hostname.endsWith('workers.dev')) {
+    redirect_uri = `https://${currentUrl.hostname}/api/auth/callback`;
   } else {
     redirect_uri = `${currentUrl.origin}/api/auth/callback`.replace('http://', 'https://');
   }
 
   try {
-    // Exchange code for tokens
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -153,7 +154,6 @@ app.get('/api/auth/callback', async (c) => {
 
     const tokens = await tokenResponse.json() as any;
     
-    // Get user info
     const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
@@ -170,7 +170,6 @@ app.get('/api/auth/callback', async (c) => {
 
     const token = await sign({ ...user, iat: Math.floor(Date.now() / 1000) }, JWT_SECRET, 'HS256');
 
-    // Set cookie on base domain for wildcard support
     const cookieOptions: any = {
       httpOnly: true,
       secure: true,
@@ -179,7 +178,6 @@ app.get('/api/auth/callback', async (c) => {
       path: '/',
     };
 
-    // Set cookie on base domain for wildcard support if it's a known root
     const knownDomains = ['eventframe.io'];
     const matchedDomain = knownDomains.find(d => redirectUrl.includes(d));
     
@@ -191,7 +189,6 @@ app.get('/api/auth/callback', async (c) => {
         const parts = url.hostname.split('.');
         if (parts.length >= 2) {
           const baseDomain = parts.slice(-2).join('.');
-          // Don't set domain for standard TLDs, workers.dev, run.app, or localhost to avoid browser blocks
           const publicSuffixes = ['localhost', '127.0.0.1', 'workers.dev', 'run.app', 'googleusercontent.com'];
           if (!publicSuffixes.includes(baseDomain) && !baseDomain.endsWith('.run.app')) {
             cookieOptions.domain = `.${baseDomain}`;
@@ -209,42 +206,28 @@ app.get('/api/auth/callback', async (c) => {
   }
 });
 
-// 3. Get Current User
-app.get('/api/auth/me', async (c) => {
-  // Check both Cookie and Authorization Header
+api.get('/auth/me', async (c) => {
   let token = getCookie(c, 'wedding_session');
-  
   const authHeader = c.req.header('Authorization');
   if (!token && authHeader?.startsWith('Bearer ')) {
     token = authHeader.substring(7);
   }
-
-  if (!token) {
-    console.log('Auth Me: No token found in cookie or header');
-    return c.json({ error: 'Not authenticated', details: 'No session token presented' }, 401);
-  }
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
 
   try {
     const payload = await verify(token, c.env.JWT_SECRET, 'HS256');
     return c.json({ user: payload });
   } catch (e) {
-    console.error('Auth Me: JWT Verification Failed', e);
-    return c.json({ error: 'Invalid session', details: 'Token verification failed' }, 401);
+    return c.json({ error: 'Invalid session' }, 401);
   }
 });
 
-// 4. Logout
-app.post('/api/auth/logout', (c) => {
-  deleteCookie(c, 'wedding_session', { 
-    path: '/',
-    secure: true,
-    sameSite: 'None'
-  });
+api.post('/auth/logout', (c) => {
+  deleteCookie(c, 'wedding_session', { path: '/', secure: true, sameSite: 'None' });
   return c.json({ success: true });
 });
 
-// 5. Debug
-app.get('/api/debug-env', (c) => {
+api.get('/debug-env', (c) => {
   const url = new URL(c.req.url);
   const redirect_uri = `${url.origin}/api/auth/callback`.replace('http://', 'https://');
   return c.json({
@@ -260,8 +243,9 @@ app.get('/api/debug-env', (c) => {
   });
 });
 
+app.route('/api', api);
+
 // Final fallback for any other /api routes that weren't caught above
-// This explicitly blocks the proxy from handling broken API calls
 app.all('/api', (c) => c.json({ error: 'API root not implemented', path: '/api' }, 404));
 app.all('/api/*', (c) => {
   console.warn(`[Worker] Unhandled API route blocked from proxy: ${c.req.method} ${c.req.path}`);
@@ -275,20 +259,24 @@ app.all('/api/*', (c) => {
 // 6. Proxy all other requests to the AI Studio frontend
 app.all('*', async (c) => {
   const url = new URL(c.req.url);
-  const path = c.req.path;
+  const path = url.pathname;
   const method = c.req.method;
   
-  console.log(`[Worker] Proxying request for: ${method} ${path} | Host: ${url.hostname}`);
-  
-  // SECONDARY GUARD: Prevent API calls from reaching the proxy
-  if (path.startsWith('/api/') || path === '/api') {
-    console.warn(`[Worker] API path reached proxy catch-all! Deflecting: ${method} ${path}`);
+  // PRIMARY GUARD: Prevent API calls from reaching the proxy logic
+  if (path === '/api' || path.startsWith('/api/')) {
+    console.warn(`[Worker] API Guard triggered: ${method} ${path}`);
+    
+    // Check if it's one of our defined routes that somehow fell through
+    // This could happen if Hono's router missed it but the catch-all didn't
     return c.json({ 
       error: 'API route not handled by worker (Proxy Guard)', 
       path: path,
-      method: method 
+      method: method,
+      suggestion: 'Check if the route is correctly defined in worker/index.ts'
     }, 404);
   }
+
+  console.log(`[Worker] Proxying request for: ${method} ${path} | Host: ${url.hostname}`);
 
   // The ORIGIN_URL is where the React code is hosted (AI Studio)
   const originUrl = c.env.APP_URL || 'https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app';

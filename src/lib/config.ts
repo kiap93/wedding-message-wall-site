@@ -5,9 +5,11 @@ const isAiStudio =
   window.location.hostname.includes('127.0.0.1') ||
   window.location.hostname.includes('googleusercontent.com');
 
-// If in AI Studio, we must point directly to the worker for auth to work (CORS)
-// If on a custom domain (eventframe.io) or the worker domain itself, we use relative paths
-export const API_BASE = isAiStudio 
+// If in AI Studio OR on a subdomain of eventframe.io, we point directly to the worker.
+// This avoids issues with relative paths hitting the worker's proxy catch-all instead of the API routes.
+const isSubdomain = window.location.hostname.endsWith('.eventframe.io') && window.location.hostname !== 'eventframe.io';
+
+export const API_BASE = (isAiStudio || isSubdomain)
   ? 'https://wedding-auth-worker.kiap93-kmj.workers.dev' 
   : '';
 
