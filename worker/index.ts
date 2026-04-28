@@ -12,68 +12,8 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// Global Error Handler
-app.onError((err, c) => {
-  console.error(`[Worker Error] ${c.req.method} ${c.req.path} | Origin: ${c.req.header('Origin')}:`, err);
-  return c.json({ 
-    error: 'Internal Server Error', 
-    message: err.message,
-    stack: err.stack,
-    path: c.req.path
-  }, 500);
-});
+// --- AUTH HANDLERS ---
 
-// 404 Handler for API routes specifically
-app.notFound((c) => {
-  const url = new URL(c.req.url);
-  const path = url.pathname;
-  if (path === '/api' || path.startsWith('/api/')) {
-    console.warn(`[Worker] API 404 Not Found: ${c.req.method} ${path}`);
-    return c.json({ error: 'API Route Not Found', path }, 404);
-  }
-  return undefined as any; 
-});
-
-// CORS Middleware
-app.use('*', async (c, next) => {
-  const origin = c.req.header('Origin');
-  const url = new URL(c.req.url);
-  console.log(`[Worker] Incoming: ${c.req.method} ${url.pathname}${url.search} | Host: ${url.hostname} | Origin: ${origin || 'none'}`);
-  
-  if (origin) {
-    const url = new URL(origin);
-    const domain = url.hostname;
-    
-    // Check if it's our main domain or a known/local environment
-    const isAllowed = 
-      domain === 'eventframe.io' || 
-      domain.endsWith('.eventframe.io') || 
-      domain.endsWith('.run.app') || 
-      domain.endsWith('.googleusercontent.com') ||
-      domain.endsWith('.workers.dev') ||
-      domain.includes('localhost') ||
-      domain.includes('127.0.0.1') ||
-      domain.includes('googleusercontent.com') ||
-      domain.includes('run.app');
-
-    if (isAllowed) {
-      c.res.headers.set('Access-Control-Allow-Origin', origin);
-      c.res.headers.set('Access-Control-Allow-Credentials', 'true');
-      c.res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-fb-response-control');
-      c.res.headers.set('Access-Control-Expose-Headers', 'Set-Cookie');
-    } else {
-      console.warn(`[Worker] Unallowed Origin Blocked: ${origin} (Domain: ${domain})`);
-    }
-  }
-  
-  if (c.req.method === 'OPTIONS') {
-    return c.body(null, 204);
-  }
-  await next();
-});
-
-// Helper for Google Auth
 async function handleGoogleAuth(c: any) {
   const GOOGLE_CLIENT_ID = c.env.GOOGLE_CLIENT_ID;
   if (!GOOGLE_CLIENT_ID) {
@@ -105,25 +45,7 @@ async function handleGoogleAuth(c: any) {
   return c.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
 }
 
-// --- ROUTES ---
-
-// Health check
-app.get('/api/health', (c) => {
-  const url = new URL(c.req.url);
-  return c.json({ 
-    status: 'ok', 
-    worker: true,
-    hostname: url.hostname,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// 1. Google Auth Redirect
-app.all('/api/auth/google', handleGoogleAuth);
-app.all('/api/auth/google/', handleGoogleAuth);
-
-// 2. Google Callback
-app.get('/api/auth/callback', async (c) => {
+async function handleGoogleCallback(c: any) {
   const code = c.req.query('code');
   const state = c.req.query('state');
   
@@ -219,10 +141,9 @@ app.get('/api/auth/callback', async (c) => {
     console.error('Worker Auth Error:', error);
     return c.redirect(`${redirectUrl}/login?error=auth_catch_error`);
   }
-});
+}
 
-// 3. Get Current User
-app.get('/api/auth/me', async (c) => {
+async function handleAuthMe(c: any) {
   let token = getCookie(c, 'wedding_session');
   const authHeader = c.req.header('Authorization');
   if (!token && authHeader?.startsWith('Bearer ')) {
@@ -237,22 +158,50 @@ app.get('/api/auth/me', async (c) => {
   } catch (e) {
     return c.json({ error: 'Invalid session' }, 401);
   }
+}
+
+// --- API SUB-APP ---
+
+const api = new Hono<{ Bindings: Bindings }>();
+
+// Force all API routes to return JSON and stop fallthrough
+api.use('*', async (c, next) => {
+  console.log(`[Worker API] Hit: ${c.req.method} ${c.req.path}`);
+  await next();
+  // If we reach here and no response was set, it's a 404 for API
+  if (c.res.status === 404) {
+    return c.json({ error: 'API route not found', path: c.req.path }, 404);
+  }
 });
 
-// 4. Logout
-app.post('/api/auth/logout', (c) => {
+api.get('/health', (c) => {
+  const url = new URL(c.req.url);
+  return c.json({ 
+    status: 'ok', 
+    worker: true,
+    path: c.req.path,
+    url: c.req.url,
+    hostname: url.hostname,
+    timestamp: new Date().toISOString()
+  });
+});
+
+api.all('/auth/google', handleGoogleAuth);
+api.all('/auth/google/', handleGoogleAuth);
+api.get('/auth/callback', handleGoogleCallback);
+api.get('/auth/me', handleAuthMe);
+
+api.post('/auth/logout', (c) => {
   deleteCookie(c, 'wedding_session', { 
     path: '/', 
     secure: true, 
     sameSite: 'None',
-    // Clear domain cookie too
     domain: '.eventframe.io'
   });
   return c.json({ success: true });
 });
 
-// 5. Debug
-app.get('/api/debug-env', (c) => {
+api.get('/debug-env', (c) => {
   const url = new URL(c.req.url);
   return c.json({
     has_jwt_secret: !!c.env.JWT_SECRET,
@@ -262,80 +211,81 @@ app.get('/api/debug-env', (c) => {
     frontend_url: c.env.FRONTEND_URL || 'not set',
     host_header: c.req.header('Host'),
     hostname: url.hostname,
+    request_path: c.req.path,
     request_url: c.req.url,
     timestamp: new Date().toISOString()
   });
 });
 
-// API Guard - must be placed after all defined API routes but before proxy
-app.all('/api', (c) => c.json({ error: 'API root not implemented', path: '/api' }, 404));
-app.all('/api/*', (c) => {
-  const url = new URL(c.req.url);
-  console.warn(`[Worker] Undefined API route hit fallback: ${c.req.method} ${url.pathname}`);
+// --- MAIN APP MIDDLEWARES & ROUTES ---
+
+// Global Error Handler
+app.onError((err, c) => {
+  console.error(`[Worker Error] ${c.req.method} ${c.req.path}:`, err);
   return c.json({ 
-    error: 'API route not found on worker', 
-    path: url.pathname,
-    method: c.req.method 
-  }, 404);
+    error: 'Internal Server Error', 
+    message: err.message,
+    path: c.req.path
+  }, 500);
 });
 
-// 6. Proxy all other requests to the AI Studio frontend
-app.all('*', async (c) => {
-  const url = new URL(c.req.url);
-  const path = url.pathname;
-  const method = c.req.method;
-  
-  // PRIMARY GUARD: Prevent API calls from reaching the proxy logic
-  if (path === '/api' || path.startsWith('/api/')) {
-    console.warn(`[Worker] API Guard triggered: ${method} ${path}`);
+// CORS Middleware
+app.use('*', async (c, next) => {
+  const origin = c.req.header('Origin');
+  if (origin) {
+    const url = new URL(origin);
+    const domain = url.hostname;
     
-    // Check if it's one of our defined routes that somehow fell through
-    // This could happen if Hono's router missed it but the catch-all didn't
-    return c.json({ 
-      error: 'API route not handled by worker (Proxy Guard)', 
-      path: path,
-      method: method,
-      suggestion: 'Check if the route is correctly defined in worker/index.ts'
-    }, 404);
-  }
+    const isAllowed = 
+      domain === 'eventframe.io' || 
+      domain.endsWith('.eventframe.io') || 
+      domain.includes('localhost') ||
+      domain.includes('127.0.0.1') ||
+      domain.endsWith('.workers.dev') ||
+      domain.endsWith('.run.app');
 
-  console.log(`[Worker] Proxying request for: ${method} ${path} | Host: ${url.hostname}`);
-
-  // The ORIGIN_URL is where the React code is hosted (AI Studio)
-  const originUrl = c.env.APP_URL || 'https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app';
-  const originHost = new URL(originUrl).hostname;
-
-  // CRITICAL: Prevent circular proxying
-  if (url.hostname === originHost) {
-     return c.text('Configuration Error: APP_URL in Cloudflare must point to the AI Studio URL (e.g., xxx.run.app), not the worker domain.', 400);
-  }
-  
-  const targetUrl = new URL(url.pathname + url.search, originUrl);
-  
-  // Extract tenant from subdomain (e.g., john.eventframe.io -> john)
-  /*
-  let tenantId = null;
-  const hostname = url.hostname;
-  if (hostname.endsWith('.eventframe.io')) {
-    const parts = hostname.split('.');
-    if (parts.length > 2) {
-      tenantId = parts[0];
+    if (isAllowed) {
+      c.res.headers.set('Access-Control-Allow-Origin', origin);
+      c.res.headers.set('Access-Control-Allow-Credentials', 'true');
+      c.res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
     }
   }
-  */
+  
+  if (c.req.method === 'OPTIONS') {
+    return c.body(null, 204);
+  }
+  await next();
+});
+
+// Mount the API at the root app level
+app.route('/api', api);
+app.route('//api', api);
+
+// Catch-all API guard (if it hits /api but not handled by sub-app)
+app.all('/api/*', (c) => {
+  return c.json({ error: 'API route not found on worker', path: c.req.path }, 404);
+});
+
+// Proxy logic for anything else
+app.all('*', async (c) => {
+  const path = c.req.path;
+  
+  // Guard for API leaking into proxy
+  if (/\/api\//.test(path) || path === '/api' || path === '//api') {
+    return c.json({ error: 'API path leaked to proxy', path }, 404);
+  }
+
+  const originUrl = c.env.APP_URL || 'https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app';
+  const url = new URL(c.req.url);
+  const targetUrl = new URL(url.pathname + url.search, originUrl);
+  const originHost = new URL(originUrl).hostname;
 
   const headers = new Headers(c.req.header());
   headers.set('Host', originHost);
   headers.set('X-Forwarded-Host', url.hostname);
   headers.set('X-Forwarded-Proto', 'https');
   headers.set('X-Proxy-By', 'Eventframe-Worker');
-  
-  /*
-  if (tenantId) {
-    headers.set('X-Tenant-ID', tenantId);
-    console.log(`[Worker] Detected Tenant: ${tenantId}`);
-  }
-  */
 
   try {
     const response = await fetch(targetUrl.toString(), {
@@ -345,10 +295,7 @@ app.all('*', async (c) => {
       redirect: 'manual'
     });
     
-    // Create new response to allow header modifications
     const newResponse = new Response(response.body, response);
-    
-    // Force correct CORS for the current requesting origin
     const origin = c.req.header('Origin');
     if (origin) {
       newResponse.headers.set('Access-Control-Allow-Origin', origin);
@@ -358,7 +305,7 @@ app.all('*', async (c) => {
     return newResponse;
   } catch (error) {
     console.error('Proxy Error:', error);
-    return c.text(`Backend unreachable. Please ensure Cloudflare Variable APP_URL is correctly set: ${originUrl}`, 504);
+    return c.text('Backend unreachable', 504);
   }
 });
 
