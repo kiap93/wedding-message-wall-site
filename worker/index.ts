@@ -93,7 +93,13 @@ app.get('/api/auth/callback', async (c) => {
         grant_type: 'authorization_code',
       }),
     });
-
+    console.log({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: `${APP_URL}/api/auth/callback`,
+        grant_type: 'authorization_code',
+      })
     const tokens = await tokenResponse.json() as any;
     
     // Get user info
