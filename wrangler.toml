@@ -5,7 +5,7 @@ account_id = "4c4c40d838a6dcea0783b300a9718180"
 
 [vars]
 GOOGLE_CLIENT_ID = "946837250683-434o0vtdrkoe2092vghh65md9nfr8hpu.apps.googleusercontent.com"
-APP_URL = "https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app"
+APP_URL = "https://api.eventframe.io"
 FRONTEND_URL = "https://eventframe.io"
 
 # Secrets (Set these using 'wrangler secret put')
