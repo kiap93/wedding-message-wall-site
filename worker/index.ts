@@ -95,7 +95,7 @@ app.get('/api/auth/callback', async (c) => {
     });
 
     const tokens = await tokenResponse.json() as any;
-    return c.json({ user: tokens });
+    
     // Get user info
     const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
@@ -132,7 +132,6 @@ app.get('/api/auth/callback', async (c) => {
     return c.redirect(`${redirectUrl}/admin?token=${token}`);
   } catch (error) {
     console.error('Worker Auth Error:', error);
-    return c.json({ user: 'tokens' });
     return c.redirect(`${redirectUrl}/login?error=auth_failed`);
   }
 });
@@ -168,10 +167,26 @@ app.post('/api/auth/logout', (c) => {
   return c.json({ success: true });
 });
 
-// 5. Proxy all other requests to the AI Studio frontend
+// 5. Debug
+app.get('/api/debug-env', (c) => {
+  return c.json({
+    has_jwt_secret: !!c.env.JWT_SECRET,
+    has_google_secret: !!c.env.GOOGLE_CLIENT_SECRET,
+    app_url: c.env.APP_URL,
+    frontend_url: c.env.FRONTEND_URL,
+    host: c.req.header('Host')
+  });
+});
+
+// 6. Proxy all other requests to the AI Studio frontend
 app.all('*', async (c) => {
   const url = new URL(c.req.url);
   
+  // Skip proxying if it's an API call that wasn't handled (e.g. 404 API)
+  if (url.pathname.startsWith('/api/')) {
+    return c.json({ error: 'API route not found' }, 404);
+  }
+
   // The ORIGIN_URL is where the React code is hosted (AI Studio)
   const originUrl = c.env.APP_URL || 'https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app';
   const originHost = new URL(originUrl).hostname;
@@ -214,14 +229,6 @@ app.all('*', async (c) => {
     console.error('Proxy Error:', error);
     return c.text(`Backend unreachable. Please ensure APP_URL is set to ${originUrl} in Cloudflare variables.`, 504);
   }
-});
-
-app.get('/api/debug-env', (c) => {
-  return c.json({
-    has_jwt_secret: !!c.env.JWT_SECRET,
-    has_google_secret: !!c.env.GOOGLE_CLIENT_SECRET,
-    app_url: c.env.APP_URL
-  });
 });
 
 export default app;
