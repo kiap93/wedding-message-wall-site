@@ -52,7 +52,7 @@ app.get('/api/auth/google', async (c) => {
 
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: `${APP_URL}/api/auth/callback`,
+    redirect_uri: 'https://eventframe.io/api/auth/callback',
     response_type: 'code',
     scope: 'openid email profile',
     access_type: 'offline',
@@ -89,17 +89,11 @@ app.get('/api/auth/callback', async (c) => {
         code,
         client_id: GOOGLE_CLIENT_ID,
         client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri: `${APP_URL}/api/auth/callback`,
+        redirect_uri: 'https://eventframe.io/api/auth/callback',
         grant_type: 'authorization_code',
       }),
     });
-    console.log({
-        code,
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri: `${APP_URL}/api/auth/callback`,
-        grant_type: 'authorization_code',
-      })
+
     const tokens = await tokenResponse.json() as any;
     
     // Get user info
@@ -177,20 +171,19 @@ app.post('/api/auth/logout', (c) => {
 app.all('*', async (c) => {
   const url = new URL(c.req.url);
   
-  // The ORIGIN_URL should be the AI Studio app URL
-  // The FRONTEND_URL should be the custom domain (e.g., eventframe.io)
+  // The ORIGIN_URL is where the React code is hosted (AI Studio)
   const originUrl = c.env.APP_URL || 'https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app';
-  
-  // Safety: If somehow we are proxying to ourselves, stop.
   const originHost = new URL(originUrl).hostname;
-  if (url.hostname === originHost) {
-    // If we're already at the origin, we shouldn't be proxying
-    return c.text('Already at origin. Proxy loop avoided.', 400);
+
+  // CRITICAL: Prevent circular proxying if the user points APP_URL to the custom domain itself
+  if (url.hostname === originHost || url.hostname === 'eventframe.io' || url.hostname.endsWith('.eventframe.io')) {
+    if (url.hostname === originHost && !originHost.includes('run.app')) {
+       return c.text('Configuration Error: APP_URL in Cloudflare must point to the AI Studio URL (e.g., xxx.run.app), not your custom domain.', 400);
+    }
   }
   
   const targetUrl = new URL(url.pathname + url.search, originUrl);
   
-  // Clone request headers and adjust for the target
   const headers = new Headers(c.req.header());
   headers.set('Host', originHost);
   headers.set('X-Forwarded-Host', url.hostname);
@@ -201,14 +194,14 @@ app.all('*', async (c) => {
     const response = await fetch(targetUrl.toString(), {
       method: c.req.method,
       headers: headers,
-      body: c.req.method !== 'GET' && c.req.method !== 'HEAD' ? await c.req.blob() : undefined,
+      body: c.req.method !== 'GET' && c.req.method !== 'HEAD' && c.req.method !== 'OPTIONS' ? await c.req.blob() : undefined,
       redirect: 'manual'
     });
     
-    // Create a new response to allow header mutations
+    // Create new response to allow header modifications
     const newResponse = new Response(response.body, response);
     
-    // Ensure CORS headers match the requester's origin
+    // Force correct CORS for the current requesting origin
     const origin = c.req.header('Origin');
     if (origin) {
       newResponse.headers.set('Access-Control-Allow-Origin', origin);
@@ -218,7 +211,7 @@ app.all('*', async (c) => {
     return newResponse;
   } catch (error) {
     console.error('Proxy Error:', error);
-    return c.text('The application origin is currently unreachable. Please check the APP_URL configuration in Cloudflare.', 504);
+    return c.text(`Backend unreachable. Please ensure APP_URL is set to ${originUrl} in Cloudflare variables.`, 504);
   }
 });
 
