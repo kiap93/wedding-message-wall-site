@@ -171,19 +171,25 @@ app.post('/api/auth/logout', (c) => {
 app.all('*', async (c) => {
   const url = new URL(c.req.url);
   
-  // Prevent circular proxying if APP_URL is misconfigured
+  // The ORIGIN_URL should be the AI Studio app URL
+  // The FRONTEND_URL should be the custom domain (e.g., eventframe.io)
   const originUrl = c.env.APP_URL || 'https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app';
-  if (url.hostname === new URL(originUrl).hostname) {
-    return c.text('Circular proxy detected', 508);
+  
+  // Safety: If somehow we are proxying to ourselves, stop.
+  const originHost = new URL(originUrl).hostname;
+  if (url.hostname === originHost) {
+    // If we're already at the origin, we shouldn't be proxying
+    return c.text('Already at origin. Proxy loop avoided.', 400);
   }
   
   const targetUrl = new URL(url.pathname + url.search, originUrl);
   
-  // Clone request headers and adjust
+  // Clone request headers and adjust for the target
   const headers = new Headers(c.req.header());
-  headers.set('Host', new URL(originUrl).hostname);
+  headers.set('Host', originHost);
   headers.set('X-Forwarded-Host', url.hostname);
   headers.set('X-Forwarded-Proto', 'https');
+  headers.set('X-Proxy-By', 'Eventframe-Worker');
 
   try {
     const response = await fetch(targetUrl.toString(), {
@@ -193,16 +199,20 @@ app.all('*', async (c) => {
       redirect: 'manual'
     });
     
+    // Create a new response to allow header mutations
     const newResponse = new Response(response.body, response);
     
-    // Fix CORS on the proxy response
-    newResponse.headers.set('Access-Control-Allow-Origin', url.origin);
-    newResponse.headers.set('Access-Control-Allow-Credentials', 'true');
+    // Ensure CORS headers match the requester's origin
+    const origin = c.req.header('Origin');
+    if (origin) {
+      newResponse.headers.set('Access-Control-Allow-Origin', origin);
+      newResponse.headers.set('Access-Control-Allow-Credentials', 'true');
+    }
     
     return newResponse;
   } catch (error) {
     console.error('Proxy Error:', error);
-    return c.text('Origin unreachable or timed out', 504);
+    return c.text('The application origin is currently unreachable. Please check the APP_URL configuration in Cloudflare.', 504);
   }
 });
 

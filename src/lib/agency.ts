@@ -25,7 +25,13 @@ export async function resolveAgency(): Promise<Agency | null> {
   const forcedAgency = urlParams.get('agency');
   if (forcedAgency) agencySlug = forcedAgency;
 
-  if (!agencySlug || agencySlug === 'www' || agencySlug === 'app' || agencySlug.includes('ais-')) {
+  if (!agencySlug || 
+      agencySlug === 'www' || 
+      agencySlug === 'app' || 
+      agencySlug === 'eventframe' || 
+      agencySlug.includes('ais-') ||
+      (host === 'eventframe.io' && !forcedAgency)
+  ) {
     return null;
   }
 
