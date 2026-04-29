@@ -48,7 +48,10 @@ export default function Login() {
         data = JSON.parse(text);
       } catch (e) {
         console.error('Auth API Response:', text);
-        throw new Error(`Authentication API error (Status: ${response.status}). Please check server logs.`);
+        if (text.trim().startsWith('<!DOCTYPE html') || text.trim().startsWith('<html')) {
+          throw new Error(`The API request reached your website instead of the Worker. Please ensure the Cloudflare Worker route for "eventframe.io/api/*" is correctly configured.`);
+        }
+        throw new Error(`Authentication API error (Status: ${response.status}). The server returned an invalid format.`);
       }
       
       if (data.url) {

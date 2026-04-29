@@ -19,11 +19,13 @@ import { Agency, WeddingEvent, TEMPLATES, TemplateId } from '../types';
 import { API_BASE } from '../lib/config';
 import { authenticatedFetch, removeAuthToken } from '../lib/auth';
 import { getSupabase } from '../lib/supabase';
+import { useWorkspace } from '../lib/WorkspaceContext';
+import { useUser } from '../lib/UserContext';
 
 export default function Admin() {
-  // Navigation & Auth
-  const [user, setUser] = useState<any>(null);
-  const [view, setView] = useState<'list' | 'editor' | 'agency_setup' | 'agency_settings'>('list');
+  const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
+  const { user } = useUser();
+  const [view, setView] = useState<'list' | 'editor' | 'agency_settings'>('list');
   const navigate = useNavigate();
 
   // Agency
@@ -39,41 +41,11 @@ export default function Admin() {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    fetchUserAndContext();
-  }, []);
-
-  const fetchUserAndContext = async () => {
-    try {
-      const res = await authenticatedFetch(`${API_BASE}/api/auth/me`);
-      const data = await res.json();
-      
-      if (data.user && (data.user.sub || data.user.id)) {
-        const userData = { ...data.user, sub: data.user.sub || data.user.id };
-        setUser(userData);
-        
-        // Fetch Agency
-        const supabase = getSupabase();
-        const { data: agencyData, error: agencyError } = await supabase
-          .from('agencies')
-          .select('*')
-          .eq('user_id', userData.sub)
-          .single();
-          
-        if (agencyData) {
-          setAgency(agencyData);
-          await fetchEvents(agencyData.id);
-        } else {
-          setView('agency_setup');
-        }
-      } else {
-        console.error('Invalid user data received:', data);
-        navigate('/login');
-      }
-    } catch (error) {
-      console.error('Auth error:', error);
-      navigate('/login');
+    if (workspace) {
+      setAgency(workspace);
+      fetchEvents(workspace.id);
     }
-  };
+  }, [workspace]);
 
   const fetchEvents = async (agencyId: string) => {
     setIsLoadingEvents(true);
@@ -93,12 +65,13 @@ export default function Admin() {
   };
 
   const handleSaveAgency = async (agencyData: Partial<Agency>) => {
+    if (!user) return;
     setIsSavingAgency(true);
     const supabase = getSupabase();
     const payload = {
       ...agencyData,
-      user_id: user.sub,
-      created_at: new Date().toISOString()
+      user_id: user.id || user.sub,
+      created_at: agency?.created_at || new Date().toISOString()
     };
 
     let error;
@@ -114,13 +87,8 @@ export default function Admin() {
     if (error) {
       alert('Error saving organization: ' + error.message);
     } else {
-      // Reload agency
-      const { data } = await supabase.from('agencies').select('*').eq('user_id', user.sub).single();
-      if (data) {
-        setAgency(data);
-        await fetchEvents(data.id);
-      }
-      setView('list');
+      // Refresh workspace data
+      window.location.reload();
     }
     setIsSavingAgency(false);
   };
@@ -202,7 +170,11 @@ export default function Admin() {
   };
 
   const getEventUrl = (event: WeddingEvent, type: 'display' | 'guest') => {
-    const base = agency?.domain ? `https://${agency.domain}` : `https://${agency?.slug}.eventframe.io`;
+    const currentHost = window.location.host;
+    const parts = currentHost.split('.');
+    const baseDomain = parts.length > 2 ? parts.slice(-2).join('.') : currentHost;
+    
+    const base = agency?.domain ? `https://${agency.domain}` : `https://${agency?.slug}.${baseDomain}`;
     if (type === 'display') return `${base}/event/${event.id}/display`;
     return `${base}/event/${event.id}/guest`;
   };
@@ -210,10 +182,14 @@ export default function Admin() {
   const handleLogout = async () => {
     await authenticatedFetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
     removeAuthToken();
-    navigate('/login');
+    window.location.href = '/login';
   };
 
-  if (!user) return null;
+  if (isLoadingWorkspace) return (
+    <div className="min-h-screen flex items-center justify-center bg-[#FDFCF0]">
+        <div className="w-8 h-8 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#FDFCF0] font-sans text-[#2D2424]">
@@ -242,10 +218,6 @@ export default function Admin() {
               <Settings className="w-5 h-5" />
             </button>
           )}
-          <div className="flex flex-col items-end mr-2">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-tighter">Authenticated as</span>
-            <span className="text-sm font-medium">{user.email}</span>
-          </div>
           <button 
             onClick={handleLogout}
             className="p-2 hover:bg-red-50 text-red-500 rounded-xl transition-colors flex items-center gap-2 text-sm font-bold uppercase tracking-wider"
@@ -258,92 +230,7 @@ export default function Admin() {
 
       <main className="max-w-6xl mx-auto p-8">
         <AnimatePresence mode="wait">
-          {view === 'agency_setup' ? (
-            <motion.div
-              key="agency_setup"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="max-w-xl mx-auto mt-20 bg-white p-12 rounded-[3.5rem] shadow-2xl border border-[#C5A059]/30 relative overflow-hidden"
-            >
-               {/* Background Decorative */}
-               <div className="absolute top-0 right-0 w-32 h-32 bg-[#C5A059]/5 rounded-bl-full" />
-               
-               <div className="text-center mb-10 relative z-10">
-                 <div className="w-16 h-16 bg-[#C5A059] text-white rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-[#C5A059]/20">
-                   <Layout className="w-8 h-8" />
-                 </div>
-                 <h2 className="text-3xl font-serif mb-2">Create Your Workspace</h2>
-                 <p className="text-gray-400 text-sm">Welcome to Eventframe. Setup your organization to start managing white-label events.</p>
-               </div>
-               
-               <form onSubmit={(e) => {
-                 e.preventDefault();
-                 const formData = new FormData(e.currentTarget);
-                 handleSaveAgency({
-                   name: formData.get('name') as string,
-                   slug: (formData.get('slug') as string).toLowerCase().replace(/[^a-z0-9-]/g, ''),
-                   logo_url: formData.get('logo_url') as string,
-                   domain: formData.get('domain') as string || undefined
-                 });
-               }} className="space-y-6 relative z-10">
-                 <div>
-                   <label className="text-[10px] uppercase tracking-[0.2em] font-black text-gray-400 mb-2 block ml-1">Workspace Name <span className="text-red-500">*</span></label>
-                   <input 
-                     name="name"
-                     type="text" 
-                     required
-                     placeholder="e.g. Dream Weddings Collective"
-                     className="w-full px-6 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
-                   />
-                 </div>
-
-                 <div>
-                   <label className="text-[10px] uppercase tracking-[0.2em] font-black text-gray-400 mb-2 block ml-1">Workspace Logo URL</label>
-                   <input 
-                     name="logo_url"
-                     type="url" 
-                     placeholder="https://yourbrand.com/logo-dark.png"
-                     className="w-full px-6 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
-                   />
-                 </div>
-
-                 <div>
-                   <label className="text-[10px] uppercase tracking-[0.2em] font-black text-gray-400 mb-2 block ml-1">Subdomain Slug <span className="text-red-500">*</span></label>
-                   <div className="flex items-center">
-                    <input 
-                      name="slug"
-                      type="text" 
-                      required
-                      placeholder="dream-weddings"
-                      className="flex-1 px-6 py-4 rounded-l-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-mono text-sm"
-                    />
-                    <span className="bg-gray-100 px-4 py-4 rounded-r-2xl border border-l-0 border-gray-100 text-[10px] font-bold text-gray-400">.eventframe.io</span>
-                  </div>
-                  <p className="mt-1 text-[9px] text-gray-400 ml-1">This will be your default URL: slug.eventframe.io</p>
-                 </div>
-
-                 <div>
-                   <label className="text-[10px] uppercase tracking-[0.2em] font-black text-gray-400 mb-2 block ml-1">Custom Domain (Optional)</label>
-                   <input 
-                     name="domain"
-                     type="text" 
-                     placeholder="weddings.yourcompany.com"
-                     className="w-full px-6 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
-                   />
-                   <p className="mt-1 text-[9px] text-gray-400 ml-1">Point your custom domain CNAME record to eventframe.io</p>
-                 </div>
-
-                 <button 
-                  type="submit"
-                  disabled={isSavingAgency}
-                  className="w-full bg-[#2D2424] text-white py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-black transition-all shadow-xl disabled:opacity-50 mt-8"
-                 >
-                   {isSavingAgency ? 'Setting up...' : 'Initialize Workspace'}
-                   <ArrowRight className="w-5 h-5 text-[#C5A059]" />
-                 </button>
-               </form>
-            </motion.div>
-          ) : view === 'agency_settings' ? (
+          {view === 'agency_settings' ? (
              <motion.div
                key="agency_settings"
                initial={{ opacity: 0, x: 20 }}
