@@ -179,4 +179,28 @@ app.get('/api/debug-env', (c) => {
   });
 });
 
+// 5. Proxy all other requests to the Frontend App (White Label Logic)
+app.all('*', async (c) => {
+  const url = new URL(c.req.url);
+  
+  // If it's a request to the main application (not an API route already handled)
+  // we proxy it to the FRONTEND_URL but preserve the hostname for the app to detect subdomains
+  
+  // We need to be careful not to proxy to ourselves if FRONTEND_URL is same as eventframe.io
+  // In a real setup, FRONTEND_URL should be the origin (e.g. Cloud Run or Vercel URL)
+  const targetUrl = new URL(url.pathname + url.search, c.env.FRONTEND_URL);
+  
+  console.log(`Proxying ${url.hostname}${url.pathname} -> ${targetUrl.toString()}`);
+
+  const request = new Request(targetUrl.toString(), c.req.raw);
+  // Important: The Host header should ideally stay as the original one so the app knows the subdomain
+  // but some origins reject foreign hosts. Our app logic uses window.location.hostname anyway.
+
+  try {
+    return await fetch(request);
+  } catch (e) {
+    return c.text(`Proxy Error: Failed to reach origin at ${c.env.FRONTEND_URL}. Ensure FRONTEND_URL in wrangler.toml points to your actual app origin (e.g. Cloud Run URL).`, 502);
+  }
+});
+
 export default app;
