@@ -184,22 +184,51 @@ app.all('*', async (c) => {
   const url = new URL(c.req.url);
   
   // If it's a request to the main application (not an API route already handled)
-  // we proxy it to the FRONTEND_URL but preserve the hostname for the app to detect subdomains
-  
-  // We need to be careful not to proxy to ourselves if FRONTEND_URL is same as eventframe.io
-  // In a real setup, FRONTEND_URL should be the origin (e.g. Cloud Run or Vercel URL)
+  // we proxy it to the FRONTEND_URL but preserve the hostname logic
   const targetUrl = new URL(url.pathname + url.search, c.env.FRONTEND_URL);
   
   console.log(`Proxying ${url.hostname}${url.pathname} -> ${targetUrl.toString()}`);
 
-  const request = new Request(targetUrl.toString(), c.req.raw);
-  // Important: The Host header should ideally stay as the original one so the app knows the subdomain
-  // but some origins reject foreign hosts. Our app logic uses window.location.hostname anyway.
+  const headers = new Headers(c.req.raw.headers);
+  headers.delete('Host'); // Ensure the destination host is used instead of the client's host
+
+  const proxyRequest = new Request(targetUrl.toString(), {
+    method: c.req.method,
+    headers: headers,
+    body: c.req.method !== 'GET' && c.req.method !== 'HEAD' ? c.req.raw.body : undefined,
+    redirect: 'manual'
+  });
 
   try {
-    return await fetch(request);
+    const response = await fetch(proxyRequest);
+    
+    // Create a new set of headers to modify
+    const newHeaders = new Headers(response.headers);
+    
+    // Rewrite redirects that point to the internal origin
+    const location = newHeaders.get('Location');
+    if (location) {
+      const locationUrl = new URL(location, targetUrl.toString());
+      const frontendOrigin = new URL(c.env.FRONTEND_URL).origin;
+      
+      if (locationUrl.origin === frontendOrigin) {
+        // Rewrite back to the public domain/subdomain that the user is currently on
+        const rewrittenUrl = new URL(locationUrl.pathname + locationUrl.search, url.origin);
+        newHeaders.set('Location', rewrittenUrl.toString());
+      }
+    }
+
+    // Proxy must not return double CORS or other conflicting headers if already present
+    // but usually fetch/response handling in Workers is transparent enough.
+    
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: newHeaders
+    });
   } catch (e) {
-    return c.text(`Proxy Error: Failed to reach origin at ${c.env.FRONTEND_URL}. Ensure FRONTEND_URL in wrangler.toml points to your actual app origin (e.g. Cloud Run URL).`, 502);
+    console.error('Proxy Fetch Error:', e);
+    return c.text(`Proxy Error: Failed to reach origin at ${c.env.FRONTEND_URL}.`, 502);
   }
 });
 
