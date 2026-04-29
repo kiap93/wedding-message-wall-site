@@ -8,7 +8,7 @@ GOOGLE_CLIENT_ID = "946837250683-434o0vtdrkoe2092vghh65md9nfr8hpu.apps.googleuse
 APP_URL = "https://eventframe.io"
 # FRONTEND_URL MUST be your actual server origin (e.g. Cloud Run URL)
 # NOT the public eventframe.io domain, to avoid proxy loops.
-FRONTEND_URL = "https://ais-dev-gdngji75booh6pohbtz4yj-61188279736.asia-southeast1.run.app"
+FRONTEND_URL = "https://eventframe.io"
 
 # Secrets (Set these using 'wrangler secret put')
 # GOOGLE_CLIENT_SECRET

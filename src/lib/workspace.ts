@@ -31,15 +31,16 @@ export function getCurrentSubdomain(): string | null {
   // Ignore local development
   if (hostname === 'localhost' || hostname === '127.0.0.1') return null;
   
-  // Ignore internal cloud run development domain
-  if (hostname.includes('a.run.app')) return null;
+  // Ignore internal cloud run development domains
+  if (hostname.includes('.run.app')) return null;
   
-  // For eventframe.io
-  // prod: eventframe.io -> parts.length = 2
-  // prod subdomain: test.eventframe.io -> parts.length = 3
+  // Explicitly ignore root and www on the production domain
+  if (hostname === 'eventframe.io' || hostname === 'www.eventframe.io') return null;
   
+  // For other domains (like test.eventframe.io)
   if (parts.length > 2) {
-    // If it starts with www, it's not a tenant subdomain
+    // If it starts with www, it's typically the main site (www.eventframe.io)
+    // but handled above. Adding here for completeness with other TLDs.
     if (parts[0] === 'www') return null;
     return parts[0];
   }
