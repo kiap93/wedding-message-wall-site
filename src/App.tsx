@@ -7,7 +7,7 @@ import TemplateSelector from './pages/TemplateSelector';
 import Admin from './pages/Admin';
 import Login from './pages/Login';
 
-import { API_BASE, getTenant } from './lib/config';
+import { API_BASE } from './lib/config';
 import { authenticatedFetch, setAuthToken } from './lib/auth';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -55,8 +55,6 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const tenantId = getTenant();
-
   return (
     <BrowserRouter>
       <Routes>
@@ -72,14 +70,7 @@ export default function App() {
         <Route path="/agency/:agencySlug" element={<TemplateSelector />} />
         <Route path="/guest" element={<Guest />} />
         <Route path="/display" element={<Display />} />
-        
-        {/* If tenant context exists, "/" should show Display for that tenant */}
-        {tenantId ? (
-          <Route path="/" element={<Display tenant={tenantId} />} />
-        ) : (
-          <Route path="/" element={<Navigate to="/login" replace />} />
-        )}
-        
+        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>

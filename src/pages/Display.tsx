@@ -8,14 +8,14 @@ import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate, Agency } from '..
 import { QRCodeSVG } from 'qrcode.react';
 import { getAgencyById } from '../lib/agency';
 
-export default function Display({ tenant }: { tenant?: string }) {
+export default function Display() {
   const { projectId, slug } = useParams();
   const [project, setProject] = useState<WeddingEvent | null>(null);
   const [agency, setAgency] = useState<Agency | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchParams] = useSearchParams();
   const [showQR, setShowQR] = useState(false);
-  const [isLoading, setIsLoading] = useState(!!projectId || !!slug || !!tenant);
+  const [isLoading, setIsLoading] = useState(!!projectId || !!slug);
   const navigate = useNavigate();
   
   // Fallback defaults if no event loaded
@@ -28,17 +28,17 @@ export default function Display({ tenant }: { tenant?: string }) {
   const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
 
   // Derive guest URL
-  const guestUrl = window.location.origin + (project?.id ? `/guest/${project.id}` : tenant ? `/g/${tenant}` : slug ? `/g/${slug}` : '/guest' + window.location.search);
+  const guestUrl = window.location.origin + (project?.id ? `/guest/${project.id}` : slug ? `/g/${slug}` : '/guest' + window.location.search);
 
-  const loadProject = async (id?: string, slugName?: string, tenantName?: string) => {
+  const loadProject = async (id?: string, slugName?: string) => {
     try {
       const supabase = getSupabase();
       let query = supabase.from('projects').select('*');
       
       if (id) {
         query = query.eq('id', id);
-      } else if (slugName || tenantName) {
-        query = query.eq('slug', slugName || tenantName);
+      } else if (slugName) {
+        query = query.eq('slug', slugName);
       } else {
         return;
       }
@@ -61,8 +61,8 @@ export default function Display({ tenant }: { tenant?: string }) {
   };
 
   useEffect(() => {
-    if (projectId || slug || tenant) {
-      loadProject(projectId, slug, tenant);
+    if (projectId || slug) {
+      loadProject(projectId, slug);
     }
     
     // Initial fetch
@@ -118,7 +118,7 @@ export default function Display({ tenant }: { tenant?: string }) {
         }
       }
     };
-  }, [projectId, slug, tenant, project?.id]);
+  }, [projectId, slug, project?.id]);
 
   if (isLoading) {
     return (

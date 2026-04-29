@@ -36,32 +36,15 @@ export default function Login() {
       setLoading(true);
       setError(null);
       
-      const source = window.location.origin;
-      const apiUrl = `${API_BASE}/api/auth/google?source=${encodeURIComponent(source)}`;
-      console.log('[Login] Initializing Google Login at:', apiUrl);
-      
-      const response = await fetch(apiUrl);
-      const contentType = response.headers.get('Content-Type') || '';
+      const response = await fetch(`${API_BASE}/api/auth/google`);
       const text = await response.text();
       
-      if (!response.ok) {
-        console.error('[Login] API Error Status:', response.status);
-        console.error('[Login] API Error Body:', text);
-        throw new Error(`Auth failed (${response.status}): ${text.substring(0, 100)}`);
-      }
-
-      if (!contentType.includes('application/json')) {
-        console.error('[Login] Expected JSON but got:', contentType);
-        console.error('[Login] Response Preview:', text.substring(0, 200));
-        throw new Error(`Server returned non-JSON response (${contentType}). Likely caught by proxy. Check URL: ${apiUrl}`);
-      }
-
       let data;
       try {
         data = JSON.parse(text);
       } catch (e) {
-        console.error('[Login] JSON Parse Error. Raw body:', text.substring(0, 500));
-        throw new Error(`Failed to parse response from ${apiUrl}. Check console.`);
+        console.error('Auth API Response:', text);
+        throw new Error(`Authentication API error (Status: ${response.status}). Please check server logs.`);
       }
       
       if (data.url) {
