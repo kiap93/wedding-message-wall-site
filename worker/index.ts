@@ -191,6 +191,10 @@ app.all('*', async (c) => {
 
   const headers = new Headers(c.req.raw.headers);
   headers.delete('Host'); // Ensure the destination host is used instead of the client's host
+  
+  // Pass original host and proto so the app can handle logic if needed
+  headers.set('X-Forwarded-Host', url.hostname);
+  headers.set('X-Forwarded-Proto', url.protocol.replace(':', ''));
 
   const proxyRequest = new Request(targetUrl.toString(), {
     method: c.req.method,
@@ -208,14 +212,28 @@ app.all('*', async (c) => {
     // Rewrite redirects that point to the internal origin
     const location = newHeaders.get('Location');
     if (location) {
-      const locationUrl = new URL(location, targetUrl.toString());
-      const frontendOrigin = new URL(c.env.FRONTEND_URL).origin;
-      
-      if (locationUrl.origin === frontendOrigin) {
-        // Rewrite back to the public domain/subdomain that the user is currently on
-        const rewrittenUrl = new URL(locationUrl.pathname + locationUrl.search, url.origin);
-        newHeaders.set('Location', rewrittenUrl.toString());
+      try {
+        const locationUrl = new URL(location, targetUrl.toString());
+        const frontendUrl = new URL(c.env.FRONTEND_URL);
+        
+        // If the redirect points to our internal origin, rewrite it to the public origin
+        if (locationUrl.hostname === frontendUrl.hostname) {
+          const rewrittenUrl = new URL(locationUrl.pathname + locationUrl.search, url.origin);
+          newHeaders.set('Location', rewrittenUrl.toString());
+        }
+      } catch (err) {
+        // If location is not a valid URL (and not relative), just cross our fingers or leave it
       }
+    }
+
+    // Also rewrite cookies to the public domain
+    const setCookie = newHeaders.get('Set-Cookie');
+    if (setCookie) {
+      // Very simple domain rewrite for cookies if they specify the internal domain
+      const frontendUrl = new URL(c.env.FRONTEND_URL);
+      const publicUrl = new URL(url.origin);
+      const rewrittenCookie = setCookie.replace(new RegExp(frontendUrl.hostname, 'g'), publicUrl.hostname);
+      newHeaders.set('Set-Cookie', rewrittenCookie);
     }
 
     // Proxy must not return double CORS or other conflicting headers if already present

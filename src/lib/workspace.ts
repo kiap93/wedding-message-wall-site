@@ -28,16 +28,19 @@ export function getCurrentSubdomain(): string | null {
   const hostname = window.location.hostname;
   const parts = hostname.split('.');
   
-  // If we are on eventframe.io (or localhost)
-  // local: localhost -> parts.length = 1
+  // Ignore local development
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return null;
+  
+  // Ignore internal cloud run development domain
+  if (hostname.includes('a.run.app')) return null;
+  
+  // For eventframe.io
   // prod: eventframe.io -> parts.length = 2
   // prod subdomain: test.eventframe.io -> parts.length = 3
   
-  if (hostname === 'localhost' || hostname === '127.0.0.1') return null;
-  
   if (parts.length > 2) {
-    // Return 'test' from 'test.eventframe.io'
-    // This assumes we are on a .io domain or similar 2-part TLD
+    // If it starts with www, it's not a tenant subdomain
+    if (parts[0] === 'www') return null;
     return parts[0];
   }
   
