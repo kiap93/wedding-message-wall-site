@@ -8,6 +8,8 @@ type Bindings = {
   JWT_SECRET: string;
   APP_URL: string;      // The Worker URL (for Google callback)
   FRONTEND_URL: string; // The Website URL (for final redirect)
+  SUPABASE_URL: string;
+  SUPABASE_ANON_KEY: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -36,6 +38,10 @@ app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
 app.get('/api/auth/google', async (c) => {
   const GOOGLE_CLIENT_ID = c.env.GOOGLE_CLIENT_ID;
   const APP_URL = c.env.APP_URL;
+  
+  // Capture the origin to redirect back to the correct subdomain
+  const origin = c.req.header('Origin') || c.env.FRONTEND_URL;
+  const state = btoa(JSON.stringify({ origin }));
 
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
@@ -44,6 +50,7 @@ app.get('/api/auth/google', async (c) => {
     scope: 'openid email profile',
     access_type: 'offline',
     prompt: 'consent',
+    state: state
   });
 
   const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
@@ -60,7 +67,19 @@ app.get('/api/auth/google', async (c) => {
 // 2. Google Callback
 app.get('/api/auth/callback', async (c) => {
   const code = c.req.query('code');
-  if (!code) return c.redirect('/login?error=no_code');
+  const stateParam = c.req.query('state');
+  
+  let targetOrigin = c.env.FRONTEND_URL;
+  if (stateParam) {
+    try {
+      const decoded = JSON.parse(atob(stateParam));
+      if (decoded.origin) targetOrigin = decoded.origin;
+    } catch (e) {
+      console.error('Failed to decode state:', e);
+    }
+  }
+
+  if (!code) return c.redirect(`${targetOrigin}/login?error=no_code`);
 
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET, APP_URL } = c.env;
 
@@ -111,15 +130,13 @@ app.get('/api/auth/callback', async (c) => {
       path: '/',
     });
 
-    // Get Frontend URL from environment or fallback
-    const FRONTEND_URL = c.env.FRONTEND_URL || 'https://eventframe.io';
-    
-    // Also pass the token in the URL so the frontend can save it to LocalStorage
-    // (This avoids third-party cookie blocking issues)
-    return c.redirect(`${FRONTEND_URL}/admin?token=${token}`);
+    // Use the dynamic targetOrigin determined above
+    return c.redirect(`${targetOrigin}/admin?token=${token}`);
   } catch (error) {
     console.error('Worker Auth Error:', error);
-    return c.redirect('/login?error=auth_failed');
+    // Use the dynamic targetOrigin for error redirect too
+    const fallbackOrigin = c.env.FRONTEND_URL || 'https://eventframe.io';
+    return c.redirect(`${fallbackOrigin}/login?error=auth_failed`);
   }
 });
 
