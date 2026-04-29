@@ -46,7 +46,15 @@ app.get('/api/auth/google', async (c) => {
     prompt: 'consent',
   });
 
-  return c.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  
+  // Support both: JSON for fetch() and direct redirect for browser
+  const accept = c.req.header('Accept');
+  if (accept && accept.includes('application/json')) {
+    return c.json({ url });
+  }
+
+  return c.redirect(url);
 });
 
 // 2. Google Callback

@@ -36,7 +36,11 @@ export default function Login() {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`${API_BASE}/api/auth/google`);
+      const response = await fetch(`${API_BASE}/api/auth/google`, {
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
       const text = await response.text();
       
       let data;
