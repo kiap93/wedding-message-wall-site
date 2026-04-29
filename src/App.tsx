@@ -22,18 +22,6 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const subdomain = getCurrentSubdomain();
 
   useEffect(() => {
-    // 1. Capture token from URL if present (Worker redirect)
-    const params = new URLSearchParams(window.location.search);
-    const urlToken = params.get('token');
-    if (urlToken) {
-      setAuthToken(urlToken);
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-      // Force reload to pick up new token in UserProvider
-      window.location.reload();
-      return;
-    }
-
     // 2. Fetch workspaces once user is loaded
     async function checkWorkspaces() {
       if (!user) {
@@ -53,13 +41,16 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
         const currentHost = window.location.host;
         const hostParts = currentHost.split('.');
-        const isRoot = hostParts.length <= 2;
+        // Check if root domain (e.g., eventframe.io or localhost)
+        const isRoot = hostParts.length <= 2 || (hostParts.length === 3 && hostParts[0] === 'www');
         
         if (isRoot && userWorkspaces.length > 0 && location.pathname === '/admin') {
           const slug = userWorkspaces[0].slug;
           const protocol = window.location.protocol;
-          const baseDomain = hostParts.join('.');
-          window.location.href = `${protocol}//${slug}.${baseDomain}/admin`;
+          // Extract base domain carefully
+          const baseDomain = hostParts.slice(-2).join('.');
+          const token = localStorage.getItem('wedding_session_token');
+          window.location.href = `${protocol}//${slug}.${baseDomain}/admin${token ? `?token=${token}` : ''}`;
           return;
         }
       } catch (err) {

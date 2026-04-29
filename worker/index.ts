@@ -121,14 +121,22 @@ app.get('/api/auth/callback', async (c) => {
     // Use an object that definitely has keys to avoid empty payload issues
     const token = await sign({ ...user, iat: Math.floor(Date.now() / 1000) }, JWT_SECRET, 'HS256');
 
-    // Set cookie with SameSite=None for cross-domain support (legacy support)
-    setCookie(c, 'wedding_session', token, {
+    // Set cookie with SameSite=None for cross-domain support
+    const cookieOptions: any = {
       httpOnly: true,
       secure: true,
       sameSite: 'None',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: '/',
-    });
+    };
+
+    // If we're on eventframe.io, use a wildcard domain to share cookies with subdomains
+    const hostname = new URL(c.req.url).hostname;
+    if (hostname.endsWith('eventframe.io')) {
+      cookieOptions.domain = '.eventframe.io';
+    }
+
+    setCookie(c, 'wedding_session', token, cookieOptions);
 
     // Use the dynamic targetOrigin determined above
     return c.redirect(`${targetOrigin}/admin?token=${token}`);

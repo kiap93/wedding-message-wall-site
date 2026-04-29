@@ -1,3 +1,1 @@
-export const API_BASE = import.meta.env.PROD 
-  ? 'https://eventframe.io' 
-  : '';
+export const API_BASE = '';

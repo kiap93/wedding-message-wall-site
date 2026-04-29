@@ -16,11 +16,29 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function loadUser() {
+      // 1. Capture token from URL if present (from cross-domain redirect)
+      const params = new URLSearchParams(window.location.search);
+      const urlToken = params.get('token');
+      if (urlToken) {
+        localStorage.setItem('wedding_session_token', urlToken);
+        // Clean up URL without reload if possible, or just proceed
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
+      const token = localStorage.getItem('wedding_session_token');
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const res = await authenticatedFetch(`${API_BASE}/api/auth/me`);
         const data = await res.json();
         if (data.user) {
           setUser(data.user);
+        } else {
+          // If token was invalid, clear it
+          localStorage.removeItem('wedding_session_token');
         }
       } catch (err) {
         console.error('Failed to load user:', err);

@@ -62,8 +62,9 @@ export default function Onboarding() {
       const protocol = window.location.protocol;
       const hostParts = window.location.host.split('.');
       const baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
+      const token = localStorage.getItem('wedding_session_token');
       
-      window.location.href = `${protocol}//${slug}.${baseDomain}/admin`;
+      window.location.href = `${protocol}//${slug}.${baseDomain}/admin${token ? `?token=${token}` : ''}`;
 
     } catch (err: any) {
       setError(err.message || 'Failed to create workspace');
