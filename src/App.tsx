@@ -90,6 +90,13 @@ export default function App() {
             <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
             <Route path="/templates" element={<TemplateSelector />} />
             <Route path="/admin" element={<AuthGuard><Admin /></AuthGuard>} />
+            
+            {/* New Event Slug based routes */}
+            <Route path="/:slug/display" element={<Display />} />
+            <Route path="/:slug/guest" element={<Guest />} />
+            <Route path="/:slug" element={<Display />} />
+
+            {/* Legacy/Compat routes */}
             <Route path="/guest/:projectId" element={<Guest />} />
             <Route path="/display/:projectId" element={<Display />} />
             <Route path="/e/:slug" element={<Display />} />
@@ -99,6 +106,7 @@ export default function App() {
             <Route path="/agency/:agencySlug" element={<TemplateSelector />} />
             <Route path="/guest" element={<Guest />} />
             <Route path="/display" element={<Display />} />
+            
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>

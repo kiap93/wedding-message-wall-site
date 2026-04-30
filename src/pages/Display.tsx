@@ -28,7 +28,7 @@ export default function Display() {
   const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
 
   // Derive guest URL
-  const guestUrl = window.location.origin + (project?.id ? `/guest/${project.id}` : slug ? `/g/${slug}` : '/guest' + window.location.search);
+  const guestUrl = window.location.origin + (slug ? `/${slug}/guest` : project?.slug ? `/${project.slug}/guest` : '/guest' + window.location.search);
 
   const loadProject = async (id?: string, slugName?: string) => {
     try {

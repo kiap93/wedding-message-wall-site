@@ -175,8 +175,8 @@ export default function Admin() {
     const baseDomain = parts.length > 2 ? parts.slice(-2).join('.') : currentHost;
     
     const base = agency?.domain ? `https://${agency.domain}` : `https://${agency?.slug}.${baseDomain}`;
-    if (type === 'display') return `${base}/event/${event.id}/display`;
-    return `${base}/event/${event.id}/guest`;
+    if (type === 'display') return `${base}/${event.slug}/display`;
+    return `${base}/${event.slug}/guest`;
   };
 
   const handleLogout = async () => {
