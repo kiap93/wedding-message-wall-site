@@ -7,6 +7,8 @@ import TemplateSelector from './pages/TemplateSelector';
 import Admin from './pages/Admin';
 import Login from './pages/Login';
 import Onboarding from './pages/Onboarding';
+import CoupleLogin from './pages/CoupleLogin';
+import CoupleDashboard from './pages/CoupleDashboard';
 
 import { API_BASE } from './lib/config';
 import { authenticatedFetch, setAuthToken } from './lib/auth';
@@ -90,6 +92,10 @@ export default function App() {
             <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
             <Route path="/templates" element={<TemplateSelector />} />
             <Route path="/admin" element={<AuthGuard><Admin /></AuthGuard>} />
+            
+            {/* Couple Login & Dashboard */}
+            <Route path="/couple/login" element={<CoupleLogin />} />
+            <Route path="/couple/:eventId" element={<CoupleDashboard />} />
             
             {/* New Event Slug based routes */}
             <Route path="/:slug/display" element={<Display />} />

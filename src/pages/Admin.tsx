@@ -111,7 +111,8 @@ export default function Admin() {
       wedding_date: new Date().toISOString().split('T')[0],
       location: 'Venue Name',
       theme_id: 'minimal_luxury',
-      agency_id: agency.id
+      agency_id: agency.id,
+      access_password: Math.random().toString(36).substring(2, 8).toUpperCase()
     };
     setEditingEvent(newEvent);
     setView('editor');
@@ -391,7 +392,7 @@ export default function Admin() {
                           {agency?.domain || `${agency?.slug}.eventframe.io`} / {event.slug}
                         </p>
 
-                        <div className="space-y-2 text-sm text-gray-500 mb-8">
+                        <div className="space-y-3 text-sm text-gray-500 mb-8">
                           <div className="flex items-center gap-2">
                             <Calendar className="w-3.5 h-3.5 opacity-50" />
                             <span>{new Date(event.wedding_date).toLocaleDateString(undefined, { dateStyle: 'long' })}</span>
@@ -400,6 +401,12 @@ export default function Admin() {
                             <MapPin className="w-3.5 h-3.5 opacity-50" />
                             <span className="truncate">{event.location}</span>
                           </div>
+                          {event.access_password && (
+                            <div className="pt-2 mt-2 border-t border-gray-50 flex items-center justify-between text-[10px] font-bold">
+                              <span className="text-gray-400 uppercase tracking-widest">Dashboard PIN</span>
+                              <span className="bg-gray-100 px-2 py-0.5 rounded text-[#2D2424] font-mono">{event.access_password}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -517,6 +524,17 @@ export default function Admin() {
                           type="text" 
                           value={editingEvent?.location || ''}
                           onChange={(e) => setEditingEvent({ ...editingEvent!, location: e.target.value })}
+                          className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Couple Dashboard Password</label>
+                        <input 
+                          type="text" 
+                          placeholder="Simple password for the couple"
+                          value={editingEvent?.access_password || ''}
+                          onChange={(e) => setEditingEvent({ ...editingEvent!, access_password: e.target.value })}
                           className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
                         />
                       </div>

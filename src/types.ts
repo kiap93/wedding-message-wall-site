@@ -24,6 +24,7 @@ export interface WeddingEvent {
   wedding_date: string;
   location: string;
   theme_id: TemplateId;
+  access_password?: string;
   created_at: string;
   updated_at: string;
 }
