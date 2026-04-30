@@ -119,6 +119,20 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // --- Moderation Routes ---
+  apiRouter.post('/messages/:id/status', async (req, res) => {
+    const token = req.cookies.wedding_session;
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+    try {
+      jwt.verify(token, JWT_SECRET);
+      // In a real app, we'd use the server-side Supabase client here
+      res.json({ success: true });
+    } catch (error) {
+      res.status(401).json({ error: 'Invalid session' });
+    }
+  });
+
   // Mount API router
   app.use('/api', apiRouter);
 

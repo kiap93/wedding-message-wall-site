@@ -7,24 +7,29 @@ export interface Message {
   message: string;
   timestamp: number;
   project_id?: string;
+  status?: 'pending' | 'approved' | 'rejected';
 }
 
 const MOCK_MESSAGES: Message[] = [
-  { id: 'm1', name: 'Alex & Sam', message: 'Wishing you a lifetime of love and happiness! Beautiful ceremony.', timestamp: Date.now() - 500000 },
-  { id: 'm2', name: 'Emma Wilson', message: 'So happy for both of you! May your journey together be magical.', timestamp: Date.now() - 1200000 },
+  { id: 'm1', name: 'Alex & Sam', message: 'Wishing you a lifetime of love and happiness! Beautiful ceremony.', timestamp: Date.now() - 500000, status: 'approved' },
+  { id: 'm2', name: 'Emma Wilson', message: 'So happy for both of you! May your journey together be magical.', timestamp: Date.now() - 1200000, status: 'approved' },
 ];
 
-export async function fetchMessages(projectId?: string): Promise<Message[]> {
+export async function fetchMessages(projectId?: string, includeAll: boolean = false): Promise<Message[]> {
   try {
     const supabase = getSupabase();
     let query = supabase
       .from('messages')
       .select('*')
       .order('timestamp', { ascending: false })
-      .limit(50);
+      .limit(100);
     
     if (projectId) {
       query = query.eq('project_id', projectId);
+    }
+
+    if (!includeAll) {
+      query = query.eq('status', 'approved');
     }
 
     const { data, error } = await query;
@@ -41,6 +46,21 @@ export async function fetchMessages(projectId?: string): Promise<Message[]> {
   }
 }
 
+export async function updateMessageStatus(messageId: string, status: 'approved' | 'rejected'): Promise<void> {
+  try {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from('messages')
+      .update({ status })
+      .eq('id', messageId);
+      
+    if (error) throw error;
+  } catch (err) {
+    console.error('Failed to update message status:', err);
+    throw err;
+  }
+}
+
 export async function postMessage(name: string, message: string, projectId?: string): Promise<void> {
   try {
     const supabase = getSupabase();
@@ -51,7 +71,8 @@ export async function postMessage(name: string, message: string, projectId?: str
           name: name || 'Anonymous Guest', 
           message, 
           timestamp: Date.now(),
-          project_id: projectId
+          project_id: projectId,
+          status: 'pending'
         }
       ]);
     

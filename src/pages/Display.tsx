@@ -88,19 +88,26 @@ export default function Display() {
         .on(
           'postgres_changes',
           {
-            event: 'INSERT',
+            event: '*', // Listen to INSERT and UPDATE
             schema: 'public',
             table: 'messages',
             filter: targetId ? `project_id=eq.${targetId}` : undefined
           },
           (payload) => {
             const newMessage = payload.new as Message;
-            setMessages((prev) => {
-              const updated = [newMessage, ...prev];
-              // Remove duplicates and keep only last 50
-              const unique = Array.from(new Map(updated.map(m => [m.id, m])).values());
-              return unique.sort((a, b) => b.timestamp - a.timestamp).slice(0, 50);
-            });
+            const eventType = payload.eventType;
+
+            if (newMessage.status === 'approved') {
+              setMessages((prev) => {
+                const filtered = prev.filter(m => m.id !== newMessage.id);
+                const updated = [newMessage, ...filtered];
+                const unique = Array.from(new Map(updated.map(m => [m.id, m])).values());
+                return unique.sort((a, b) => b.timestamp - a.timestamp).slice(0, 50);
+              });
+            } else if (eventType === 'UPDATE') {
+              // If it was approved but now it's not (rejected/pending), remove it
+              setMessages((prev) => prev.filter(m => m.id !== newMessage.id));
+            }
           }
         )
         .subscribe();
