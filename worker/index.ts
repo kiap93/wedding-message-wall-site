@@ -150,19 +150,31 @@ app.get('/api/auth/callback', async (c) => {
 
 // 3. Get Current User
 app.get('/api/auth/me', async (c) => {
+  const hostname = new URL(c.req.url).hostname;
+  const isSharedDomain = hostname.endsWith('eventframe.io');
+  
   // Check both Cookie and Authorization Header
-  let token = getCookie(c, 'wedding_session');
+  const cookieToken = getCookie(c, 'wedding_session');
+  let token = cookieToken;
   
   const authHeader = c.req.header('Authorization');
   if (!token && authHeader?.startsWith('Bearer ')) {
     token = authHeader.substring(7);
+    
+    // CRITICAL for cross-domain logout:
+    // If we are on a shared domain pool (eventframe.io), we require the cookie to be present.
+    // If the cookie is missing but the header is present, it means the user might have logged out 
+    // on another subdomain (which cleared the shared cookie) but still has local storage here.
+    if (isSharedDomain && !cookieToken) {
+      console.log('Shared domain logout detected: cookie missing but token in header.');
+      return c.json({ error: 'Session revoked via logout' }, 401);
+    }
   }
 
   if (!token) return c.json({ error: 'Not authenticated' }, 401);
 
   try {
     const payload = await verify(token, c.env.JWT_SECRET, 'HS256');
-    console.log('Verified Session Payload:', JSON.stringify(payload));
     return c.json({ user: payload });
   } catch (e) {
     return c.json({ error: 'Invalid session' }, 401);
