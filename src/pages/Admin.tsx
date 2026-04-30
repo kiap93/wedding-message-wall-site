@@ -449,15 +449,17 @@ export default function Admin() {
                   <div className="space-y-6">
                     <div>
                       <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Domain Slug</label>
-                      <div className="flex items-center">
+                      <div className="flex items-center flex-wrap">
+                        <div className="bg-gray-100 px-4 py-4 rounded-l-2xl border border-r-0 border-gray-100 text-[10px] font-bold text-gray-400 select-none whitespace-nowrap">
+                          {agency?.domain || `${agency?.slug || 'agency'}.${window.location.host.split('.').slice(-2).join('.')}`}/
+                        </div>
                         <input 
                           type="text" 
                           placeholder="wedding-slug"
                           value={editingEvent?.slug || ''}
                           onChange={(e) => setEditingEvent({ ...editingEvent!, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
-                          className="flex-1 px-5 py-4 rounded-l-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-mono text-sm"
+                          className="flex-1 px-5 py-4 rounded-r-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-mono text-sm min-w-[120px]"
                         />
-                        <span className="bg-gray-100 px-4 py-4 rounded-r-2xl border border-l-0 border-gray-100 text-[10px] font-bold text-gray-400">.eventframe.io</span>
                       </div>
                     </div>
 
