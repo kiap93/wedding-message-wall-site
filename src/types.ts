@@ -28,6 +28,18 @@ export interface WeddingEvent {
   updated_at: string;
 }
 
+export interface RSVP {
+  id: string;
+  project_id: string;
+  name: string;
+  email?: string;
+  attending: boolean;
+  guest_count: number;
+  meal_preference?: string;
+  dietary_requirements?: string;
+  created_at: string;
+}
+
 export type TemplateId = 
   | 'garden' 
   | 'minimal_luxury' 

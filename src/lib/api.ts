@@ -1,4 +1,5 @@
 import { getSupabase } from './supabase';
+import { RSVP } from './types';
 
 export interface Message {
   id: string;
@@ -65,5 +66,51 @@ export async function postMessage(name: string, message: string, projectId?: str
       return;
     }
     throw err;
+  }
+}
+
+export async function postRSVP(rsvp: Partial<RSVP>): Promise<void> {
+  try {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from('rsvps')
+      .insert([
+        { 
+          ...rsvp,
+          created_at: new Date().toISOString()
+        }
+      ]);
+    
+    if (error) {
+      console.error('Supabase RSVP error:', error);
+      throw new Error(error.message);
+    }
+  } catch (err) {
+    console.error('Failed to post RSVP:', err);
+    if (String(err).includes('Supabase configuration is missing')) {
+      return;
+    }
+    throw err;
+  }
+}
+
+export async function fetchRSVPs(projectId: string): Promise<RSVP[]> {
+  try {
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from('rsvps')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Supabase RSVP fetch error:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (err) {
+    console.warn('Supabase not configured or unreachable.');
+    return [];
   }
 }
