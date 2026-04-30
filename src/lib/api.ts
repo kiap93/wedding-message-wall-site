@@ -1,5 +1,5 @@
 import { getSupabase } from './supabase';
-import { RSVP } from './types';
+import { RSVP } from '../types';
 
 export interface Message {
   id: string;

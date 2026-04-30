@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, Send, CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower } from 'lucide-react';
+import { Heart, Send, CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower, Users } from 'lucide-react';
 import { postMessage } from '../lib/api';
+import RSVPForm from '../components/RSVPForm';
 import confetti from 'canvas-confetti';
 import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
@@ -19,6 +20,7 @@ export default function Guest() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [activeTab, setActiveTab] = useState<'message' | 'rsvp'>('message');
   const [error, setError] = useState<string | null>(null);
   
   const [searchParams] = useSearchParams();
@@ -155,47 +157,88 @@ export default function Guest() {
             <p className={`text-base ${template.colors.subtleText} tracking-wide font-medium`}>Leave a message for the happy couple</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-8">
-            <div className="space-y-3">
-              <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>Your Name</label>
-              <input
-                type="text"
-                placeholder="How shall we call you?"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium ${template.colors.text} placeholder:opacity-50`}
-              />
+            <div className="flex gap-4 mb-8 border-b border-white/10 pb-4">
+              <button
+                onClick={() => setActiveTab('message')}
+                className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all text-sm uppercase tracking-widest ${
+                  activeTab === 'message' 
+                    ? template.colors.accent + ' bg-opacity-10 shadow-sm' 
+                    : 'opacity-40 hover:opacity-100'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <Send className="w-4 h-4" /> Message
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('rsvp')}
+                className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all text-sm uppercase tracking-widest ${
+                  activeTab === 'rsvp' 
+                    ? template.colors.accent + ' bg-opacity-10 shadow-sm' 
+                    : 'opacity-40 hover:opacity-100'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <Users className="w-4 h-4" /> Guest RSVP
+                </div>
+              </button>
             </div>
 
-            <div className="space-y-3">
-              <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>Your Wishes</label>
-              <textarea
-                required
-                maxLength={150}
-                placeholder="Share your heartfelt wishes..."
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                rows={5}
-                className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium ${template.colors.text} placeholder:opacity-50 resize-none`}
-              />
-              <div className="text-right">
-                <span className={`text-[10px] font-bold ${template.colors.subtleText}`}>{message.length}/150</span>
-              </div>
-            </div>
+            {activeTab === 'message' ? (
+              <form onSubmit={handleSubmit} className="space-y-8">
+                <div className="space-y-3">
+                  <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>Your Name</label>
+                  <input
+                    type="text"
+                    placeholder="How shall we call you?"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium ${template.colors.text} placeholder:opacity-50`}
+                  />
+                </div>
 
-            {error && (
-              <p className="text-red-500 text-sm text-center font-bold bg-red-500/10 py-3 rounded-xl border border-red-500/20">{error}</p>
+                <div className="space-y-3">
+                  <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>Your Wishes</label>
+                  <textarea
+                    required
+                    maxLength={150}
+                    placeholder="Share your heartfelt wishes..."
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    rows={5}
+                    className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium ${template.colors.text} placeholder:opacity-50 resize-none`}
+                  />
+                  <div className="text-right">
+                    <span className={`text-[10px] font-bold ${template.colors.subtleText}`}>{message.length}/150</span>
+                  </div>
+                </div>
+
+                {error && (
+                  <p className="text-red-500 text-sm text-center font-bold bg-red-500/10 py-3 rounded-xl border border-red-500/20">{error}</p>
+                )}
+
+                <button
+                  disabled={isSubmitting}
+                  className={`w-full py-5 rounded-2xl font-bold tracking-[0.1em] text-lg uppercase transition-all flex items-center justify-center gap-3 group shadow-xl
+                    ${isSubmitting ? 'bg-gray-500/20 text-gray-400 cursor-not-allowed shadow-none' : getButtonBg()}`}
+                >
+                  {isSubmitting ? 'Sending...' : 'Send Wishes'}
+                  <Send className={`w-5 h-5 transition-transform ${isSubmitting ? '' : 'group-hover:translate-x-1 group-hover:-translate-y-1'}`} />
+                </button>
+              </form>
+            ) : (
+              <RSVPForm 
+                projectId={project?.id || projectId || ''} 
+                template={template}
+                onSuccess={() => {
+                  setShowSuccess(true);
+                  setTimeout(() => {
+                    setShowSuccess(false);
+                    setActiveTab('message');
+                  }, 5000);
+                }}
+              />
             )}
-
-            <button
-              disabled={isSubmitting}
-              className={`w-full py-5 rounded-2xl font-bold tracking-[0.1em] text-lg uppercase transition-all flex items-center justify-center gap-3 group shadow-xl
-                ${isSubmitting ? 'bg-gray-500/20 text-gray-400 cursor-not-allowed shadow-none' : getButtonBg()}`}
-            >
-              {isSubmitting ? 'Sending...' : 'Send Wishes'}
-              <Send className={`w-5 h-5 transition-transform ${isSubmitting ? '' : 'group-hover:translate-x-1 group-hover:-translate-y-1'}`} />
-            </button>
-          </form>
 
           <AnimatePresence>
             {showSuccess && (

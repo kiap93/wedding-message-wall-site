@@ -13,9 +13,11 @@ import {
   Trash2,
   ExternalLink,
   Calendar,
-  MapPin
+  MapPin,
+  Users
 } from 'lucide-react';
 import { Agency, WeddingEvent, TEMPLATES, TemplateId } from '../types';
+import RSVPManager from '../components/RSVPManager';
 import { API_BASE } from '../lib/config';
 import { authenticatedFetch, removeAuthToken } from '../lib/auth';
 import { getSupabase } from '../lib/supabase';
@@ -569,6 +571,19 @@ export default function Admin() {
                   ))}
                 </div>
               </div>
+
+              {/* RSVP Management */}
+              {editingEvent?.id && (
+                <div className="lg:col-span-12 mt-12 pt-12 border-t border-[#C5A059]/20">
+                  <div className="flex items-center justify-between mb-8">
+                    <div>
+                      <h2 className="text-3xl font-serif mb-2">Guest Responses</h2>
+                      <p className="text-gray-500">Track attendances, meal choices, and dietary requirements.</p>
+                    </div>
+                  </div>
+                  <RSVPManager projectId={editingEvent.id} />
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
