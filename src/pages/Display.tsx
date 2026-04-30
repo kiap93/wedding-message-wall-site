@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, Palette, QrCode, Leaf, Star, Mail, Camera, Flower } from 'lucide-react';
+import { Heart, QrCode, Leaf, Star, Mail, Camera, Flower } from 'lucide-react';
 import { fetchMessages, Message } from '../lib/api';
 import { getSupabase } from '../lib/supabase';
 import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
@@ -144,19 +144,6 @@ export default function Display() {
           <span className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Hosted by {agency.name}</span>
         </div>
       )}
-
-      {/* Back to Templates Floating UI */}
-      <div className="fixed bottom-8 left-8 z-[100]">
-        <button
-          onClick={() => navigate('/templates')}
-          className="bg-white/10 backdrop-blur-md p-4 rounded-full border border-white/20 hover:bg-white/20 transition-all group flex items-center gap-3"
-        >
-          <Palette className={`w-5 h-5 ${template.id === 'digital' || template.id === 'starry' ? 'text-white' : 'text-gray-800'}`} />
-          <span className={`text-xs font-bold uppercase tracking-widest hidden group-hover:block ${template.id === 'digital' || template.id === 'starry' ? 'text-white' : 'text-gray-800'}`}>
-            Change Theme
-          </span>
-        </button>
-      </div>
 
       {/* QR Code Floating UI */}
       <div className="fixed bottom-8 right-8 z-[100]">
