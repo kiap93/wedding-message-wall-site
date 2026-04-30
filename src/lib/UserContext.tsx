@@ -25,20 +25,18 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
 
+      // We still check for token but don't return early. 
+      // If no token in localStorage, authenticatedFetch will still send credentials (cookies).
       const token = localStorage.getItem('wedding_session_token');
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
-
+      
       try {
         const res = await authenticatedFetch(`${API_BASE}/api/auth/me`);
         const data = await res.json();
         if (data.user) {
           setUser(data.user);
         } else {
-          // If token was invalid, clear it
-          localStorage.removeItem('wedding_session_token');
+          // If token was invalid or missing on server, clear it locally
+          if (token) localStorage.removeItem('wedding_session_token');
         }
       } catch (err) {
         console.error('Failed to load user:', err);

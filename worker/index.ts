@@ -171,11 +171,18 @@ app.get('/api/auth/me', async (c) => {
 
 // 4. Logout
 app.post('/api/auth/logout', (c) => {
-  deleteCookie(c, 'wedding_session', { 
+  const cookieOptions: any = {
     path: '/',
     secure: true,
     sameSite: 'None'
-  });
+  };
+
+  const hostname = new URL(c.req.url).hostname;
+  if (hostname.endsWith('eventframe.io')) {
+    cookieOptions.domain = '.eventframe.io';
+  }
+
+  deleteCookie(c, 'wedding_session', cookieOptions);
   return c.json({ success: true });
 });
 
