@@ -14,7 +14,8 @@ import {
   ExternalLink,
   Calendar,
   MapPin,
-  Users
+  Users,
+  MessageSquare
 } from 'lucide-react';
 import { Agency, WeddingEvent, TEMPLATES, TemplateId } from '../types';
 import RSVPManager from '../components/RSVPManager';
@@ -42,6 +43,7 @@ export default function Admin() {
   // Current Editor State
   const [editingEvent, setEditingEvent] = useState<Partial<WeddingEvent> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'moderation'>('aesthetic');
 
   useEffect(() => {
     if (workspace) {
@@ -442,162 +444,222 @@ export default function Admin() {
               </div>
 
               {/* Settings Sidebar */}
-              <div className="lg:col-span-4 space-y-8">
-                <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-[#C5A059]/10">
-                  <h2 className="text-2xl font-serif mb-8 flex items-center gap-3">
-                    <Settings className="w-6 h-6 text-[#C5A059]" />
-                    Configuration
-                  </h2>
-                  
-                  <div className="space-y-6">
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Domain Slug</label>
-                      <div className="flex items-center flex-wrap">
-                        <div className="bg-gray-100 px-4 py-4 rounded-l-2xl border border-r-0 border-gray-100 text-[10px] font-bold text-gray-400 select-none whitespace-nowrap">
-                          {agency?.domain || `${agency?.slug || 'agency'}.${window.location.host.split('.').slice(-2).join('.')}`}/
-                        </div>
-                        <input 
-                          type="text" 
-                          placeholder="wedding-slug"
-                          value={editingEvent?.slug || ''}
-                          onChange={(e) => setEditingEvent({ ...editingEvent!, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
-                          className="flex-1 px-5 py-4 rounded-r-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-mono text-sm min-w-[120px]"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Name</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. Summer Wedding 2026"
-                        value={editingEvent?.name || ''}
-                        onChange={(e) => setEditingEvent({ ...editingEvent!, name: e.target.value })}
-                        className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
-                      />
-                    </div>
+              <div className="lg:col-span-4">
+                <div className="sticky top-24 space-y-8">
+                  <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-[#C5A059]/10">
+                    <h2 className="text-2xl font-serif mb-8 flex items-center gap-3">
+                      <Settings className="w-6 h-6 text-[#C5A059]" />
+                      Configuration
+                    </h2>
                     
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-6">
                       <div>
-                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Groom / Partner A</label>
+                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Domain Slug</label>
+                        <div className="flex items-center flex-wrap">
+                          <div className="bg-gray-100 px-4 py-4 rounded-l-2xl border border-r-0 border-gray-100 text-[10px] font-bold text-gray-400 select-none whitespace-nowrap">
+                            {agency?.domain || `${agency?.slug || 'agency'}.${window.location.host.split('.').slice(-2).join('.')}`}/
+                          </div>
+                          <input 
+                            type="text" 
+                            placeholder="wedding-slug"
+                            value={editingEvent?.slug || ''}
+                            onChange={(e) => setEditingEvent({ ...editingEvent!, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                            className="flex-1 px-5 py-4 rounded-r-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-mono text-sm min-w-[120px]"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Name</label>
                         <input 
                           type="text" 
-                          value={editingEvent?.groom_name || ''}
-                          onChange={(e) => setEditingEvent({ ...editingEvent!, groom_name: e.target.value })}
+                          placeholder="e.g. Summer Wedding 2026"
+                          value={editingEvent?.name || ''}
+                          onChange={(e) => setEditingEvent({ ...editingEvent!, name: e.target.value })}
                           className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
                         />
                       </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Groom / Partner A</label>
+                          <input 
+                            type="text" 
+                            value={editingEvent?.groom_name || ''}
+                            onChange={(e) => setEditingEvent({ ...editingEvent!, groom_name: e.target.value })}
+                            className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Bride / Partner B</label>
+                          <input 
+                            type="text" 
+                            value={editingEvent?.bride_name || ''}
+                            onChange={(e) => setEditingEvent({ ...editingEvent!, bride_name: e.target.value })}
+                            className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
+                          />
+                        </div>
+                      </div>
+
                       <div>
-                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Bride / Partner B</label>
+                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Date</label>
+                        <input 
+                          type="date" 
+                          value={editingEvent?.wedding_date || ''}
+                          onChange={(e) => setEditingEvent({ ...editingEvent!, wedding_date: e.target.value })}
+                          className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Location</label>
                         <input 
                           type="text" 
-                          value={editingEvent?.bride_name || ''}
-                          onChange={(e) => setEditingEvent({ ...editingEvent!, bride_name: e.target.value })}
+                          value={editingEvent?.location || ''}
+                          onChange={(e) => setEditingEvent({ ...editingEvent!, location: e.target.value })}
                           className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
                         />
                       </div>
                     </div>
 
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Date</label>
-                      <input 
-                        type="date" 
-                        value={editingEvent?.wedding_date || ''}
-                        onChange={(e) => setEditingEvent({ ...editingEvent!, wedding_date: e.target.value })}
-                        className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Location</label>
-                      <input 
-                        type="text" 
-                        value={editingEvent?.location || ''}
-                        onChange={(e) => setEditingEvent({ ...editingEvent!, location: e.target.value })}
-                        className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
-                      />
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="w-full mt-10 bg-[#C5A059] text-white py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-[#B38D45] transition-all shadow-xl active:scale-95 disabled:opacity-50"
-                  >
-                    {isSaving ? 'Synchronizing...' : 'Save and Deploy'}
-                    <Save className="w-5 h-5" />
-                  </button>
-                </section>
+                    <button 
+                      onClick={handleSave}
+                      disabled={isSaving}
+                      className="w-full mt-10 bg-[#C5A059] text-white py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-[#B38D45] transition-all shadow-xl active:scale-95 disabled:opacity-50"
+                    >
+                      {isSaving ? 'Synchronizing...' : 'Save and Deploy'}
+                      <Save className="w-5 h-5" />
+                    </button>
+                  </section>
+                </div>
               </div>
 
-              {/* Theme Selection */}
-              <div className="lg:col-span-8">
-                <div className="mb-8 flex items-center justify-between">
-                  <h2 className="text-3xl font-serif">Selected Aesthetic</h2>
-                  <span className="text-xs font-bold uppercase tracking-widest text-[#C5A059] bg-[#C5A059]/10 px-4 py-2 rounded-full">
-                    {TEMPLATES.length} Art Styles
-                  </span>
+              {/* Management Tabs */}
+              <div className="lg:col-span-8 space-y-12">
+                <div className="flex flex-wrap gap-4 p-1 bg-white rounded-3xl border border-[#C5A059]/10 w-fit">
+                  <button 
+                    onClick={() => setActiveEditorTab('aesthetic')}
+                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+                      activeEditorTab === 'aesthetic' ? 'bg-[#C5A059] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Layout className="w-4 h-4" />
+                      Aesthetic
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => setActiveEditorTab('rsvp')}
+                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+                      activeEditorTab === 'rsvp' ? 'bg-[#C5A059] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                       <Users className="w-4 h-4" />
+                       Guest Responses
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => setActiveEditorTab('moderation')}
+                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+                      activeEditorTab === 'moderation' ? 'bg-[#C5A059] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                       <MessageSquare className="w-4 h-4" />
+                       Moderation
+                    </div>
+                  </button>
                 </div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-20">
-                  {TEMPLATES.map((t) => (
-                    <button 
-                      key={t.id}
-                      onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
-                      className={`relative overflow-hidden rounded-3xl border-2 transition-all group text-left
-                        ${editingEvent?.theme_id === t.id ? 'border-[#C5A059] shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
-                      `}
-                    >
-                      <div className={`${t.colors.background} ${t.colors.text} p-8 rounded-[calc(1.5rem-4px)] min-h-[240px] flex flex-col justify-between`}>
-                        <div>
-                          <div className={`w-10 h-10 rounded-xl ${t.colors.accent} bg-opacity-10 mb-6 flex items-center justify-center`}>
-                            <Heart className="w-5 h-5 fill-current opacity-30" />
+
+                <div className="min-h-[600px]">
+                  <AnimatePresence mode="wait">
+                    {activeEditorTab === 'aesthetic' && (
+                      <motion.div
+                        key="aesthetic"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="space-y-8"
+                      >
+                        <div className="mb-8 flex items-center justify-between">
+                          <div>
+                            <h2 className="text-3xl font-serif">Selected Aesthetic</h2>
+                            <p className="text-gray-500">Choose the visual style for your wedding display.</p>
                           </div>
-                          <h4 className={`text-2xl font-bold mb-2 ${t.colors.headerText}`}>{t.name}</h4>
-                          <p className="text-sm opacity-60 leading-relaxed max-w-[200px]">{t.description}</p>
+                          <span className="text-xs font-bold uppercase tracking-widest text-[#C5A059] bg-[#C5A059]/10 px-4 py-2 rounded-full">
+                            {TEMPLATES.length} Art Styles
+                          </span>
                         </div>
                         
-                        <div className="flex gap-2 mt-6">
-                          <div className={`w-4 h-4 rounded-full ${t.colors.accent.split(' ')[0].replace('text-', 'bg-') || 'bg-[#C5A059]'}`} />
-                          <div className={`w-4 h-4 rounded-full ${t.colors.border.split(' ')[0].replace('border-', 'bg-') || 'bg-gray-200'} opacity-50`} />
-                        </div>
-                      </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-20">
+                          {TEMPLATES.map((t) => (
+                            <button 
+                              key={t.id}
+                              onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
+                              className={`relative overflow-hidden rounded-3xl border-2 transition-all group text-left
+                                ${editingEvent?.theme_id === t.id ? 'border-[#C5A059] shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
+                              `}
+                            >
+                              <div className={`${t.colors.background} ${t.colors.text} p-8 rounded-[calc(1.5rem-4px)] min-h-[240px] flex flex-col justify-between`}>
+                                <div>
+                                  <div className={`w-10 h-10 rounded-xl ${t.colors.accent} bg-opacity-10 mb-6 flex items-center justify-center`}>
+                                    <Heart className="w-5 h-5 fill-current opacity-30" />
+                                  </div>
+                                  <h4 className={`text-2xl font-bold mb-2 ${t.colors.headerText}`}>{t.name}</h4>
+                                  <p className="text-sm opacity-60 leading-relaxed max-w-[200px]">{t.description}</p>
+                                </div>
+                                
+                                <div className="flex gap-2 mt-6">
+                                  <div className={`w-4 h-4 rounded-full ${t.colors.accent.split(' ')[0].replace('text-', 'bg-') || 'bg-[#C5A059]'}`} />
+                                  <div className={`w-4 h-4 rounded-full ${t.colors.border.split(' ')[0].replace('border-', 'bg-') || 'bg-gray-200'} opacity-50`} />
+                                </div>
+                              </div>
 
-                      {editingEvent?.theme_id === t.id && (
-                        <div className="absolute top-6 right-6 bg-[#C5A059] text-white p-2 rounded-full shadow-lg">
-                          <Save className="w-4 h-4" />
+                              {editingEvent?.theme_id === t.id && (
+                                <div className="absolute top-6 right-6 bg-[#C5A059] text-white p-2 rounded-full shadow-lg">
+                                  <Save className="w-4 h-4" />
+                                </div>
+                              )}
+                            </button>
+                          ))}
                         </div>
-                      )}
-                    </button>
-                  ))}
+                      </motion.div>
+                    )}
+
+                    {activeEditorTab === 'rsvp' && editingEvent?.id && (
+                      <motion.div
+                        key="rsvp"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                         <div className="mb-8">
+                           <h2 className="text-3xl font-serif">Guest Responses</h2>
+                           <p className="text-gray-500">Track attendances, meal choices, and dietary requirements.</p>
+                         </div>
+                         <RSVPManager projectId={editingEvent.id} />
+                      </motion.div>
+                    )}
+
+                    {activeEditorTab === 'moderation' && editingEvent?.id && (
+                      <motion.div
+                        key="moderation"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                         <div className="mb-8">
+                           <h2 className="text-3xl font-serif">Guest Messages</h2>
+                           <p className="text-gray-500">Moderate messages before they appear on the live display.</p>
+                         </div>
+                         <MessageModerator projectId={editingEvent.id} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
 
-              {/* RSVP Management */}
-              {editingEvent?.id && (
-                <div className="lg:col-span-12 mt-12 pt-12 border-t border-[#C5A059]/20">
-                  <div className="flex items-center justify-between mb-8">
-                    <div>
-                      <h2 className="text-3xl font-serif mb-2">Guest Responses</h2>
-                      <p className="text-gray-500">Track attendances, meal choices, and dietary requirements.</p>
-                    </div>
-                  </div>
-                  <RSVPManager projectId={editingEvent.id} />
-                </div>
-              )}
-
-              {/* Message Moderation */}
-              {editingEvent?.id && (
-                <div className="lg:col-span-12 mt-12 pt-12 border-t border-[#C5A059]/20">
-                  <div className="flex items-center justify-between mb-8">
-                    <div>
-                      <h2 className="text-3xl font-serif mb-2">Guest Messages</h2>
-                      <p className="text-gray-500">Moderate messages before they appear on the live display.</p>
-                    </div>
-                  </div>
-                  <MessageModerator projectId={editingEvent.id} />
-                </div>
-              )}
             </motion.div>
           )}
         </AnimatePresence>
