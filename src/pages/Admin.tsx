@@ -68,17 +68,20 @@ export default function Admin() {
     if (!user) return;
     setIsSavingAgency(true);
     const supabase = getSupabase();
-    const payload = {
-      ...agencyData,
-      user_id: user.id || user.sub,
-      created_at: agency?.created_at || new Date().toISOString()
-    };
-
+    
     let error;
     if (agency?.id) {
-       const { error: err } = await supabase.from('agencies').update(payload).eq('id', agency.id);
+       // Update: exclude id and created_at
+       const { created_at, id, ...updateData } = { ...agencyData } as any;
+       const { error: err } = await supabase.from('agencies').update(updateData).eq('id', agency.id);
        error = err;
     } else {
+       // Insert
+       const payload = {
+         ...agencyData,
+         user_id: user.id || user.sub,
+         created_at: new Date().toISOString()
+       };
        const { data, error: err } = await supabase.from('agencies').insert([payload]).select().single();
        if (data) setAgency(data);
        error = err;
@@ -130,11 +133,12 @@ export default function Admin() {
 
     let error;
     if (eventData.id) {
-      // Update
+      // Update: exclude immutable fields
+      const { id, created_at, ...updateData } = eventData as any;
       const { error: updateError } = await supabase
         .from('projects')
-        .update(eventData)
-        .eq('id', eventData.id);
+        .update(updateData)
+        .eq('id', id);
       error = updateError;
     } else {
       // Insert
