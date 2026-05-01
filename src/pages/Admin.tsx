@@ -12,7 +12,10 @@ import {
   Trash2,
   ExternalLink,
   Calendar,
-  MapPin
+  MapPin,
+  Users,
+  MessageSquare,
+  Layout
 } from 'lucide-react';
 import { Agency, WeddingEvent, TEMPLATES, TemplateId } from '../types';
 import RSVPManager from '../components/RSVPManager';
@@ -40,6 +43,7 @@ export default function Admin() {
   // Current Editor State
   const [editingEvent, setEditingEvent] = useState<Partial<WeddingEvent> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'moderation'>('aesthetic');
 
   useEffect(() => {
     if (workspace) {
@@ -449,13 +453,15 @@ export default function Admin() {
               {/* Settings Sidebar */}
               <div className="lg:col-span-4">
                 <div className="sticky top-24 space-y-8">
-                  <section className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-[#C5A059]/10">
-                    <h2 className="text-2xl font-serif mb-8 flex items-center gap-3">
-                      <Settings className="w-6 h-6 text-[#C5A059]" />
-                      Configuration
-                    </h2>
+                  <section className="bg-white rounded-[2.5rem] shadow-xl border border-[#C5A059]/10 flex flex-col max-h-[calc(100vh-120px)] overflow-hidden">
+                    <div className="p-8 pb-4">
+                      <h2 className="text-2xl font-serif flex items-center gap-3">
+                        <Settings className="w-6 h-6 text-[#C5A059]" />
+                        Configuration
+                      </h2>
+                    </div>
                     
-                    <div className="space-y-6">
+                    <div className="flex-1 overflow-y-auto px-8 py-4 space-y-6 custom-scrollbar">
                       <div>
                         <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Domain Slug</label>
                         <div className="flex items-center flex-wrap">
@@ -536,87 +542,144 @@ export default function Admin() {
                       </div>
                     </div>
 
-                    <button 
-                      onClick={handleSave}
-                      disabled={isSaving}
-                      className="w-full mt-10 bg-[#C5A059] text-white py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-[#B38D45] transition-all shadow-xl active:scale-95 disabled:opacity-50"
-                    >
-                      {isSaving ? 'Synchronizing...' : 'Save and Deploy'}
-                      <Save className="w-5 h-5" />
-                    </button>
+                    <div className="p-8 pt-4">
+                      <button 
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="w-full bg-[#C5A059] text-white py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-[#B38D45] transition-all shadow-xl active:scale-95 disabled:opacity-50"
+                      >
+                        {isSaving ? 'Synchronizing...' : 'Save and Deploy'}
+                        <Save className="w-5 h-5" />
+                      </button>
+                    </div>
                   </section>
                 </div>
               </div>
 
               {/* Management Sections */}
-              <div className="lg:col-span-8 space-y-24 pb-32">
-                {/* Aesthetic Selection Section */}
-                <section id="aesthetic" className="scroll-mt-24">
-                  <div className="mb-8 flex items-center justify-between">
-                    <div>
-                      <h2 className="text-3xl font-serif">Selected Aesthetic</h2>
-                      <p className="text-gray-500">Choose the visual style for your wedding display.</p>
+              <div className="lg:col-span-8 space-y-12">
+                <div className="flex flex-wrap gap-4 p-1 bg-white rounded-3xl border border-[#C5A059]/10 w-fit">
+                  <button 
+                    onClick={() => setActiveEditorTab('aesthetic')}
+                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+                      activeEditorTab === 'aesthetic' ? 'bg-[#C5A059] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Layout className="w-4 h-4" />
+                      Aesthetic
                     </div>
-                    <span className="text-xs font-bold uppercase tracking-widest text-[#C5A059] bg-[#C5A059]/10 px-4 py-2 rounded-full">
-                      {TEMPLATES.length} Art Styles
-                    </span>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    {TEMPLATES.map((t) => (
-                      <button 
-                        key={t.id}
-                        onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
-                        className={`relative overflow-hidden rounded-3xl border-2 transition-all group text-left
-                          ${editingEvent?.theme_id === t.id ? 'border-[#C5A059] shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
-                        `}
+                  </button>
+                  <button 
+                    onClick={() => setActiveEditorTab('rsvp')}
+                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+                      activeEditorTab === 'rsvp' ? 'bg-[#C5A059] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                       <Users className="w-4 h-4" />
+                       Guest Responses
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => setActiveEditorTab('moderation')}
+                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+                      activeEditorTab === 'moderation' ? 'bg-[#C5A059] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                       <MessageSquare className="w-4 h-4" />
+                       Moderation
+                    </div>
+                  </button>
+                </div>
+
+                <div className="min-h-[600px]">
+                  <AnimatePresence mode="wait">
+                    {activeEditorTab === 'aesthetic' && (
+                      <motion.div
+                        key="aesthetic"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="space-y-8"
                       >
-                        <div className={`${t.colors.background} ${t.colors.text} p-8 rounded-[calc(1.5rem-4px)] min-h-[240px] flex flex-col justify-between`}>
+                        <div className="mb-8 flex items-center justify-between">
                           <div>
-                            <div className={`w-10 h-10 rounded-xl ${t.colors.accent} bg-opacity-10 mb-6 flex items-center justify-center`}>
-                              <Heart className="w-5 h-5 fill-current opacity-30" />
-                            </div>
-                            <h4 className={`text-2xl font-bold mb-2 ${t.colors.headerText}`}>{t.name}</h4>
-                            <p className="text-sm opacity-60 leading-relaxed max-w-[200px]">{t.description}</p>
+                            <h2 className="text-3xl font-serif">Selected Aesthetic</h2>
+                            <p className="text-gray-500">Choose the visual style for your wedding display.</p>
                           </div>
-                          
-                          <div className="flex gap-2 mt-6">
-                            <div className={`w-4 h-4 rounded-full ${t.colors.accent.split(' ')[0].replace('text-', 'bg-') || 'bg-[#C5A059]'}`} />
-                            <div className={`w-4 h-4 rounded-full ${t.colors.border.split(' ')[0].replace('border-', 'bg-') || 'bg-gray-200'} opacity-50`} />
-                          </div>
+                          <span className="text-xs font-bold uppercase tracking-widest text-[#C5A059] bg-[#C5A059]/10 px-4 py-2 rounded-full">
+                            {TEMPLATES.length} Art Styles
+                          </span>
                         </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                          {TEMPLATES.map((t) => (
+                            <button 
+                              key={t.id}
+                              onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
+                              className={`relative overflow-hidden rounded-3xl border-2 transition-all group text-left
+                                ${editingEvent?.theme_id === t.id ? 'border-[#C5A059] shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
+                              `}
+                            >
+                              <div className={`${t.colors.background} ${t.colors.text} p-8 rounded-[calc(1.5rem-4px)] min-h-[240px] flex flex-col justify-between`}>
+                                <div>
+                                  <div className={`w-10 h-10 rounded-xl ${t.colors.accent} bg-opacity-10 mb-6 flex items-center justify-center`}>
+                                    <Heart className="w-5 h-5 fill-current opacity-30" />
+                                  </div>
+                                  <h4 className={`text-2xl font-bold mb-2 ${t.colors.headerText}`}>{t.name}</h4>
+                                  <p className="text-sm opacity-60 leading-relaxed max-w-[200px]">{t.description}</p>
+                                </div>
+                                
+                                <div className="flex gap-2 mt-6">
+                                  <div className={`w-4 h-4 rounded-full ${t.colors.accent.split(' ')[0].replace('text-', 'bg-') || 'bg-[#C5A059]'}`} />
+                                  <div className={`w-4 h-4 rounded-full ${t.colors.border.split(' ')[0].replace('border-', 'bg-') || 'bg-gray-200'} opacity-50`} />
+                                </div>
+                              </div>
 
-                        {editingEvent?.theme_id === t.id && (
-                          <div className="absolute top-6 right-6 bg-[#C5A059] text-white p-2 rounded-full shadow-lg">
-                            <Save className="w-4 h-4" />
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </section>
+                              {editingEvent?.theme_id === t.id && (
+                                <div className="absolute top-6 right-6 bg-[#C5A059] text-white p-2 rounded-full shadow-lg">
+                                  <Save className="w-4 h-4" />
+                                </div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
 
-                {/* RSVP Section */}
-                {editingEvent?.id && (
-                  <section id="rsvp" className="pt-24 border-t border-[#C5A059]/20 scroll-mt-24">
-                    <div className="mb-8">
-                      <h2 className="text-3xl font-serif">Guest Responses</h2>
-                      <p className="text-gray-500">Track attendances, meal choices, and dietary requirements.</p>
-                    </div>
-                    <RSVPManager projectId={editingEvent.id} />
-                  </section>
-                )}
+                    {activeEditorTab === 'rsvp' && editingEvent?.id && (
+                      <motion.div
+                        key="rsvp"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                         <div className="mb-8">
+                           <h2 className="text-3xl font-serif">Guest Responses</h2>
+                           <p className="text-gray-500">Track attendances, meal choices, and dietary requirements.</p>
+                         </div>
+                         <RSVPManager projectId={editingEvent.id} />
+                      </motion.div>
+                    )}
 
-                {/* Moderation Section */}
-                {editingEvent?.id && (
-                  <section id="moderation" className="pt-24 border-t border-[#C5A059]/20 scroll-mt-24">
-                    <div className="mb-8">
-                      <h2 className="text-3xl font-serif">Guest Messages</h2>
-                      <p className="text-gray-500">Moderate messages before they appear on the live display.</p>
-                    </div>
-                    <MessageModerator projectId={editingEvent.id} />
-                  </section>
-                )}
+                    {activeEditorTab === 'moderation' && editingEvent?.id && (
+                      <motion.div
+                        key="moderation"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                         <div className="mb-8">
+                           <h2 className="text-3xl font-serif">Guest Messages</h2>
+                           <p className="text-gray-500">Moderate messages before they appear on the live display.</p>
+                         </div>
+                         <MessageModerator projectId={editingEvent.id} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
 
             </motion.div>
