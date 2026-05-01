@@ -7,28 +7,23 @@ import { getSupabase } from '../lib/supabase';
 import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 import { getAgencyById } from '../lib/agency';
+import { useWorkspace } from '../lib/WorkspaceContext';
 
 export default function Display() {
+  const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
   const { projectId, slug } = useParams();
   const [project, setProject] = useState<WeddingEvent | null>(null);
   const [agency, setAgency] = useState<Agency | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchParams] = useSearchParams();
   const [showQR, setShowQR] = useState(false);
-  const [isLoading, setIsLoading] = useState(!!projectId || !!slug);
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
-  
-  // Fallback defaults if no event loaded
-  const templateIdFromUrl = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
-  
-  const activeTemplateId = project?.theme_id || templateIdFromUrl;
-  const template = TEMPLATES.find(t => t.id === activeTemplateId) || TEMPLATES[0];
 
-  const groom = project?.groom_name || searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
-  const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
-
-  // Derive guest URL
-  const guestUrl = window.location.origin + (slug ? `/${slug}/guest` : project?.slug ? `/${project.slug}/guest` : '/guest' + window.location.search);
+  useEffect(() => {
+    if (isLoadingWorkspace) return;
+    loadProject(projectId, slug);
+  }, [projectId, slug, isLoadingWorkspace, workspace]);
 
   const loadProject = async (id?: string, slugName?: string) => {
     try {
@@ -39,7 +34,12 @@ export default function Display() {
         query = query.eq('id', id);
       } else if (slugName) {
         query = query.eq('slug', slugName);
+        // If we are on a workspace subdomain, filter by that agency
+        if (workspace) {
+          query = query.eq('agency_id', workspace.id);
+        }
       } else {
+        setIsLoading(false);
         return;
       }
 
@@ -60,11 +60,17 @@ export default function Display() {
     }
   };
 
-  useEffect(() => {
-    if (projectId || slug) {
-      loadProject(projectId, slug);
-    }
-  }, [projectId, slug]);
+  // Fallback defaults if no event loaded
+  const templateIdFromUrl = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
+  
+  const activeTemplateId = project?.theme_id || templateIdFromUrl;
+  const template = TEMPLATES.find(t => t.id === activeTemplateId) || TEMPLATES[0];
+
+  const groom = project?.groom_name || searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
+  const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
+
+  // Derive guest URL
+  const guestUrl = window.location.origin + (slug ? `/${slug}/guest` : project?.slug ? `/${project.slug}/guest` : '/guest' + window.location.search);
 
   useEffect(() => {
     const targetId = project?.id || projectId;

@@ -158,7 +158,8 @@ export default function Admin() {
       location: 'Venue Name',
       theme_id: 'minimal_luxury',
       agency_id: agency.id,
-      access_password: Math.random().toString(36).substring(2, 8).toUpperCase()
+      access_password: Math.random().toString(36).substring(2, 8).toUpperCase(),
+      auto_approve_messages: false
     };
     setEditingEvent(newEvent);
     setView('editor');
@@ -590,12 +591,25 @@ export default function Admin() {
                         const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                         const dayEvents = events.filter(e => e.wedding_date === dateStr);
                         const isToday = new Date().toDateString() === new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day).toDateString();
+                        const hasEvents = dayEvents.length > 0;
 
                         days.push(
-                          <div key={day} className="bg-white min-h-[140px] p-4 group transition-colors hover:bg-[#FDFCF0]/30 relative">
-                            <span className={`text-[10px] font-black tracking-widest mb-3 block ${isToday ? 'bg-[#C5A059] text-white w-6 h-6 rounded-full flex items-center justify-center -ml-1 -mt-1' : 'text-gray-300 group-hover:text-[#C5A059]'}`}>
-                              {day}
-                            </span>
+                          <div key={day} className={`bg-white min-h-[140px] p-4 group transition-colors relative ${hasEvents ? 'hover:bg-[#FDFCF0]/50' : 'hover:bg-gray-50'}`}>
+                            <div className="flex items-center justify-between mb-3">
+                              <span className={`text-[10px] font-black tracking-widest flex items-center justify-center ${isToday ? 'bg-[#C5A059] text-white w-6 h-6 rounded-full -ml-1 -mt-1' : 'text-gray-300 group-hover:text-[#C5A059]'}`}>
+                                {day}
+                              </span>
+                              {hasEvents && (
+                                <div className="flex gap-0.5">
+                                  {dayEvents.slice(0, 3).map((_, i) => (
+                                    <div key={i} className="w-1.5 h-1.5 rounded-full bg-[#C5A059] shadow-sm animate-pulse" />
+                                  ))}
+                                  {dayEvents.length > 3 && (
+                                    <span className="text-[8px] font-black text-[#C5A059] ml-0.5">+{dayEvents.length - 3}</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                             <div className="space-y-1">
                               {dayEvents.map(event => (
                                 <button
@@ -729,6 +743,20 @@ export default function Admin() {
                           onChange={(e) => setEditingEvent({ ...editingEvent!, access_password: e.target.value })}
                           className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
                         />
+                      </div>
+
+                      <div className="flex items-center gap-3 p-4 bg-[#C5A059]/5 rounded-2xl border border-[#C5A059]/10">
+                        <input 
+                          id="auto_approve"
+                          type="checkbox" 
+                          checked={editingEvent?.auto_approve_messages || false}
+                          onChange={(e) => setEditingEvent({ ...editingEvent!, auto_approve_messages: e.target.checked })}
+                          className="w-5 h-5 rounded border-gray-300 text-[#C5A059] focus:ring-[#C5A059]"
+                        />
+                        <label htmlFor="auto_approve" className="text-xs font-bold text-[#2D2424] cursor-pointer">
+                          Auto-approve guest messages
+                          <p className="text-[10px] text-gray-400 font-normal">Messages will appear instantly on display</p>
+                        </label>
                       </div>
                     </div>
 

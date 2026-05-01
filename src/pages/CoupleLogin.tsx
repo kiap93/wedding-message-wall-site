@@ -1,15 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Heart, Lock, User, AlertCircle } from 'lucide-react';
+import { Heart, Lock, User, AlertCircle, Globe } from 'lucide-react';
 import { getSupabase } from '../lib/supabase';
+import { useWorkspace } from '../lib/WorkspaceContext';
 
 export default function CoupleLogin() {
+  const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
   const [slug, setSlug] = useState('');
+  const [agencySlug, setAgencySlug] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+
+  // If we're on an agency subdomain, use its slug
+  useEffect(() => {
+    if (workspace) {
+      setAgencySlug(workspace.slug);
+    }
+  }, [workspace]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,27 +28,60 @@ export default function CoupleLogin() {
 
     try {
       const supabase = getSupabase();
-      const { data, error: fetchError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('slug', slug)
-        .single();
+      
+      let query = supabase.from('projects').select('*').eq('slug', slug);
+
+      // If we have a workspace context, filter by that agency
+      if (workspace) {
+        query = query.eq('agency_id', workspace.id);
+      } else if (agencySlug) {
+        // If on root domain, we need to find the agency first
+        const { data: agencyData } = await supabase
+          .from('agencies')
+          .select('id')
+          .eq('slug', agencySlug)
+          .single();
+        
+        if (!agencyData) {
+          setError('Agency not found. Please check the agency name.');
+          setIsLoading(false);
+          return;
+        }
+        query = query.eq('agency_id', agencyData.id);
+      } else {
+        setError('Please provide your Agency identifier.');
+        setIsLoading(false);
+        return;
+      }
+
+      const { data, error: fetchError } = await query.single();
 
       if (fetchError || !data) {
-        setError('Event not found. Please check your slug.');
+        setError('Event not found within this agency. Please check your slug.');
         setIsLoading(false);
         return;
       }
 
       if (data.access_password && data.access_password === password) {
         // Successful login
-        // Store session in localStorage for this specific event
         localStorage.setItem(`wedding_auth_${data.id}`, JSON.stringify({
           eventId: data.id,
           authenticated: true,
           timestamp: Date.now()
         }));
-        navigate(`/couple/${data.id}`);
+        
+        // Use the agency subdomain if possible for the dashboard
+        const hostParts = window.location.host.split('.');
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        
+        if (!workspace && !isLocalhost && hostParts.length <= 2) {
+          // On root domain, redirect to subdomain dashboard
+          const protocol = window.location.protocol;
+          const baseDomain = hostParts.slice(-2).join('.');
+          window.location.href = `${protocol}//${agencySlug}.${baseDomain}/${data.slug}/dashboard`;
+        } else {
+          navigate(`/${data.slug}/dashboard`);
+        }
       } else {
         setError('Incorrect password. Please try again.');
       }
@@ -48,6 +91,14 @@ export default function CoupleLogin() {
       setIsLoading(false);
     }
   };
+
+  if (isLoadingWorkspace) {
+    return (
+      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-6">
@@ -61,10 +112,31 @@ export default function CoupleLogin() {
             <Heart className="w-8 h-8 text-[#C5A059] fill-current" />
           </div>
           <h1 className="text-3xl font-serif text-[#2D2424] mb-2">Couple Login</h1>
-          <p className="text-gray-500 font-medium tracking-wide">Enter your event details to manage your wedding</p>
+          {workspace ? (
+            <p className="text-gray-500 font-medium tracking-wide">Enter your event details for <span className="text-[#C5A059] font-bold">{workspace.name}</span></p>
+          ) : (
+            <p className="text-gray-500 font-medium tracking-wide">Enter your agency and event details</p>
+          )}
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
+          {!workspace && (
+            <div className="space-y-2">
+              <label className="text-[10px] uppercase font-black tracking-widest text-gray-400 ml-1">Agency Name / Slug</label>
+              <div className="relative">
+                <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300" />
+                <input 
+                  required
+                  type="text"
+                  placeholder="e.g. elegant-weddings"
+                  value={agencySlug}
+                  onChange={(e) => setAgencySlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  className="w-full pl-12 pr-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
+                />
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <label className="text-[10px] uppercase font-black tracking-widest text-gray-400 ml-1">Event Slug</label>
             <div className="relative">

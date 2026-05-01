@@ -61,7 +61,7 @@ export async function updateMessageStatus(messageId: string, status: 'approved' 
   }
 }
 
-export async function postMessage(name: string, message: string, projectId?: string): Promise<void> {
+export async function postMessage(name: string, message: string, projectId?: string, autoApprove: boolean = false): Promise<void> {
   try {
     const supabase = getSupabase();
     const { error } = await supabase
@@ -72,7 +72,7 @@ export async function postMessage(name: string, message: string, projectId?: str
           message, 
           timestamp: Date.now(),
           project_id: projectId,
-          status: 'pending'
+          status: autoApprove ? 'approved' : 'pending'
         }
       ]);
     

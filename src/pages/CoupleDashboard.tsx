@@ -8,14 +8,17 @@ import {
   ExternalLink,
   Layout,
   Users,
-  MessageSquare
+  MessageSquare,
+  Share2
 } from 'lucide-react';
 import { WeddingEvent, TEMPLATES, TemplateId } from '../types';
 import RSVPManager from '../components/RSVPManager';
 import MessageModerator from '../components/MessageModerator';
 import { getSupabase } from '../lib/supabase';
+import { useWorkspace } from '../lib/WorkspaceContext';
 
 export default function CoupleDashboard() {
+  const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
   const { eventId, slug: urlSlug } = useParams<{ eventId?: string; slug?: string }>();
   const navigate = useNavigate();
   const [event, setEvent] = useState<WeddingEvent | null>(null);
@@ -24,10 +27,9 @@ export default function CoupleDashboard() {
   const [activeTab, setActiveTab] = useState<'aesthetic' | 'rsvp' | 'moderation'>('aesthetic');
 
   useEffect(() => {
+    if (isLoadingWorkspace) return;
+
     // Check local auth - try both possible auth keys
-    const authKey = eventId ? `wedding_auth_${eventId}` : (event?.id ? `wedding_auth_${event.id}` : null);
-    
-    // We'll check auth after loading the event if we only have the slug
     if (eventId) {
       const auth = localStorage.getItem(`wedding_auth_${eventId}`);
       if (!auth) {
@@ -44,7 +46,7 @@ export default function CoupleDashboard() {
     }
 
     loadEvent();
-  }, [eventId, urlSlug]);
+  }, [eventId, urlSlug, isLoadingWorkspace, workspace]);
 
   async function loadEvent() {
     setIsLoading(true);
@@ -55,6 +57,10 @@ export default function CoupleDashboard() {
       query = query.eq('id', eventId);
     } else if (urlSlug) {
       query = query.eq('slug', urlSlug);
+      // If we are on a workspace subdomain, filter by that agency to prevent collisions
+      if (workspace) {
+        query = query.eq('agency_id', workspace.id);
+      }
     } else {
       setIsLoading(false);
       return;
@@ -132,6 +138,18 @@ export default function CoupleDashboard() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">
+            <button 
+              onClick={() => {
+                const guestUrl = window.location.origin + '/' + event.slug;
+                const text = `We're getting married! Check out our wedding site and RSVP here: ${guestUrl}`;
+                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+              }}
+              className="px-4 sm:px-6 py-2 sm:py-2.5 bg-[#25D366]/10 text-[#25D366] rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#25D366]/20 transition-all"
+            >
+              <Share2 className="w-3 h-3" />
+              <span className="hidden sm:inline">Share to WhatsApp</span>
+              <span className="sm:hidden">Share</span>
+            </button>
             <a 
               href={`/${event.slug}`} 
               target="_blank" 

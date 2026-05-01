@@ -9,12 +9,14 @@ import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate, Agency } from '..
 import { QRCodeSVG } from 'qrcode.react';
 import { getSupabase } from '../lib/supabase';
 import { getAgencyById } from '../lib/agency';
+import { useWorkspace } from '../lib/WorkspaceContext';
 
 export default function Guest() {
+  const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
   const { projectId, slug } = useParams();
   const [project, setProject] = useState<WeddingEvent | null>(null);
   const [agency, setAgency] = useState<Agency | null>(null);
-  const [isLoading, setIsLoading] = useState(!!projectId || !!slug);
+  const [isLoading, setIsLoading] = useState(true);
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -35,10 +37,13 @@ export default function Guest() {
   const currentUrl = window.location.origin + window.location.pathname + window.location.search;
 
   useEffect(() => {
+    if (isLoadingWorkspace) return;
     if (projectId || slug) {
       loadProject(projectId, slug);
+    } else {
+      setIsLoading(false);
     }
-  }, [projectId, slug]);
+  }, [projectId, slug, isLoadingWorkspace, workspace]);
 
   const loadProject = async (id?: string, slugName?: string) => {
     try {
@@ -49,6 +54,10 @@ export default function Guest() {
         query = query.eq('id', id);
       } else if (slugName) {
         query = query.eq('slug', slugName);
+        // Agency context
+        if (workspace) {
+          query = query.eq('agency_id', workspace.id);
+        }
       } else {
         return;
       }
@@ -93,7 +102,7 @@ export default function Guest() {
 
     try {
       const targetId = project?.id || projectId;
-      await postMessage(name, message, targetId);
+      await postMessage(name, message, targetId, !!project?.auto_approve_messages);
       confetti({
         particleCount: 150,
         spread: 70,
