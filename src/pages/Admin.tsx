@@ -95,8 +95,32 @@ export default function Admin() {
     if (error) {
       alert('Error saving organization: ' + error.message);
     } else {
-      // Refresh workspace data
-      window.location.reload();
+      // If slug changed, we need to redirect to the new subdomain URL
+      const newSlug = agencyData.slug;
+      if (newSlug && newSlug !== agency?.slug) {
+        const protocol = window.location.protocol;
+        const hostParts = window.location.host.split('.');
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        
+        let baseDomain;
+        if (isLocalhost) {
+          baseDomain = window.location.host;
+        } else {
+          baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
+        }
+
+        const token = localStorage.getItem('wedding_session_token');
+        
+        // Only redirect if not localhost or if we want to simulate subdomains
+        if (!isLocalhost || hostParts.length > 1) {
+          window.location.href = `${protocol}//${newSlug}.${baseDomain}/admin${token ? `?token=${token}` : ''}`;
+        } else {
+          window.location.reload();
+        }
+      } else {
+        // Refresh workspace data
+        window.location.reload();
+      }
     }
     setIsSavingAgency(false);
   };

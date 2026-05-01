@@ -96,6 +96,7 @@ export default function App() {
             {/* Couple Login & Dashboard */}
             <Route path="/couple/login" element={<CoupleLogin />} />
             <Route path="/couple/:eventId" element={<CoupleDashboard />} />
+            <Route path="/:slug/dashboard" element={<CoupleDashboard />} />
             
             {/* New Event Slug based routes */}
             <Route path="/:slug/display" element={<Display />} />
