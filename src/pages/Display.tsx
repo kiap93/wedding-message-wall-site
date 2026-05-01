@@ -64,11 +64,15 @@ export default function Display() {
     if (projectId || slug) {
       loadProject(projectId, slug);
     }
-    
+  }, [projectId, slug]);
+
+  useEffect(() => {
+    const targetId = project?.id || projectId;
+    if (!targetId) return;
+
     // Initial fetch
     const loadInitialMessages = async () => {
       try {
-        const targetId = project?.id || projectId;
         const data = await fetchMessages(targetId);
         setMessages(data);
       } catch (err) {
@@ -82,16 +86,17 @@ export default function Display() {
     let channel: any = null;
     try {
       const supabase = getSupabase();
-      const targetId = project?.id || projectId;
+      
+      // Use a unique channel name per project to avoid leaks
       channel = supabase
-        .channel(`event-messages-${targetId || 'default'}`)
+        .channel(`messages-realtime-${targetId}`)
         .on(
           'postgres_changes',
           {
-            event: '*', // Listen to INSERT and UPDATE
+            event: '*', // Listen to INSERT, UPDATE, DELETE
             schema: 'public',
             table: 'messages',
-            filter: targetId ? `project_id=eq.${targetId}` : undefined
+            filter: `project_id=eq.${targetId}`
           },
           (payload) => {
             const newMessage = payload.new as Message;
@@ -101,31 +106,32 @@ export default function Display() {
               setMessages((prev) => {
                 const filtered = prev.filter(m => m.id !== newMessage.id);
                 const updated = [newMessage, ...filtered];
+                // Keep only unique and sort
                 const unique = Array.from(new Map(updated.map(m => [m.id, m])).values());
                 return unique.sort((a, b) => b.timestamp - a.timestamp).slice(0, 50);
               });
-            } else if (eventType === 'UPDATE') {
-              // If it was approved but now it's not (rejected/pending), remove it
-              setMessages((prev) => prev.filter(m => m.id !== newMessage.id));
+            } else if (eventType === 'UPDATE' || eventType === 'DELETE') {
+              // If it's no longer approved or was deleted, remove it immediately
+              setMessages((prev) => prev.filter(m => m.id !== (newMessage.id || payload.old.id)));
             }
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('Successfully subscribed to real-time messages for', targetId);
+          }
+        });
     } catch (err) {
       console.error('Realtime subscription error:', err);
     }
 
     return () => {
       if (channel) {
-        try {
-          const supabase = getSupabase();
-          supabase.removeChannel(channel);
-        } catch (err) {
-          // Ignore errors on cleanup
-        }
+        const supabase = getSupabase();
+        supabase.removeChannel(channel);
       }
     };
-  }, [projectId, slug, project?.id]);
+  }, [project?.id, projectId]);
 
   if (isLoading) {
     return (
