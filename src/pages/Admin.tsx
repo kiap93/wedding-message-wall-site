@@ -46,11 +46,28 @@ export default function Admin() {
   const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'moderation'>('aesthetic');
 
   useEffect(() => {
-    if (workspace) {
+    if (!isLoadingWorkspace && workspace && user) {
+      const userId = user.id || user.sub;
+      if (workspace.user_id !== userId) {
+        console.warn('Unauthorized access to workspace:', workspace.slug);
+        
+        // Redirect to root admin which will then redirect to their correct workspace
+        const hostParts = window.location.host.split('.');
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        
+        if (!isLocalhost && hostParts.length > 2) {
+          const protocol = window.location.protocol;
+          const baseDomain = hostParts.slice(-2).join('.');
+          window.location.href = `${protocol}//${baseDomain}/admin`;
+        } else {
+          navigate('/login');
+        }
+        return;
+      }
       setAgency(workspace);
       fetchEvents(workspace.id);
     }
-  }, [workspace]);
+  }, [workspace, isLoadingWorkspace, user, navigate]);
 
   const fetchEvents = async (agencyId: string) => {
     setIsLoadingEvents(true);
