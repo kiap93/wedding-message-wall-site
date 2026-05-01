@@ -21,6 +21,7 @@ export default function RSVPForm({ projectId, template, onSuccess }: RSVPFormPro
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSuccess, setIsSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,6 +34,7 @@ export default function RSVPForm({ projectId, template, onSuccess }: RSVPFormPro
         project_id: projectId,
         attending: formData.attending
       });
+      setIsSuccess(true);
       onSuccess();
     } catch (err: any) {
       setError(err.message || 'Failed to submit RSVP');
@@ -50,6 +52,24 @@ export default function RSVPForm({ projectId, template, onSuccess }: RSVPFormPro
       default: return 'bg-[#C5A059] text-white hover:bg-[#B38D45]';
     }
   };
+
+  if (isSuccess) {
+    return (
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="flex flex-col items-center justify-center py-12 text-center"
+      >
+        <div className={`w-20 h-20 rounded-full ${template.colors.accent} bg-opacity-20 flex items-center justify-center mb-6`}>
+          <Check className={`w-10 h-10 ${template.colors.text}`} />
+        </div>
+        <h3 className={`text-2xl font-serif mb-2 ${template.colors.text}`}>Thank You!</h3>
+        <p className={`opacity-70 max-w-xs mx-auto ${template.colors.text}`}>
+          Your RSVP has been successfully submitted. We can't wait to celebrate with you!
+        </p>
+      </motion.div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">

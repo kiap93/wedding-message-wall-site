@@ -11,11 +11,13 @@ import {
   Settings, 
   Trash2,
   ExternalLink,
-  Calendar,
+  Calendar as CalendarIcon,
   MapPin,
   Users,
   MessageSquare,
-  Layout
+  Layout,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Agency, WeddingEvent, TEMPLATES, TemplateId } from '../types';
 import RSVPManager from '../components/RSVPManager';
@@ -29,7 +31,7 @@ import { useUser } from '../lib/UserContext';
 export default function Admin() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
   const { user } = useUser();
-  const [view, setView] = useState<'list' | 'editor' | 'agency_settings'>('list');
+  const [view, setView] = useState<'list' | 'editor' | 'agency_settings' | 'calendar'>('list');
   const navigate = useNavigate();
 
   // Agency
@@ -39,6 +41,9 @@ export default function Admin() {
   // Event List
   const [events, setEvents] = useState<WeddingEvent[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(true);
+
+  // Calendar State
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
   // Current Editor State
   const [editingEvent, setEditingEvent] = useState<Partial<WeddingEvent> | null>(null);
@@ -371,13 +376,33 @@ export default function Admin() {
                   <h2 className="text-4xl font-serif mb-2 text-[#2D2424]">Organization Events</h2>
                   <p className="text-gray-500">Manage white-label wedding events and guest experiences.</p>
                 </div>
-                <button 
-                  onClick={handleCreateNew}
-                  className="bg-[#C5A059] text-white px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 hover:bg-[#B38D45] transition-all shadow-xl active:scale-95"
-                >
-                  <Plus className="w-5 h-5" />
-                  New Event
-                </button>
+                <div className="flex items-center gap-4">
+                  <div className="flex p-1 bg-white rounded-2xl border border-[#C5A059]/10 shadow-sm">
+                    <button 
+                      onClick={() => setView('list')}
+                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                        view === 'list' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      List
+                    </button>
+                    <button 
+                      onClick={() => setView('calendar')}
+                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                        view === 'calendar' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      Calendar
+                    </button>
+                  </div>
+                  <button 
+                    onClick={handleCreateNew}
+                    className="bg-[#C5A059] text-white px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 hover:bg-[#B38D45] transition-all shadow-xl active:scale-95"
+                  >
+                    <Plus className="w-5 h-5" />
+                    New Event
+                  </button>
+                </div>
               </div>
 
               {isLoadingEvents ? (
@@ -433,11 +458,11 @@ export default function Admin() {
                           {agency?.domain || `${agency?.slug}.eventframe.io`} / {event.slug}
                         </p>
 
-                        <div className="space-y-3 text-sm text-gray-500 mb-8">
-                          <div className="flex items-center gap-2">
-                            <Calendar className="w-3.5 h-3.5 opacity-50" />
-                            <span>{new Date(event.wedding_date).toLocaleDateString(undefined, { dateStyle: 'long' })}</span>
-                          </div>
+                          <div className="space-y-3 text-sm text-gray-500 mb-8">
+                            <div className="flex items-center gap-2">
+                              <CalendarIcon className="w-3.5 h-3.5 opacity-50" />
+                              <span>{new Date(event.wedding_date).toLocaleDateString(undefined, { dateStyle: 'long' })}</span>
+                            </div>
                           <div className="flex items-center gap-2">
                             <MapPin className="w-3.5 h-3.5 opacity-50" />
                             <span className="truncate">{event.location}</span>
@@ -471,6 +496,130 @@ export default function Admin() {
                   ))}
                 </div>
               )}
+            </motion.div>
+          ) : view === 'calendar' ? (
+            <motion.div
+              key="calendar"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-8"
+            >
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-4xl font-serif mb-2 text-[#2D2424]">Event Calendar</h2>
+                  <p className="text-gray-500">Monthly overview of all scheduled celebrations.</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex p-1 bg-white rounded-2xl border border-[#C5A059]/10 shadow-sm">
+                    <button 
+                      onClick={() => setView('list')}
+                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                        view === 'list' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      List
+                    </button>
+                    <button 
+                      onClick={() => setView('calendar')}
+                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                        view === 'calendar' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      Calendar
+                    </button>
+                  </div>
+                  <button 
+                    onClick={handleCreateNew}
+                    className="bg-[#C5A059] text-white px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 hover:bg-[#B38D45] transition-all shadow-xl active:scale-95"
+                  >
+                    <Plus className="w-5 h-5" />
+                    New Event
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-[3rem] shadow-xl border border-[#C5A059]/10 overflow-hidden">
+                {/* Calendar Header */}
+                <div className="p-8 flex items-center justify-between border-b border-gray-100">
+                  <h3 className="text-2xl font-serif">
+                    {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                  </h3>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))}
+                      className="p-3 hover:bg-gray-50 rounded-2xl transition-colors border border-gray-100"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button 
+                      onClick={() => setCurrentMonth(new Date())}
+                      className="px-6 py-3 hover:bg-gray-50 rounded-2xl transition-colors border border-gray-100 text-[10px] font-black uppercase tracking-widest"
+                    >
+                      Today
+                    </button>
+                    <button 
+                      onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))}
+                      className="p-3 hover:bg-gray-50 rounded-2xl transition-colors border border-gray-100"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Calendar Grid */}
+                <div className="p-8">
+                  <div className="grid grid-cols-7 gap-px bg-gray-100 border border-gray-100 rounded-3xl overflow-hidden">
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                      <div key={day} className="bg-gray-50 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">
+                        {day}
+                      </div>
+                    ))}
+                    {(() => {
+                      const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
+                      const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
+                      const days = [];
+
+                      // Add empty slots for days before the 1st
+                      for (let i = 0; i < firstDayOfMonth; i++) {
+                        days.push(<div key={`empty-${i}`} className="bg-white/50 min-h-[140px]" />);
+                      }
+
+                      // Add actual days
+                      for (let day = 1; day <= daysInMonth; day++) {
+                        const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        const dayEvents = events.filter(e => e.wedding_date === dateStr);
+                        const isToday = new Date().toDateString() === new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day).toDateString();
+
+                        days.push(
+                          <div key={day} className="bg-white min-h-[140px] p-4 group transition-colors hover:bg-[#FDFCF0]/30 relative">
+                            <span className={`text-[10px] font-black tracking-widest mb-3 block ${isToday ? 'bg-[#C5A059] text-white w-6 h-6 rounded-full flex items-center justify-center -ml-1 -mt-1' : 'text-gray-300 group-hover:text-[#C5A059]'}`}>
+                              {day}
+                            </span>
+                            <div className="space-y-1">
+                              {dayEvents.map(event => (
+                                <button
+                                  key={event.id}
+                                  onClick={() => handleEdit(event)}
+                                  className="w-full text-left p-2 rounded-xl bg-[#C5A059]/5 border border-[#C5A059]/10 hover:bg-[#C5A059]/10 transition-all group/event"
+                                >
+                                  <p className="text-[10px] font-black uppercase tracking-tight text-[#C5A059] truncate">
+                                    {event.groom_name} & {event.bride_name}
+                                  </p>
+                                  <p className="text-[8px] text-gray-400 font-bold flex items-center gap-1 mt-0.5">
+                                    <MapPin className="w-2 h-2" /> {event.location}
+                                  </p>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return days;
+                    })()}
+                  </div>
+                </div>
+              </div>
             </motion.div>
           ) : (
             <motion.div 
