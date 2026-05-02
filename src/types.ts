@@ -11,6 +11,11 @@ export interface Agency {
     fontFamily?: string;
     accentColor?: string;
   };
+  stripe_customer_id?: string;
+  subscription_status?: 'active' | 'canceled' | 'past_due' | 'trialing' | 'unpaid';
+  subscription_id?: string;
+  plan_id?: string;
+  is_demo?: boolean;
   created_at: string;
 }
 
@@ -26,6 +31,7 @@ export interface WeddingEvent {
   theme_id: TemplateId;
   access_password?: string;
   auto_approve_messages?: boolean;
+  image_url?: string;
   created_at: string;
   updated_at: string;
 }

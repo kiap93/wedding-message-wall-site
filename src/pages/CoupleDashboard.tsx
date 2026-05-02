@@ -9,7 +9,9 @@ import {
   Layout,
   Users,
   MessageSquare,
-  Share2
+  Share2,
+  Camera,
+  Trash2
 } from 'lucide-react';
 import { WeddingEvent, TEMPLATES, TemplateId } from '../types';
 import RSVPManager from '../components/RSVPManager';
@@ -24,6 +26,7 @@ export default function CoupleDashboard() {
   const [event, setEvent] = useState<WeddingEvent | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [activeTab, setActiveTab] = useState<'aesthetic' | 'rsvp' | 'moderation'>('aesthetic');
 
   useEffect(() => {
@@ -106,6 +109,57 @@ export default function CoupleDashboard() {
     setIsSaving(false);
   };
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !event) return;
+
+    setIsUploading(true);
+    const supabase = getSupabase();
+
+    try {
+      const fileName = `${event.id}-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('wedding-images')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('wedding-images')
+        .getPublicUrl(uploadData.path);
+
+      const { error: updateError } = await supabase
+        .from('projects')
+        .update({ image_url: publicUrl, updated_at: new Date().toISOString() })
+        .eq('id', event.id);
+
+      if (updateError) throw updateError;
+
+      setEvent({ ...event, image_url: publicUrl });
+    } catch (error: any) {
+      console.error('Error uploading:', error);
+      alert('Error uploading photo. Make sure a "wedding-images" bucket exists in Supabase storage and is public.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const removePhoto = async () => {
+    if (!event) return;
+    setIsSaving(true);
+    const supabase = getSupabase();
+    
+    const { error } = await supabase
+      .from('projects')
+      .update({ image_url: null, updated_at: new Date().toISOString() })
+      .eq('id', event.id);
+
+    if (!error) {
+      setEvent({ ...event, image_url: undefined });
+    }
+    setIsSaving(false);
+  };
+
   const handleLogout = () => {
     if (event) {
       localStorage.removeItem(`wedding_auth_${event.id}`);
@@ -140,7 +194,7 @@ export default function CoupleDashboard() {
           <div className="flex items-center gap-2 sm:gap-4">
             <button 
               onClick={() => {
-                const guestUrl = window.location.origin + '/' + event.slug;
+                const guestUrl = window.location.origin + '/' + event.slug + '/guest';
                 const text = `We're getting married! Check out our wedding site and RSVP here: ${guestUrl}`;
                 window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
               }}
@@ -151,7 +205,7 @@ export default function CoupleDashboard() {
               <span className="sm:hidden">Share</span>
             </button>
             <a 
-              href={`/${event.slug}`} 
+              href={`/${event.slug}/guest`} 
               target="_blank" 
               className="px-4 sm:px-6 py-2 sm:py-2.5 bg-[#C5A059]/5 text-[#C5A059] rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#C5A059]/10 transition-all"
             >
@@ -222,6 +276,64 @@ export default function CoupleDashboard() {
                       <p className="text-gray-500">Choose the visual style for your wedding site.</p>
                     </div>
                   </div>
+
+                  {/* Temporary - Disabled Background Photo Section
+                  <div className="bg-white p-8 rounded-[3rem] border border-[#C5A059]/10 shadow-sm mb-12">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                      <div className="flex items-center gap-6">
+                        <div className={`w-24 h-24 rounded-3xl overflow-hidden bg-gray-50 border border-gray-100 flex items-center justify-center relative cursor-pointer group`}>
+                          {event.image_url ? (
+                            <>
+                              <img src={event.image_url} alt="Wedding Background" className="w-full h-full object-cover group-hover:opacity-50 transition-opacity" />
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); removePhoto(); }}
+                                className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20"
+                              >
+                                <Trash2 className="w-6 h-6 text-white" />
+                              </button>
+                            </>
+                          ) : (
+                            <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+                              <Camera className="w-8 h-8 text-gray-300 mb-1" />
+                              <span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Add Photo</span>
+                              <input 
+                                type="file" 
+                                className="hidden" 
+                                accept="image/*"
+                                onChange={handlePhotoUpload}
+                                disabled={isUploading}
+                              />
+                            </label>
+                          )}
+                          {isUploading && (
+                            <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+                              <div className="w-6 h-6 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-serif text-[#2D2424] mb-1">Background Image</h3>
+                          <p className="text-xs text-gray-500 max-w-[280px]">
+                            Upload a photo of you both. It will appear as a subtle background placeholder on your wedding display.
+                          </p>
+                        </div>
+                      </div>
+                      {!event.image_url && (
+                        <label className="bg-[#C5A059] text-white px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 hover:bg-[#B38D45] transition-all shadow-xl active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                          <Camera className="w-5 h-5" />
+                          Upload Photo
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            accept="image/*"
+                            onChange={handlePhotoUpload}
+                            disabled={isUploading}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                  */}
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pb-20">
                     {TEMPLATES.map((t) => (

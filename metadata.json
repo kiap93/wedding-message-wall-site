@@ -1,6 +1,6 @@
 {
-  "name": "Wedding Message Wall",
-  "description": "A serverless wedding guestbook and real-time message display system built with React and Cloudflare Workers.",
+  "name": "EventFrame.io",
+  "description": "A luxury white-label wedding platform for agencies and couples. Live guest moderation, RSVP tracking, and immersive celebration displays.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

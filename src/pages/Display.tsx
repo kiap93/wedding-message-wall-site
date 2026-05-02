@@ -192,6 +192,21 @@ export default function Display() {
         <div className={`absolute top-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full opacity-20 blur-[100px] ${template.id === 'garden' ? 'bg-green-500' : template.id === 'romantic' ? 'bg-pink-400' : 'bg-wedding-gold'}`} />
       </div>
 
+      {/* Wedding Photo Background */}
+      {project?.image_url && (
+        <div className="absolute inset-0 z-0 pointer-events-none flex items-center justify-center overflow-hidden">
+          <motion.img 
+            initial={{ opacity: 0, scale: 1.1 }}
+            animate={{ opacity: 0.15, scale: 1 }}
+            transition={{ duration: 3, ease: "easeOut" }}
+            src={project.image_url} 
+            alt="Wedding Background" 
+            className="w-full h-full object-cover filter blur-[2px] grayscale-[20%]"
+          />
+          <div className={`absolute inset-0 bg-gradient-to-b ${template.colors.background} opacity-40`} />
+        </div>
+      )}
+
       {/* Theme-specific Overlays */}
       {template.id === 'garden' && <FoliageOverlay />}
       {template.id === 'starry' && <CelestialOverlay />}

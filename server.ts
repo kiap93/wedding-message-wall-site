@@ -6,6 +6,8 @@ import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import Stripe from 'stripe';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
@@ -16,6 +18,16 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
+
+const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
+
+// Supabase Service Role for non-client restricted operations (like webhook updates)
+const supabaseAdmin = createClient(
+  process.env.VITE_SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+);
 
 const oauth2Client = new OAuth2Client(
   GOOGLE_CLIENT_ID,
@@ -26,6 +38,58 @@ const oauth2Client = new OAuth2Client(
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Webhook needs raw body - MUST be before express.json()
+  app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+      console.warn('Stripe not configured, skipping webhook');
+      return res.status(200).send('Stripe not configured');
+    }
+
+    const sig = req.headers['stripe-signature'];
+    let event;
+
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig!, STRIPE_WEBHOOK_SECRET);
+    } catch (err: any) {
+      console.error(`Webhook Error: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    // Handle the event
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const agencyId = session.metadata?.agencyId;
+        const subscriptionId = session.subscription as string;
+        const customerId = session.customer as string;
+
+        if (agencyId) {
+          await supabaseAdmin
+            .from('agencies')
+            .update({ 
+              subscription_status: 'active',
+              subscription_id: subscriptionId,
+              stripe_customer_id: customerId,
+              plan_id: session.metadata?.planId
+            })
+            .eq('id', agencyId);
+          console.log(`Agency ${agencyId} subscribed!`);
+        }
+        break;
+      }
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object as Stripe.Subscription;
+        await supabaseAdmin
+          .from('agencies')
+          .update({ subscription_status: 'canceled' })
+          .eq('subscription_id', subscription.id);
+        break;
+      }
+    }
+
+    res.json({ received: true });
+  });
 
   app.use(express.json());
   app.use(cookieParser());
@@ -130,6 +194,57 @@ async function startServer() {
       res.json({ success: true });
     } catch (error) {
       res.status(401).json({ error: 'Invalid session' });
+    }
+  });
+
+  // --- Stripe Checkout Route ---
+  apiRouter.post('/create-checkout-session', async (req, res) => {
+    const { planId, agencyId } = req.body;
+    
+    if (!stripe) {
+      return res.status(500).json({ error: 'Stripe is not configured' });
+    }
+
+    try {
+      // In a production app, we'd look up the price ID from planId
+      const priceId = planId === 'price_monthly' ? 'price_1...monthly_id' : 'price_1...yearly_id';
+      
+      // Dummy price IDs if not configured (user will need to provide real ones)
+      // For this demo, we'll use a placeholder or handle it gracefully
+      
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: planId === 'price_monthly' ? 'Agency Pro (Monthly)' : 'Agency Pro (Yearly)',
+              },
+              unit_amount: planId === 'price_monthly' ? 4900 : 47000,
+              recurring: {
+                interval: planId === 'price_monthly' ? 'month' : 'year',
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'subscription',
+        subscription_data: {
+          trial_period_days: 30,
+        },
+        success_url: `${APP_URL}/subscription?success=true`,
+        cancel_url: `${APP_URL}/subscription?canceled=true`,
+        metadata: {
+          agencyId,
+          planId,
+        },
+      });
+
+      res.json({ url: session.url });
+    } catch (error: any) {
+      console.error('Stripe error:', error);
+      res.status(500).json({ error: error.message });
     }
   });
 

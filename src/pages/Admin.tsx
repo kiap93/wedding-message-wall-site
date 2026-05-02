@@ -17,7 +17,8 @@ import {
   MessageSquare,
   Layout,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Zap
 } from 'lucide-react';
 import { Agency, WeddingEvent, TEMPLATES, TemplateId } from '../types';
 import RSVPManager from '../components/RSVPManager';
@@ -147,8 +148,17 @@ export default function Admin() {
     setIsSavingAgency(false);
   };
 
+  const isSubscribed = agency?.subscription_status === 'active' || 
+                      agency?.is_demo === true || 
+                      user?.email === 'buildsiteasia@gmail.com';
+
   const handleCreateNew = () => {
     if (!agency) return;
+    if (!isSubscribed) {
+      alert('A pro subscription is required to create new events.');
+      navigate('/subscription');
+      return;
+    }
     const newEvent: Partial<WeddingEvent> = {
       name: 'New Celebration',
       slug: `event-${Math.random().toString(36).substring(2, 7)}`,
@@ -159,7 +169,8 @@ export default function Admin() {
       theme_id: 'minimal_luxury',
       agency_id: agency.id,
       access_password: Math.random().toString(36).substring(2, 8).toUpperCase(),
-      auto_approve_messages: false
+      auto_approve_messages: false,
+      image_url: ''
     };
     setEditingEvent(newEvent);
     setView('editor');
@@ -266,6 +277,16 @@ export default function Admin() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          <button 
+            onClick={() => navigate('/subscription')}
+            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+              isSubscribed 
+                ? 'bg-green-50 border-green-100 text-green-600' 
+                : 'bg-[#C5A059]/10 border-[#C5A059]/20 text-[#C5A059] hover:bg-[#C5A059]/20 shadow-sm'
+            }`}
+          >
+            {isSubscribed ? 'Pro Plan Active' : 'Upgrade to Pro'}
+          </button>
           {agency && (
             <button 
               onClick={() => setView('agency_settings')}
@@ -398,13 +419,37 @@ export default function Admin() {
                   </div>
                   <button 
                     onClick={handleCreateNew}
-                    className="bg-[#C5A059] text-white px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 hover:bg-[#B38D45] transition-all shadow-xl active:scale-95"
+                    className={`px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 transition-all shadow-xl active:scale-95 ${
+                      isSubscribed 
+                        ? 'bg-[#C5A059] text-white hover:bg-[#B38D45]' 
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-50'
+                    }`}
                   >
                     <Plus className="w-5 h-5" />
                     New Event
                   </button>
                 </div>
               </div>
+
+              {!isSubscribed && (
+                <div className="bg-[#C5A059]/5 border border-[#C5A059]/10 p-6 rounded-[2rem] flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-[#C5A059]/10 rounded-full flex items-center justify-center">
+                      <Zap className="w-5 h-5 text-[#C5A059]" />
+                    </div>
+                    <div>
+                      <p className="font-serif text-lg">Pro Subscription Required</p>
+                      <p className="text-xs text-gray-400 font-medium">To create and manage new events, please upgrade your organization's account.</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => navigate('/subscription')}
+                    className="px-6 py-3 bg-[#C5A059] text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-[#C5A059]/20 hover:scale-105 transition-all"
+                  >
+                    View Pricing
+                  </button>
+                </div>
+              )}
 
               {isLoadingEvents ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -532,7 +577,11 @@ export default function Admin() {
                   </div>
                   <button 
                     onClick={handleCreateNew}
-                    className="bg-[#C5A059] text-white px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 hover:bg-[#B38D45] transition-all shadow-xl active:scale-95"
+                    className={`px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 transition-all shadow-xl active:scale-95 ${
+                      isSubscribed 
+                        ? 'bg-[#C5A059] text-white hover:bg-[#B38D45]' 
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-50'
+                    }`}
                   >
                     <Plus className="w-5 h-5" />
                     New Event

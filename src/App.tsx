@@ -16,6 +16,9 @@ import { WorkspaceProvider, useWorkspace } from './lib/WorkspaceContext';
 import { UserProvider, useUser } from './lib/UserContext';
 import { getUserWorkspaces, getCurrentSubdomain } from './lib/workspace';
 
+import Home from './pages/Home';
+import Subscription from './pages/Subscription';
+
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading: isLoadingUser } = useUser();
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
@@ -113,9 +116,10 @@ export default function App() {
             <Route path="/agency/:agencySlug" element={<TemplateSelector />} />
             <Route path="/guest" element={<Guest />} />
             <Route path="/display" element={<Display />} />
+            <Route path="/subscription" element={<Subscription />} />
             
-            <Route path="/" element={<Navigate to="/login" replace />} />
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            <Route path="/" element={<Home />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </WorkspaceProvider>
       </UserProvider>
