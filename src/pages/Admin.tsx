@@ -52,27 +52,40 @@ export default function Admin() {
   const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'moderation'>('aesthetic');
 
   useEffect(() => {
-    if (!isLoadingWorkspace && workspace && user) {
-      const userId = user.id || user.sub;
-      if (workspace.user_id !== userId) {
-        console.warn('Unauthorized access to workspace:', workspace.slug);
-        
-        // Redirect to root admin which will then redirect to their correct workspace
-        const hostParts = window.location.host.split('.');
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        
-        if (!isLocalhost && hostParts.length > 2) {
-          const protocol = window.location.protocol;
-          const baseDomain = hostParts.slice(-2).join('.');
-          window.location.href = `${protocol}//${baseDomain}/admin`;
-        } else {
-          navigate('/login');
+    const initAdmin = async () => {
+      if (isLoadingWorkspace || !user) return;
+
+      if (workspace) {
+        // We have a workspace from subdomain
+        setAgency(workspace);
+        fetchEvents(workspace.id);
+      } else {
+        // Root domain (likely a couple or an agency visiting global admin)
+        const supabase = getSupabase();
+        const userId = user.id || user.sub;
+        const { data: userAgencies, error } = await supabase
+          .from('agencies')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: true });
+
+        if (error) {
+          console.error('Error fetching user agencies:', error);
+          return;
         }
-        return;
+
+        if (userAgencies && userAgencies.length > 0) {
+          const primaryWorkspace = userAgencies[0];
+          setAgency(primaryWorkspace);
+          fetchEvents(primaryWorkspace.id);
+        } else {
+          // No agency yet, maybe redirect to onboarding?
+          navigate('/onboarding');
+        }
       }
-      setAgency(workspace);
-      fetchEvents(workspace.id);
-    }
+    };
+
+    initAdmin();
   }, [workspace, isLoadingWorkspace, user, navigate]);
 
   const fetchEvents = async (agencyId: string) => {
@@ -155,11 +168,16 @@ export default function Admin() {
 
   useEffect(() => {
     if (isCouple && events.length === 1 && view === 'list' && !isLoadingEvents) {
-      // For couples, if they have one event, auto-open it in editor
+      // For couples, if they have one event, auto-open it in editor immediately
       setEditingEvent(events[0]);
       setView('editor');
     }
-  }, [isCouple, events, view, isLoadingEvents]);
+    
+    // If couple and 0 events, auto-trigger creation to save them a click
+    if (isCouple && events.length === 0 && view === 'list' && !isLoadingEvents && isSubscribed) {
+      handleCreateNew();
+    }
+  }, [isCouple, events, view, isLoadingEvents, isSubscribed]);
 
   const handleCreateNew = () => {
     if (!agency) return;
@@ -358,7 +376,7 @@ export default function Admin() {
                 </button>
 
                 <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-[#C5A059]/10">
-                   <h2 className="text-3xl font-serif mb-8">{isCouple ? 'Personal Branding' : 'Agency Branding'}</h2>
+                   <h2 className="text-3xl font-serif mb-8">{isCouple ? 'Your Wedding Settings' : 'Agency Branding'}</h2>
                    <form onSubmit={(e) => {
                      e.preventDefault();
                      const formData = new FormData(e.currentTarget);
@@ -426,7 +444,7 @@ export default function Admin() {
                         disabled={isSavingAgency}
                         className="w-full bg-[#2D2424] text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl disabled:opacity-50"
                       >
-                        {isSavingAgency ? 'Saving Changes...' : 'Update Organization Profile'}
+                        {isSavingAgency ? 'Saving Changes...' : (isCouple ? 'Update Wedding Profile' : 'Update Organization Profile')}
                       </button>
                    </form>
                 </div>
@@ -492,8 +510,12 @@ export default function Admin() {
                       <Zap className="w-5 h-5 text-[#C5A059]" />
                     </div>
                     <div>
-                      <p className="font-serif text-lg">Pro Subscription Required</p>
-                      <p className="text-xs text-gray-400 font-medium">To create and manage new events, please upgrade your organization's account.</p>
+                      <p className="font-serif text-lg">{isCouple ? 'Wedding License Required' : 'Pro Subscription Required'}</p>
+                      <p className="text-xs text-gray-400 font-medium">
+                        {isCouple 
+                          ? 'To start building your digital experience, please activate your wedding license.' 
+                          : "To create and manage new events, please upgrade your organization's account."}
+                      </p>
                     </div>
                   </div>
                   <button 
@@ -516,10 +538,14 @@ export default function Admin() {
                   <div className="w-20 h-20 bg-[#C5A059]/10 rounded-full flex items-center justify-center mb-6">
                     <Heart className="w-10 h-10 text-[#C5A059] opacity-20" />
                   </div>
-                  <h3 className="text-2xl font-serif mb-2">No events created</h3>
-                  <p className="text-gray-400 max-w-sm mb-8">Ready to start planning? Create your first branded event to begin customizing the experience.</p>
+                  <h3 className="text-2xl font-serif mb-2">{isCouple ? 'Initialize your wedding' : 'No events created'}</h3>
+                  <p className="text-gray-400 max-w-sm mb-8">
+                    {isCouple 
+                      ? 'Welcome! Let\'s set up your beautiful wedding space to start sharing with guests.' 
+                      : 'Ready to start planning? Create your first branded event to begin customizing the experience.'}
+                  </p>
                   <button onClick={handleCreateNew} className="text-[#C5A059] font-bold uppercase tracking-widest flex items-center gap-2 hover:translate-x-1 transition-transform">
-                    Initialize Event <ArrowRight className="w-5 h-5" />
+                    {isCouple ? 'Start Planning' : 'Initialize Event'} <ArrowRight className="w-5 h-5" />
                   </button>
                 </div>
               ) : (
