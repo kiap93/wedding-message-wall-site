@@ -42,11 +42,13 @@ export default function Guest() {
     if (isLoadingWorkspace) return;
     const urlProjectId = projectId || searchParams.get('id') || searchParams.get('projectId');
     
+    const normalizedProjectId = (urlProjectId && urlProjectId !== 'undefined') ? urlProjectId : undefined;
+
     // If on a subdomain and no project ID/slug specified, load the first project of the workspace
-    if (!urlProjectId && !slug && workspace) {
+    if (!normalizedProjectId && !slug && workspace) {
       loadProjectByWorkspace(workspace.id);
-    } else if (urlProjectId || slug) {
-      loadProject(urlProjectId || undefined, slug);
+    } else if (normalizedProjectId || slug) {
+      loadProject(normalizedProjectId, slug);
     } else {
       setIsLoading(false);
     }
@@ -132,37 +134,65 @@ export default function Guest() {
 
     try {
       const supabase = getSupabase();
+      let projectData: WeddingEvent | null = null;
       
-      if (id || slugName) {
-         let query = supabase.from('projects').select('*');
-         if (id) {
-           query = query.eq('id', id);
-         } else if (slugName) {
-           query = query.eq('slug', slugName);
-           if (workspace) query = query.eq('agency_id', workspace.id);
+      if (id) {
+        const { data } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
+        projectData = data;
+      } else if (slugName) {
+         // 1. Try to find project by slug (with agency context if on subdomain)
+         let query = supabase.from('projects').select('*').eq('slug', slugName);
+         if (workspace) {
+           query = query.eq('agency_id', workspace.id);
          }
 
-         const { data: projectData } = await query.maybeSingle();
+         let { data } = await query.maybeSingle();
+         projectData = data;
 
-         if (projectData) {
-           setProject(projectData);
-           const agencyData = await getAgencyById(projectData.agency_id);
-           setAgency(agencyData);
-           
-           // Fetch messages count
-           const { count: msgCount } = await supabase
-             .from('messages')
-             .select('*', { count: 'exact', head: true })
-             .eq('project_id', projectData.id);
-           setMessages(new Array(msgCount || 0).fill({}));
+         // 2. If not found and NOT on subdomain, try treating slugName as an Agency slug
+         if (!projectData && !workspace) {
+           const { data: agencyData } = await supabase
+             .from('agencies')
+             .select('*')
+             .eq('slug', slugName)
+             .maybeSingle();
 
-           // Fetch RSVP count
-           const { count: rsvpCountVal } = await supabase
-             .from('rsvps')
-             .select('*', { count: 'exact', head: true })
-             .eq('project_id', projectData.id);
-           setRsvpCount(rsvpCountVal || 0);
+           if (agencyData) {
+             setAgency(agencyData);
+             // Fetch the first event for this agency
+             const { data: events } = await supabase
+               .from('projects')
+               .select('*')
+               .eq('agency_id', agencyData.id)
+               .order('created_at', { ascending: true })
+               .limit(1);
+
+             if (events && events.length > 0) {
+               projectData = events[0];
+             }
+           }
          }
+      }
+
+      if (projectData) {
+        setProject(projectData);
+        if (!agency && projectData.agency_id) {
+          const agencyData = await getAgencyById(projectData.agency_id);
+          setAgency(agencyData);
+        }
+
+        // Fetch stats
+        const { count: msgCount } = await supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('project_id', projectData.id);
+        setMessages(new Array(msgCount || 0).fill({}));
+
+        const { count: rsvpCountVal } = await supabase
+          .from('rsvps')
+          .select('*', { count: 'exact', head: true })
+          .eq('project_id', projectData.id);
+        setRsvpCount(rsvpCountVal || 0);
       }
     } catch (err) {
       console.error('Error loading event:', err);
