@@ -222,7 +222,6 @@ app.post('/api/create-checkout-session', async (c) => {
   }
 
   const stripe = new Stripe(stripeSecret, {
-    apiVersion: '2025-02-24-preview' as any,
     httpClient: Stripe.createFetchHttpClient(), // REQUIRED for Cloudflare Workers
   });
 
@@ -281,7 +280,6 @@ app.post('/api/webhook', async (c) => {
   }
 
   const stripe = new Stripe(stripeSecret, {
-    apiVersion: '2025-02-24-preview' as any,
     httpClient: Stripe.createFetchHttpClient(),
   });
 

@@ -13,3 +13,7 @@ FRONTEND_URL = "https://eventframe.io"
 # Secrets (Set these using 'wrangler secret put')
 # GOOGLE_CLIENT_SECRET
 # JWT_SECRET
+# STRIPE_SECRET_KEY
+# STRIPE_WEBHOOK_SECRET
+# SUPABASE_URL
+# SUPABASE_SERVICE_ROLE_KEY
