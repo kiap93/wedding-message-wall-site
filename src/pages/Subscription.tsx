@@ -60,13 +60,13 @@ export default function Subscription() {
             animate={{ opacity: 1, y: 0 }}
           >
             <h1 className="text-4xl md:text-6xl font-serif text-[#2D2424] mb-4">
-              {isSubscribed ? 'Everything is Ready' : isCouple ? 'One-Time Payment' : 'Try Pro Free for 30 Days'}
+              {isSubscribed ? 'Everything is Ready' : isCouple ? 'Wedding License' : 'Try Pro Free for 30 Days'}
             </h1>
             <p className="text-gray-500 font-medium max-w-xl mx-auto">
               {isSubscribed 
                 ? "You're all set! You have full access to your wedding features."
                 : isCouple 
-                  ? "Unlock your full wedding site, RSVP manager, and live display with a single payment."
+                  ? "Unlock your full guest experience and digital display with a single event license."
                   : "Start your 30-day free trial today. Cancel anytime if you're not satisfied."
               }
             </p>
@@ -110,10 +110,10 @@ export default function Subscription() {
             <div className="w-16 h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center mx-auto mb-8">
               <Zap className="w-8 h-8 text-[#C5A059]" />
             </div>
-            <h3 className="text-3xl font-serif mb-2">Individual Wedding</h3>
+            <h3 className="text-3xl font-serif mb-2">Single Event License</h3>
             <div className="flex items-baseline justify-center gap-1 mb-8">
               <span className="text-5xl font-serif">$19</span>
-              <span className="text-gray-400 text-sm">one-time</span>
+              <span className="text-gray-400 text-sm">one-time payment</span>
             </div>
 
             <ul className="space-y-4 mb-10 text-left max-w-sm mx-auto">
@@ -136,7 +136,7 @@ export default function Subscription() {
               onClick={() => handleSubscribe('price_one_time')}
               className="w-full py-5 bg-[#C5A059] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
             >
-              {isRedirecting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Unlock Premimum"}
+              {isRedirecting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Activate License"}
               <ArrowRight className="w-5 h-5" />
             </button>
           </motion.div>
