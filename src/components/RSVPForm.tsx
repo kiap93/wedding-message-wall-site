@@ -8,9 +8,11 @@ interface RSVPFormProps {
   projectId: string;
   template: WeddingTemplate;
   onSuccess: () => void;
+  isPreview?: boolean;
+  currentCount?: number;
 }
 
-export default function RSVPForm({ projectId, template, onSuccess }: RSVPFormProps) {
+export default function RSVPForm({ projectId, template, onSuccess, isPreview, currentCount = 0 }: RSVPFormProps) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -27,6 +29,12 @@ export default function RSVPForm({ projectId, template, onSuccess }: RSVPFormPro
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
+
+    if (isPreview && currentCount >= 5) {
+      setError("This event is in preview mode and has reached the limit of 5 RSVPs. Please contact the host.");
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       await postRSVP({

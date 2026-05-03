@@ -29,6 +29,42 @@ export default function Display() {
   }, [projectId, slug, isLoadingWorkspace, workspace]);
 
   const loadProject = async (id?: string, slugName?: string) => {
+    if (id === 'demo' || slugName === 'demo') {
+      const demoAgency: Agency = {
+        id: 'demo-agency',
+        name: 'EventFrame Demo',
+        slug: 'demo',
+        user_id: 'demo-user',
+        user_role: 'agency',
+        subscription_status: 'active',
+        is_demo: true,
+        logo_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=100&h=100',
+        theme_config: { primaryColor: '#C5A059', accentColor: '#2D2424' }
+      };
+      const demoProject: WeddingEvent = {
+        id: 'demo-project',
+        agency_id: 'demo-agency',
+        user_id: 'demo-user',
+        groom_name: 'Lucas',
+        bride_name: 'Sofia',
+        slug: 'demo',
+        theme_id: 'floral',
+        image_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80',
+        event_date: '2025-06-15',
+        auto_approve_messages: true,
+        created_at: new Date().toISOString()
+      };
+      setAgency(demoAgency);
+      setProject(demoProject);
+      setMessages([
+        { id: '1', project_id: 'demo-project', name: 'James', message: 'Wishing you both a lifetime of happiness!', timestamp: Date.now() - 3600000, status: 'approved' },
+        { id: '2', project_id: 'demo-project', name: 'Emma', message: 'Such a beautiful wedding. Cheers to Lucas and Sofia!', timestamp: Date.now() - 7200000, status: 'approved' },
+        { id: '3', project_id: 'demo-project', name: 'Oliver', message: 'So happy to be here celebrating with you!', timestamp: Date.now() - 10800000, status: 'approved' }
+      ]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const supabase = getSupabase();
       
@@ -183,9 +219,19 @@ export default function Display() {
   return (
     <div className={`min-h-screen ${template.colors.background} transition-colors duration-700 relative ${template.fontSans} ${template.colors.text}`}>
       {isPreview && (
-        <div className="absolute top-0 left-0 right-0 bg-[#2D2424]/90 backdrop-blur-md text-white py-1.5 px-4 text-[9px] font-black uppercase tracking-[0.2em] text-center z-[100] flex items-center justify-center gap-3">
-           <Zap className="w-3 h-3 text-[#C5A059]" />
-           <span>Preview Mode • Guestbook Limited to 5 Messages</span>
+        <div className="absolute top-0 left-0 right-0 bg-[#2D2424]/90 backdrop-blur-md text-white py-2 px-4 shadow-2xl z-[100] flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+           <Zap className="w-3.5 h-3.5 text-[#C5A059]" />
+           <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+             Preview Mode • Guestbook Limited to 5 Messages
+           </span>
+          </div>
+          <button 
+            onClick={() => window.open('/subscription', '_blank')}
+            className="bg-[#C5A059] text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-[#C5A059]/20"
+          >
+            Upgrade to Publish
+          </button>
         </div>
       )}
       

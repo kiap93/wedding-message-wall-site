@@ -8,6 +8,8 @@ import { authenticatedFetch } from '../lib/auth';
 export default function Onboarding() {
   const [role, setRole] = useState<'agency' | 'couple' | null>(null);
   const [name, setName] = useState('');
+  const [groomName, setGroomName] = useState('');
+  const [brideName, setBrideName] = useState('');
   const [subdomain, setSubdomain] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,18 +50,89 @@ export default function Onboarding() {
       }
 
       // 3. Create workspace
-      const { error: insertError } = await supabase
+      const { data: agencyData, error: insertError } = await supabase
         .from('agencies')
         .insert([
           {
-            name: role === 'couple' ? `${name}'s Wedding` : name,
+            name: role === 'couple' ? `${groomName} & ${brideName}` : name,
             slug,
             user_id: userData.user.id,
             user_role: role
           }
-        ]);
+        ])
+        .select()
+        .single();
 
       if (insertError) throw insertError;
+
+      // 3.5 If couple, create the first event automatically with sample data
+      if (role === 'couple' && agencyData) {
+        const { data: projectData, error: projectError } = await supabase
+          .from('projects')
+          .insert([
+            {
+              agency_id: agencyData.id,
+              user_id: userData.user.id,
+              groom_name: groomName,
+              bride_name: brideName,
+              slug: 'our-wedding', // default slug for their first wedding
+              template_id: 'floral' // default template
+            }
+          ])
+          .select()
+          .single();
+        
+        if (projectError) throw projectError;
+
+        if (projectData) {
+          // Add 3 sample messages
+          await supabase.from('messages').insert([
+            { 
+              project_id: projectData.id, 
+              name: 'Aunt Martha', 
+              message: 'So happy for you both! Can\'t wait for the big day! ❤️', 
+              status: 'approved',
+              timestamp: Date.now() - 86400000 // Yesterday
+            },
+            { 
+              project_id: projectData.id, 
+              name: 'The Wilsons', 
+              message: 'Wishing you a lifetime of love and happiness. Cheers!', 
+              status: 'approved',
+              timestamp: Date.now() - 43200000 // 12 hours ago
+            },
+            { 
+              project_id: projectData.id, 
+              name: 'Best Friend Mike', 
+              message: `Sofia & Lucas - let's get this party started! 🥂`, 
+              status: 'approved',
+              timestamp: Date.now() - 3600000 // 1 hour ago
+            }
+          ]);
+
+          // Add 2 sample RSVPs
+          await supabase.from('rsvps').insert([
+            { 
+              project_id: projectData.id, 
+              name: 'John Doe', 
+              email: 'john@example.com', 
+              attending: true, 
+              guests: 2, 
+              note: "Can't wait!",
+              created_at: new Date(Date.now() - 86400000).toISOString()
+            },
+            { 
+              project_id: projectData.id, 
+              name: 'Jane Smith', 
+              email: 'jane@example.com', 
+              attending: true, 
+              guests: 1, 
+              note: 'See you there!',
+              created_at: new Date(Date.now() - 43200000).toISOString()
+            }
+          ]);
+        }
+      }
 
       // 4. Redirect to workspace
       const protocol = window.location.protocol;
@@ -152,20 +225,51 @@ export default function Onboarding() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-[#2C1810]/70 mb-2">
-              {role === 'agency' ? 'Agency Name' : 'Couple Names'}
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={role === 'agency' ? "e.g. Elegant Events Co." : "e.g. Lucas & Sofia"}
-              required
-              className="w-full px-4 py-3 bg-[#FDFCF0] border border-black/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C5A059]/30 focus:border-[#C5A059] transition-all"
-            />
-          </div>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {role === 'couple' ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-[#2C1810]/70 mb-2">
+                    Groom's Name
+                  </label>
+                  <input
+                    type="text"
+                    value={groomName}
+                    onChange={(e) => setGroomName(e.target.value)}
+                    placeholder="e.g. Lucas"
+                    required
+                    className="w-full px-4 py-3 bg-[#FDFCF0] border border-black/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C5A059]/30 focus:border-[#C5A059] transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#2C1810]/70 mb-2">
+                    Bride's Name
+                  </label>
+                  <input
+                    type="text"
+                    value={brideName}
+                    onChange={(e) => setBrideName(e.target.value)}
+                    placeholder="e.g. Sofia"
+                    required
+                    className="w-full px-4 py-3 bg-[#FDFCF0] border border-black/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C5A059]/30 focus:border-[#C5A059] transition-all"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-[#2C1810]/70 mb-2">
+                  Agency Name
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Elegant Events Co."
+                  required
+                  className="w-full px-4 py-3 bg-[#FDFCF0] border border-black/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C5A059]/30 focus:border-[#C5A059] transition-all"
+                />
+              </div>
+            )}
 
           <div>
             <label className="block text-sm font-medium text-[#2C1810]/70 mb-2">

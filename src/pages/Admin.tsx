@@ -790,7 +790,15 @@ export default function Admin() {
               <div className="lg:col-span-4">
                 <div className="sticky top-24 space-y-8">
                   <section className="bg-white rounded-[2.5rem] shadow-xl border border-[#C5A059]/10 flex flex-col max-h-[calc(100vh-120px)] overflow-hidden">
-                    <div className="p-8 pb-4">
+                    <div className="p-8 pb-4 space-y-4">
+                      {isCouple && !isSubscribed && (
+                        <div className="bg-[#2D2424] text-white px-4 py-2 rounded-xl flex items-center justify-between shadow-lg">
+                          <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                             <Zap className="w-3 h-3 text-[#C5A059]" /> Mode: Preview
+                          </span>
+                          <span className="text-[9px] opacity-60 font-bold">Limit: 5 Msgs</span>
+                        </div>
+                      )}
                       <h2 className="text-2xl font-serif flex items-center gap-3">
                         <Settings className="w-6 h-6 text-[#C5A059]" />
                         Configuration
@@ -989,9 +997,19 @@ export default function Admin() {
                             <h2 className="text-3xl font-serif">Selected Aesthetic</h2>
                             <p className="text-gray-500">Choose the visual style for your wedding display.</p>
                           </div>
-                          <span className="text-xs font-bold uppercase tracking-widest text-[#C5A059] bg-[#C5A059]/10 px-4 py-2 rounded-full">
-                            {TEMPLATES.length} Art Styles
-                          </span>
+                          <div className="flex items-center gap-3">
+                            {isCouple && !isSubscribed && (
+                              <button 
+                                onClick={() => navigate('/subscription')}
+                                className="px-4 py-2 bg-black text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2"
+                              >
+                                <Zap className="w-3 h-3 text-[#C5A059]" /> Go Pro to Publish
+                              </button>
+                            )}
+                            <span className="text-xs font-bold uppercase tracking-widest text-[#C5A059] bg-[#C5A059]/10 px-4 py-2 rounded-full">
+                              {TEMPLATES.length} Art Styles
+                            </span>
+                          </div>
                         </div>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">

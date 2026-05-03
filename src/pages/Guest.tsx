@@ -46,11 +46,45 @@ export default function Guest() {
   }, [projectId, slug, isLoadingWorkspace, workspace]);
 
   const [messages, setMessages] = useState<any[]>([]);
+  const [rsvpCount, setRsvpCount] = useState(0);
   const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
   const isCoupleLogic = agency?.user_role === 'couple';
   const isPreview = isCoupleLogic && !isSubscribed;
 
   const loadProject = async (id?: string, slugName?: string) => {
+    if (id === 'demo' || slugName === 'demo') {
+      const demoAgency: Agency = {
+        id: 'demo-agency',
+        name: 'EventFrame Demo',
+        slug: 'demo',
+        user_id: 'demo-user',
+        user_role: 'agency',
+        subscription_status: 'active',
+        is_demo: true,
+        logo_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=100&h=100',
+        theme_config: { primaryColor: '#C5A059', accentColor: '#2D2424' }
+      };
+      const demoProject: WeddingEvent = {
+        id: 'demo-project',
+        agency_id: 'demo-agency',
+        user_id: 'demo-user',
+        groom_name: 'Lucas',
+        bride_name: 'Sofia',
+        slug: 'demo',
+        theme_id: 'floral',
+        image_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80',
+        event_date: '2025-06-15',
+        auto_approve_messages: true,
+        created_at: new Date().toISOString()
+      };
+      setAgency(demoAgency);
+      setProject(demoProject);
+      setMessages([{id: 1}, {id: 2}, {id: 3}]); // Mock count
+      setRsvpCount(2); // Mock count
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const supabase = getSupabase();
       
@@ -71,11 +105,18 @@ export default function Guest() {
            setAgency(agencyData);
            
            // Fetch messages count
-           const { data: msgs } = await supabase
+           const { count: msgCount } = await supabase
              .from('messages')
-             .select('id')
+             .select('*', { count: 'exact', head: true })
              .eq('project_id', projectData.id);
-           setMessages(msgs || []);
+           setMessages(new Array(msgCount || 0).fill({}));
+
+           // Fetch RSVP count
+           const { count: rsvpCountVal } = await supabase
+             .from('rsvps')
+             .select('*', { count: 'exact', head: true })
+             .eq('project_id', projectData.id);
+           setRsvpCount(rsvpCountVal || 0);
          }
       }
     } catch (err) {
@@ -146,9 +187,19 @@ export default function Guest() {
   return (
     <div className={`min-h-screen flex flex-col items-center justify-center p-6 ${template.colors.background} transition-colors duration-700 relative overflow-hidden ${template.fontSans} ${template.colors.text}`}>
       {isPreview && (
-        <div className="absolute top-0 left-0 right-0 bg-[#2D2424] text-white py-1.5 px-4 text-[9px] font-black uppercase tracking-[0.2em] text-center z-50 flex items-center justify-center gap-3">
-           <Zap className="w-3 h-3 text-[#C5A059]" />
-           <span>Preview Mode: {messages.length}/5 Messages</span>
+        <div className="absolute top-0 left-0 right-0 bg-[#2D2424] text-white py-2 px-4 shadow-2xl z-50 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+           <Zap className="w-3.5 h-3.5 text-[#C5A059]" />
+           <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+             Preview Mode: {messages.length}/5 Messages • {rsvpCount}/5 RSVPs
+           </span>
+          </div>
+          <button 
+            onClick={() => window.open('/subscription', '_blank')}
+            className="bg-[#C5A059] text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-[#C5A059]/20"
+          >
+            Upgrade to Publish
+          </button>
         </div>
       )}
       
@@ -258,7 +309,10 @@ export default function Guest() {
               <RSVPForm 
                 projectId={project?.id || projectId || ''} 
                 template={template}
+                isPreview={isPreview}
+                currentCount={rsvpCount}
                 onSuccess={() => {
+                  setRsvpCount(prev => prev + 1);
                   setShowSuccess(true);
                   setTimeout(() => {
                     setShowSuccess(false);
