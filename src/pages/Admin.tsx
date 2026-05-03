@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Save, 
@@ -33,6 +33,7 @@ export default function Admin() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
   const { user } = useUser();
   const [view, setView] = useState<'list' | 'editor' | 'agency_settings' | 'calendar'>('list');
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   // Agency
@@ -55,10 +56,12 @@ export default function Admin() {
     const initAdmin = async () => {
       if (isLoadingWorkspace || !user) return;
 
+      const targetProjectId = searchParams.get('project');
+
       if (workspace) {
         // We have a workspace from subdomain
         setAgency(workspace);
-        fetchEvents(workspace.id);
+        fetchEvents(workspace.id, targetProjectId);
       } else {
         // Root domain (likely a couple or an agency visiting global admin)
         const supabase = getSupabase();
@@ -77,7 +80,7 @@ export default function Admin() {
         if (userAgencies && userAgencies.length > 0) {
           const primaryWorkspace = userAgencies[0];
           setAgency(primaryWorkspace);
-          fetchEvents(primaryWorkspace.id);
+          fetchEvents(primaryWorkspace.id, targetProjectId);
         } else {
           // No agency yet, maybe redirect to onboarding?
           navigate('/onboarding');
@@ -86,9 +89,9 @@ export default function Admin() {
     };
 
     initAdmin();
-  }, [workspace, isLoadingWorkspace, user, navigate]);
+  }, [workspace, isLoadingWorkspace, user, navigate, searchParams]);
 
-  const fetchEvents = async (agencyId: string) => {
+  const fetchEvents = async (agencyId: string, targetProjectId?: string | null) => {
     setIsLoadingEvents(true);
     const supabase = getSupabase();
     const { data, error } = await supabase
@@ -103,8 +106,14 @@ export default function Admin() {
       const eventList = data || [];
       setEvents(eventList);
       
-      // Auto-switch to editor for couples with 1+ event
-      if (agency?.user_role === 'couple' && eventList.length > 0 && view === 'list') {
+      // Auto-switch to editor based on target project ID or if user is a couple
+      if (targetProjectId) {
+        const targetEvent = eventList.find(e => e.id === targetProjectId);
+        if (targetEvent) {
+          setEditingEvent(targetEvent);
+          setView('editor');
+        }
+      } else if (agency?.user_role === 'couple' && eventList.length > 0 && view === 'list') {
         setEditingEvent(eventList[0]);
         setView('editor');
       }

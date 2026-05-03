@@ -24,6 +24,8 @@ export default function Guest() {
   const [showQR, setShowQR] = useState(false);
   const [activeTab, setActiveTab] = useState<'message' | 'rsvp'>('message');
   const [error, setError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [rsvpCount, setRsvpCount] = useState(0);
   
   const [searchParams] = useSearchParams();
   
@@ -39,15 +41,54 @@ export default function Guest() {
   useEffect(() => {
     if (isLoadingWorkspace) return;
     const urlProjectId = projectId || searchParams.get('id') || searchParams.get('projectId');
-    if (urlProjectId || slug) {
+    
+    // If on a subdomain and no project ID/slug specified, load the first project of the workspace
+    if (!urlProjectId && !slug && workspace) {
+      loadProjectByWorkspace(workspace.id);
+    } else if (urlProjectId || slug) {
       loadProject(urlProjectId || undefined, slug);
     } else {
       setIsLoading(false);
     }
-  }, [projectId, slug, searchParams, isLoadingWorkspace, workspace]);
+  }, [projectId, slug, searchParams, isLoadingWorkspace, workspace?.id]);
 
-  const [messages, setMessages] = useState<any[]>([]);
-  const [rsvpCount, setRsvpCount] = useState(0);
+  const loadProjectByWorkspace = async (agencyId: string) => {
+    try {
+      const supabase = getSupabase();
+      const { data: projects } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('agency_id', agencyId)
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      if (projects && projects.length > 0) {
+        const projectData = projects[0];
+        setProject(projectData);
+        if (!agency) {
+          setAgency(workspace);
+        }
+        
+        // Fetch stats
+        const { count: msgCount } = await supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('project_id', projectData.id);
+        setMessages(new Array(msgCount || 0).fill({}));
+
+        const { count: rsvpCountVal } = await supabase
+          .from('rsvps')
+          .select('*', { count: 'exact', head: true })
+          .eq('project_id', projectData.id);
+        setRsvpCount(rsvpCountVal || 0);
+      }
+    } catch (err) {
+      console.error('Error loading workspace project:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
   const isCoupleLogic = agency?.user_role === 'couple';
   const isPreview = isCoupleLogic && !isSubscribed;
@@ -148,21 +189,22 @@ export default function Guest() {
     e.preventDefault();
     if (!message.trim()) return;
 
+    if (!project?.id) {
+      setError("Event not found. Please refresh the page.");
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
     if (isPreview && messages.length >= 5) {
       setError("This event is in preview mode and has reached the limit of 5 messages. Please contact the host.");
+      setIsSubmitting(false);
       return;
     }
 
     try {
-      const targetId = project?.id || projectId;
-      if (!targetId || targetId === 'undefined') {
-        setError("Could not identify the event. Please check the URL.");
-        return;
-      }
-      await postMessage(name, message, targetId, !!project?.auto_approve_messages);
+      await postMessage(name, message, project.id, !!project?.auto_approve_messages);
       setMessages([...messages, { id: Date.now() }]); // Optimistic count update
       confetti({
         particleCount: 150,
@@ -280,6 +322,7 @@ export default function Guest() {
                     placeholder="How shall we call you?"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
+                    required
                     className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium ${template.colors.text} placeholder:opacity-50`}
                   />
                 </div>
@@ -315,7 +358,7 @@ export default function Guest() {
               </form>
             ) : (
               <RSVPForm 
-                projectId={project?.id || projectId || ''} 
+                projectId={project?.id || ''} 
                 template={template}
                 isPreview={isPreview}
                 currentCount={rsvpCount}

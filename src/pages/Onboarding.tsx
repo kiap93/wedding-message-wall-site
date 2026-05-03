@@ -122,6 +122,7 @@ export default function Onboarding() {
       if (insertError) throw insertError;
 
       // 3.5 If couple, create the first event automatically with sample data
+      let createdProjectId = '';
       if (role === 'couple' && agencyData) {
         // Use a unique slug based on their subdomain to avoid collisions
         const projectSlug = slug;
@@ -146,6 +147,7 @@ export default function Onboarding() {
         if (projectError) throw projectError;
 
         if (projectData) {
+          createdProjectId = projectData.id;
           // Add 3 sample messages
           await supabase.from('messages').insert([
             { 
@@ -202,7 +204,7 @@ export default function Onboarding() {
       if (role === 'agency') {
         window.location.href = `${protocol}//${slug}.${baseDomain}/admin${token ? `?token=${token}` : ''}`;
       } else {
-        navigate('/admin');
+        navigate(`/admin${createdProjectId ? `?project=${createdProjectId}` : ''}`);
       }
 
     } catch (err: any) {

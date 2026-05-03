@@ -26,8 +26,38 @@ export default function Display() {
   useEffect(() => {
     if (isLoadingWorkspace) return;
     const urlProjectId = projectId || searchParams.get('id') || searchParams.get('projectId');
-    loadProject(urlProjectId || undefined, slug);
+    // If on a subdomain and no project ID/slug specified, load the first project of the workspace
+    if (!urlProjectId && !slug && workspace) {
+      loadProjectByWorkspace(workspace.id);
+    } else {
+      loadProject(urlProjectId || undefined, slug);
+    }
   }, [projectId, slug, searchParams, isLoadingWorkspace, workspace]);
+
+  const loadProjectByWorkspace = async (agencyId: string) => {
+    try {
+      const supabase = getSupabase();
+      const { data: projects, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('agency_id', agencyId)
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      if (projects && projects.length > 0) {
+        const projectData = projects[0];
+        setProject(projectData);
+        if (!agency) {
+          setAgency(workspace);
+        }
+      } else {
+        setIsLoading(false);
+      }
+    } catch (err) {
+      console.error('Error loading workspace project:', err);
+      setIsLoading(false);
+    }
+  };
 
   const loadProject = async (id?: string, slugName?: string) => {
     if (id === 'demo' || slugName === 'demo') {
