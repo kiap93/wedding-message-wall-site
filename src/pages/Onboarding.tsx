@@ -67,7 +67,11 @@ export default function Onboarding() {
       const baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
       const token = localStorage.getItem('wedding_session_token');
       
-      window.location.href = `${protocol}//${slug}.${baseDomain}/admin${token ? `?token=${token}` : ''}`;
+      if (role === 'agency') {
+        window.location.href = `${protocol}//${slug}.${baseDomain}/admin${token ? `?token=${token}` : ''}`;
+      } else {
+        navigate('/admin');
+      }
 
     } catch (err: any) {
       setError(err.message || 'Failed to create workspace');
@@ -165,7 +169,7 @@ export default function Onboarding() {
 
           <div>
             <label className="block text-sm font-medium text-[#2C1810]/70 mb-2">
-              Guest URL Subdomain
+              {role === 'agency' ? 'Custom Subdomain' : 'Your Wedding URL'}
             </label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
@@ -175,17 +179,21 @@ export default function Onboarding() {
                 type="text"
                 value={subdomain}
                 onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
-                placeholder="your-name"
+                placeholder={role === 'agency' ? "your-agency" : "lucas-sofia"}
                 required
-                className="w-full pl-11 pr-32 py-3 bg-[#FDFCF0] border border-black/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C5A059]/30 focus:border-[#C5A059] transition-all"
+                className={`w-full py-3 bg-[#FDFCF0] border border-black/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C5A059]/30 focus:border-[#C5A059] transition-all font-medium ${
+                  role === 'agency' ? 'pl-11 pr-32' : 'pl-11 pr-4'
+                }`}
               />
-              <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
-                <span className="text-sm font-medium text-[#2C1810]/40">.eventframe.io</span>
-              </div>
+              {role === 'agency' && (
+                <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
+                  <span className="text-sm font-medium text-[#2C1810]/40">.eventframe.io</span>
+                </div>
+              )}
             </div>
             <p className="mt-2 text-xs text-[#2C1810]/50 flex items-center gap-1.5">
               <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-              Public URL: {subdomain || 'name'}.eventframe.io
+              Public URL: {role === 'agency' ? `${subdomain || 'name'}.eventframe.io` : `eventframe.io/${subdomain || 'name'}`}
             </p>
           </div>
 

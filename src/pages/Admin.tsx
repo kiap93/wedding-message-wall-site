@@ -252,9 +252,24 @@ export default function Admin() {
 
   const getEventUrl = (event: WeddingEvent, type: 'display' | 'guest') => {
     const currentHost = window.location.host;
-    const parts = currentHost.split('.');
-    const baseDomain = parts.length > 2 ? parts.slice(-2).join('.') : currentHost;
+    const hostParts = currentHost.split('.');
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     
+    let baseDomain;
+    if (isLocalhost) {
+      baseDomain = currentHost;
+    } else {
+      baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
+    }
+    
+    if (isCouple) {
+      // Couples use root domain path
+      const base = `https://${baseDomain}/${agency?.slug}`;
+      if (type === 'display') return base;
+      return `${base}/guest`;
+    }
+
+    // Agencies use subdomains
     const base = agency?.domain ? `https://${agency.domain}` : `https://${agency?.slug}.${baseDomain}`;
     if (type === 'display') return `${base}/${event.slug}/display`;
     return `${base}/${event.slug}/guest`;
@@ -522,7 +537,9 @@ export default function Admin() {
                           {event.groom_name} <span className="text-[#C5A059]">&</span> {event.bride_name}
                         </h3>
                         <p className="text-[10px] font-bold text-[#C5A059] uppercase tracking-widest mb-6 opacity-60">
-                          {agency?.domain || `${agency?.slug}.eventframe.io`} / {event.slug}
+                          {isCouple 
+                            ? `eventframe.io/${agency?.slug}`
+                            : (agency?.domain || `${agency?.slug}.eventframe.io / ${event.slug}`)}
                         </p>
 
                           <div className="space-y-3 text-sm text-gray-500 mb-8">
@@ -740,15 +757,24 @@ export default function Admin() {
                         <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Domain Slug</label>
                         <div className="flex items-center flex-wrap">
                           <div className="bg-gray-100 px-4 py-4 rounded-l-2xl border border-r-0 border-gray-100 text-[10px] font-bold text-gray-400 select-none whitespace-nowrap">
-                            {agency?.domain || `${agency?.slug || 'agency'}.${window.location.host.split('.').slice(-2).join('.')}`}/
+                            {isCouple 
+                              ? `${window.location.host.split('.').slice(-2).join('.')}/${agency?.slug}/`
+                              : (agency?.domain || `${agency?.slug || 'agency'}.${window.location.host.split('.').slice(-2).join('.')}/`)}
                           </div>
-                          <input 
-                            type="text" 
-                            placeholder="wedding-slug"
-                            value={editingEvent?.slug || ''}
-                            onChange={(e) => setEditingEvent({ ...editingEvent!, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
-                            className="flex-1 px-5 py-4 rounded-r-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-mono text-sm min-w-[120px]"
-                          />
+                          {!isCouple && (
+                            <input 
+                              type="text" 
+                              placeholder="wedding-slug"
+                              value={editingEvent?.slug || ''}
+                              onChange={(e) => setEditingEvent({ ...editingEvent!, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                              className="flex-1 px-5 py-4 rounded-r-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-mono text-sm min-w-[120px]"
+                            />
+                          )}
+                          {isCouple && (
+                             <div className="flex-1 px-5 py-4 rounded-r-2xl border border-gray-100 bg-gray-50 text-gray-400 font-mono text-sm">
+                               Display
+                             </div>
+                          )}
                         </div>
                       </div>
 

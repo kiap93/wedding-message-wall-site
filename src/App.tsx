@@ -53,13 +53,17 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         if (currentHost.includes('.run.app')) return;
 
         if (isRoot && userWorkspaces.length > 0 && location.pathname === '/admin') {
-          const slug = userWorkspaces[0].slug;
-          const protocol = window.location.protocol;
-          // Extract base domain carefully
-          const baseDomain = hostParts.slice(-2).join('.');
-          const token = localStorage.getItem('wedding_session_token');
-          window.location.href = `${protocol}//${slug}.${baseDomain}/admin${token ? `?token=${token}` : ''}`;
-          return;
+          const workspace = userWorkspaces[0];
+          // Only redirect to subdomain if it's an agency
+          if (workspace.user_role === 'agency') {
+            const slug = workspace.slug;
+            const protocol = window.location.protocol;
+            // Extract base domain carefully
+            const baseDomain = hostParts.slice(-2).join('.');
+            const token = localStorage.getItem('wedding_session_token');
+            window.location.href = `${protocol}//${slug}.${baseDomain}/admin${token ? `?token=${token}` : ''}`;
+            return;
+          }
         }
       } catch (err) {
         console.error('Workspace check failed:', err);

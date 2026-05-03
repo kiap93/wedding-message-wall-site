@@ -28,30 +28,58 @@ export default function Display() {
   const loadProject = async (id?: string, slugName?: string) => {
     try {
       const supabase = getSupabase();
-      let query = supabase.from('projects').select('*');
       
       if (id) {
-        query = query.eq('id', id);
-      } else if (slugName) {
-        query = query.eq('slug', slugName);
-        // If we are on a workspace subdomain, filter by that agency
-        if (workspace) {
-          query = query.eq('agency_id', workspace.id);
+        const { data, error } = await supabase.from('projects').select('*').eq('id', id).single();
+        if (error) throw error;
+        setProject(data);
+        if (data.agency_id) {
+          const agencyData = await getAgencyById(data.agency_id);
+          setAgency(agencyData);
         }
-      } else {
-        setIsLoading(false);
         return;
       }
 
-      const { data, error } = await query.single();
-      
-      if (error) throw error;
-      setProject(data);
-      
-      // Fetch Agency branding
-      if (data.agency_id) {
-        const agencyData = await getAgencyById(data.agency_id);
-        setAgency(agencyData);
+      if (slugName) {
+        // 1. Try to find project by slug (with agency context if on subdomain)
+        let query = supabase.from('projects').select('*').eq('slug', slugName);
+        if (workspace) {
+          query = query.eq('agency_id', workspace.id);
+        }
+        
+        let { data: projectData, error: projectError } = await query.maybeSingle();
+
+        // 2. If not found and NOT on subdomain, try treating slugName as an Agency slug
+        if (!projectData && !workspace) {
+          const { data: agencyData, error: agencyError } = await supabase
+            .from('agencies')
+            .select('*')
+            .eq('slug', slugName)
+            .single();
+
+          if (agencyData) {
+            setAgency(agencyData);
+            // Fetch the first event for this agency
+            const { data: events, error: eventsError } = await supabase
+              .from('projects')
+              .select('*')
+              .eq('agency_id', agencyData.id)
+              .order('created_at', { ascending: true })
+              .limit(1);
+
+            if (events && events.length > 0) {
+              projectData = events[0];
+            }
+          }
+        }
+
+        if (projectData) {
+          setProject(projectData);
+          if (!agency && projectData.agency_id) {
+            const agencyData = await getAgencyById(projectData.agency_id);
+            setAgency(agencyData);
+          }
+        }
       }
     } catch (err) {
       console.error('Error loading event:', err);
