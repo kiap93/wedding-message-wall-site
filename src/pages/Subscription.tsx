@@ -1,14 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Check, Zap, Shield, CreditCard, ArrowRight, Loader2 } from 'lucide-react';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { useUser } from '../lib/UserContext';
-
+import { getSupabase } from '../lib/supabase';
+import { Agency } from '../types';
 import { authenticatedFetch } from '../lib/auth';
 
 export default function Subscription() {
   const { workspace, isLoading } = useWorkspace();
   const [isRedirecting, setIsRedirecting] = useState(false);
+
+  const { user } = useUser();
+  const [userAgency, setUserAgency] = useState<Agency | null>(null);
+  const [isLoadingUserAgency, setIsLoadingUserAgency] = useState(!workspace && !!user);
+
+  useEffect(() => {
+    const fetchUserAgency = async () => {
+      if (!workspace && user) {
+        // Already initialized to true if we enters here
+        try {
+          const supabase = getSupabase();
+          const userId = user.id || user.sub;
+          const { data } = await supabase
+            .from('agencies')
+            .select('*')
+            .eq('user_id', userId)
+            .maybeSingle();
+          if (data) setUserAgency(data);
+        } catch (err) {
+          console.error('Error fetching user agency for subscription:', err);
+        } finally {
+          setIsLoadingUserAgency(false);
+        }
+      } else {
+        setIsLoadingUserAgency(false);
+      }
+    };
+    fetchUserAgency();
+  }, [workspace, user]);
+
+  const activeWorkspace = workspace || userAgency;
 
   const handleSubscribe = async (planId: string) => {
     setIsRedirecting(true);
@@ -20,7 +52,7 @@ export default function Subscription() {
         },
         body: JSON.stringify({
           planId,
-          agencyId: workspace?.id,
+          agencyId: activeWorkspace?.id,
         }),
       });
 
@@ -36,7 +68,7 @@ export default function Subscription() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || isLoadingUserAgency) {
     return (
       <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-[#C5A059] animate-spin" />
@@ -44,12 +76,9 @@ export default function Subscription() {
     );
   }
 
-  const { user } = useUser();
-  const isSubscribed = workspace?.subscription_status === 'active' || 
-                      workspace?.is_demo === true 
-                      
-                      //|| user?.email === 'buildsiteasia@gmail.com';
-  const isCouple = workspace?.user_role === 'couple';
+  const isSubscribed = activeWorkspace?.subscription_status === 'active' || 
+                      activeWorkspace?.is_demo === true;
+  const isCouple = activeWorkspace?.user_role === 'couple';
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] py-32 px-6">

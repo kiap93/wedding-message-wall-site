@@ -100,7 +100,14 @@ export default function Admin() {
     if (error) {
       console.error('Error fetching events:', error);
     } else {
-      setEvents(data || []);
+      const eventList = data || [];
+      setEvents(eventList);
+      
+      // Auto-switch to editor for couples with 1+ event
+      if (agency?.user_role === 'couple' && eventList.length > 0 && view === 'list') {
+        setEditingEvent(eventList[0]);
+        setView('editor');
+      }
     }
     setIsLoadingEvents(false);
   };
@@ -167,13 +174,7 @@ export default function Admin() {
   const isCouple = agency?.user_role === 'couple';
 
   useEffect(() => {
-    if (isCouple && events.length === 1 && view === 'list' && !isLoadingEvents) {
-      // For couples, if they have one event, auto-open it in editor immediately
-      setEditingEvent(events[0]);
-      setView('editor');
-    }
-    
-    // If couple and 0 events, auto-trigger creation to save them a click
+    // If couple and 0 events, auto-trigger creation if they are subscribed
     if (isCouple && events.length === 0 && view === 'list' && !isLoadingEvents && isSubscribed) {
       handleCreateNew();
     }
