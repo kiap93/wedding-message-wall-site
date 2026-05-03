@@ -265,7 +265,7 @@ export default function Guest() {
   };
 
   return (
-    <div className={`min-h-screen flex flex-col items-center justify-center p-6 ${template.colors.background} transition-colors duration-700 relative overflow-hidden ${template.fontSans} ${template.colors.text}`}>
+    <div className={`min-h-screen flex flex-col items-center p-4 sm:p-6 ${template.colors.background} transition-colors duration-700 relative overflow-x-hidden ${template.fontSans} ${template.colors.text}`}>
       {isPreview && (
         <div className="absolute top-0 left-0 right-0 bg-[#2D2424] text-white py-2 px-4 shadow-2xl z-50 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -298,7 +298,7 @@ export default function Guest() {
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-lg relative z-10 pt-16 pb-12"
+        className="w-full max-w-lg relative z-10 pt-16 pb-12 sm:my-auto"
       >
         <div className={`${template.colors.card} backdrop-blur-xl p-6 xs:p-8 md:p-12 rounded-[2rem] sm:rounded-[2.5rem] border ${template.colors.border} shadow-2xl`}>
           <div className="text-center mb-8 sm:mb-10">
@@ -316,29 +316,29 @@ export default function Guest() {
             <p className={`text-sm sm:text-base ${template.colors.subtleText} tracking-wide font-medium`}>Leave a message for the happy couple</p>
           </div>
 
-            <div className="flex gap-4 mb-8 border-b border-white/10 pb-4">
+            <div className="flex gap-2 sm:gap-4 mb-8 border-b border-white/10 pb-4">
               <button
                 onClick={() => setActiveTab('message')}
-                className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all text-sm uppercase tracking-widest ${
+                className={`flex-1 py-3 px-2 xs:px-4 rounded-xl font-bold transition-all text-[10px] xs:text-xs sm:text-sm uppercase tracking-widest ${
                   activeTab === 'message' 
                     ? template.colors.accent + ' bg-opacity-10 shadow-sm' 
                     : 'opacity-40 hover:opacity-100'
                 }`}
               >
-                <div className="flex items-center justify-center gap-2">
-                  <Send className="w-4 h-4" /> Message
+                <div className="flex items-center justify-center gap-1.5 sm:gap-2">
+                  <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Message
                 </div>
               </button>
               <button
                 onClick={() => setActiveTab('rsvp')}
-                className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all text-sm uppercase tracking-widest ${
+                className={`flex-1 py-3 px-2 xs:px-4 rounded-xl font-bold transition-all text-[10px] xs:text-xs sm:text-sm uppercase tracking-widest ${
                   activeTab === 'rsvp' 
                     ? template.colors.accent + ' bg-opacity-10 shadow-sm' 
                     : 'opacity-40 hover:opacity-100'
                 }`}
               >
-                <div className="flex items-center justify-center gap-2">
-                  <Users className="w-4 h-4" /> Guest RSVP
+                <div className="flex items-center justify-center gap-1.5 sm:gap-2">
+                  <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="hidden xs:inline">Guest</span> RSVP
                 </div>
               </button>
             </div>

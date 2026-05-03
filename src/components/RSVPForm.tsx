@@ -97,7 +97,7 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
               : 'opacity-50 hover:opacity-100'
           }`}
         >
-          <Check className="w-4 h-4" /> I'm Attending
+          <Check className="w-4 h-4" /> <span className="xs:hidden">Yes</span><span className="hidden xs:inline">Attending</span>
         </button>
         <button
           type="button"
@@ -188,7 +188,7 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
                   value={formData.dietary_requirements}
                   onChange={(e) => setFormData({ ...formData, dietary_requirements: e.target.value })}
                   rows={2}
-                  className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium resize-none`}
+                  className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium resize-none text-sm`}
                 />
               </div>
             </div>
