@@ -300,8 +300,14 @@ export default function Admin() {
             </div>
           )}
           <div className="flex flex-col">
-            <h1 className="font-serif text-xl leading-tight hidden sm:block">{agency?.name || 'Wedding Hub'}</h1>
-            {agency && <span className="text-[10px] font-bold text-[#C5A059] uppercase tracking-[0.2em]">{agency.slug}.eventframe.io</span>}
+            <h1 className="font-serif text-xl leading-tight hidden sm:block">
+              {isCouple ? 'My Wedding Hub' : (agency?.name || 'Wedding Hub')}
+            </h1>
+            {agency && (
+              <span className="text-[10px] font-bold text-[#C5A059] uppercase tracking-[0.2em]">
+                {isCouple ? `eventframe.io/${agency.slug}` : `${agency.slug}.eventframe.io`}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -319,7 +325,7 @@ export default function Admin() {
             <button 
               onClick={() => setView('agency_settings')}
               className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-500"
-              title="Organization Settings"
+              title={isCouple ? "Account Settings" : "Organization Settings"}
             >
               <Settings className="w-5 h-5" />
             </button>
@@ -352,7 +358,7 @@ export default function Admin() {
                 </button>
 
                 <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-[#C5A059]/10">
-                   <h2 className="text-3xl font-serif mb-8">Agency Branding</h2>
+                   <h2 className="text-3xl font-serif mb-8">{isCouple ? 'Personal Branding' : 'Agency Branding'}</h2>
                    <form onSubmit={(e) => {
                      e.preventDefault();
                      const formData = new FormData(e.currentTarget);
@@ -369,33 +375,45 @@ export default function Admin() {
                    }} className="space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Agency Name</label>
+                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">
+                            {isCouple ? 'Wedding Name' : 'Agency Name'}
+                          </label>
                           <input name="name" defaultValue={agency?.name} className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50" />
                         </div>
                         <div>
-                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Subdomain Slug</label>
+                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">
+                            {isCouple ? 'Personal URL Slug' : 'Subdomain Slug'}
+                          </label>
                           <input name="slug" defaultValue={agency?.slug} className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 font-mono text-sm" />
                         </div>
                       </div>
                       <div>
-                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Logo URL</label>
+                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">
+                          {isCouple ? 'Wedding Logo/Monogram URL' : 'Logo URL'}
+                        </label>
                         <input name="logo_url" defaultValue={agency?.logo_url} placeholder="https://..." className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50" />
                       </div>
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Custom Domain (Optional)</label>
-                        <input name="domain" defaultValue={agency?.domain} placeholder="weddings.yourbrand.com" className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50" />
-                      </div>
+                      {!isCouple && (
+                        <div>
+                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Custom Domain (Optional)</label>
+                          <input name="domain" defaultValue={agency?.domain} placeholder="weddings.yourbrand.com" className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50" />
+                        </div>
+                      )}
                       
                       <div className="grid grid-cols-2 gap-6 p-6 bg-gray-50 rounded-3xl border border-gray-100">
                         <div>
-                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Primary Brand Color</label>
+                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">
+                            {isCouple ? 'Wedding Theme Color' : 'Primary Brand Color'}
+                          </label>
                           <div className="flex gap-3">
                             <input type="color" name="primaryColor" defaultValue={agency?.theme_config?.primaryColor || '#C5A059'} className="h-12 w-12 rounded-lg cursor-pointer" />
                             <input type="text" defaultValue={agency?.theme_config?.primaryColor || '#C5A059'} className="flex-1 px-4 py-2 rounded-xl border border-gray-100 bg-white font-mono text-xs" />
                           </div>
                         </div>
                         <div>
-                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Accent Accent Color</label>
+                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">
+                            {isCouple ? 'Secondary Color' : 'Accent Accent Color'}
+                          </label>
                           <div className="flex gap-3">
                             <input type="color" name="accentColor" defaultValue={agency?.theme_config?.accentColor || '#2D2424'} className="h-12 w-12 rounded-lg cursor-pointer" />
                             <input type="text" defaultValue={agency?.theme_config?.accentColor || '#2D2424'} className="flex-1 px-4 py-2 rounded-xl border border-gray-100 bg-white font-mono text-xs" />
@@ -737,7 +755,7 @@ export default function Admin() {
                   className="flex items-center gap-2 text-gray-500 hover:text-[#C5A059] transition-colors font-bold uppercase tracking-widest text-xs"
                 >
                   <ArrowLeft className="w-4 h-4" />
-                  Back to List
+                  {isCouple ? 'Back to Dashboard' : 'Back to List'}
                 </button>
               </div>
 

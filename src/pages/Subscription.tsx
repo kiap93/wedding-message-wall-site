@@ -46,8 +46,9 @@ export default function Subscription() {
 
   const { user } = useUser();
   const isSubscribed = workspace?.subscription_status === 'active' || 
-                      workspace?.is_demo === true || 
-                      user?.email === 'buildsiteasia@gmail.com';
+                      workspace?.is_demo === true 
+                      
+                      //|| user?.email === 'buildsiteasia@gmail.com';
   const isCouple = workspace?.user_role === 'couple';
 
   return (
