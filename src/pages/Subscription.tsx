@@ -46,6 +46,7 @@ export default function Subscription() {
   const isSubscribed = workspace?.subscription_status === 'active' || 
                       workspace?.is_demo === true || 
                       user?.email === 'buildsiteasia@gmail.com';
+  const isCouple = workspace?.user_role === 'couple';
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] py-32 px-6">
@@ -56,12 +57,14 @@ export default function Subscription() {
             animate={{ opacity: 1, y: 0 }}
           >
             <h1 className="text-4xl md:text-6xl font-serif text-[#2D2424] mb-4">
-              {isSubscribed ? 'Your Subscription' : 'Try Pro Free for 30 Days'}
+              {isSubscribed ? 'Everything is Ready' : isCouple ? 'One-Time Payment' : 'Try Pro Free for 30 Days'}
             </h1>
             <p className="text-gray-500 font-medium max-w-xl mx-auto">
               {isSubscribed 
-                ? "You're all set! You have full access to create unlimited white-label events."
-                : "Start your 30-day free trial today. Cancel anytime if you're not satisfied."
+                ? "You're all set! You have full access to your wedding features."
+                : isCouple 
+                  ? "Unlock your full wedding site, RSVP manager, and live display with a single payment."
+                  : "Start your 30-day free trial today. Cancel anytime if you're not satisfied."
               }
             </p>
           </motion.div>
@@ -77,20 +80,61 @@ export default function Subscription() {
               <Check className="w-10 h-10 text-green-500" />
             </div>
             <h2 className="text-2xl font-serif mb-2">
-              {workspace?.is_demo || user?.email === 'buildsiteasia@gmail.com' ? 'Demo Access Active' : 'Agency Pro Active'}
+              {workspace?.is_demo || user?.email === 'buildsiteasia@gmail.com' ? 'Full Access Active' : isCouple ? 'Wedding Paid' : 'Agency Pro Active'}
             </h2>
             <p className="text-gray-500 mb-8">
               {workspace?.is_demo || user?.email === 'buildsiteasia@gmail.com' 
                 ? 'Your account has special access to create unlimited events.' 
-                : 'Next billing date: Coming soon'}
+                : isCouple 
+                  ? 'Your wedding site is live and all premium features are unlocked.'
+                  : 'Next billing date: Coming soon'}
             </p>
             
             <button 
-              onClick={() => handleSubscribe('manage')} // This should lead to customer portal
+              onClick={() => isCouple ? window.history.back() : handleSubscribe('manage')} 
               className="px-10 py-5 bg-gray-100 text-[#2D2424] rounded-2xl font-black uppercase tracking-widest hover:bg-gray-200 transition-all flex items-center justify-center gap-3 mx-auto"
             >
-              <CreditCard className="w-5 h-5" />
-              Manage Subscription
+              {isCouple ? 'Go Back' : <><CreditCard className="w-5 h-5" /> Manage Subscription</>}
+            </button>
+          </motion.div>
+        ) : isCouple ? (
+          /* Couple Plan */
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white p-12 rounded-[3rem] border border-[#C5A059]/10 shadow-2xl text-center max-w-xl mx-auto"
+          >
+            <div className="w-16 h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center mx-auto mb-8">
+              <Zap className="w-8 h-8 text-[#C5A059]" />
+            </div>
+            <h3 className="text-3xl font-serif mb-2">Individual Wedding</h3>
+            <div className="flex items-baseline justify-center gap-1 mb-8">
+              <span className="text-5xl font-serif">$19</span>
+              <span className="text-gray-400 text-sm">one-time</span>
+            </div>
+
+            <ul className="space-y-4 mb-10 text-left max-w-sm mx-auto">
+              {[
+                "Full Digital Wedding Site",
+                "Unlimited Live Guest Messages",
+                "RSVP & Dietary Tracking",
+                "Event Background Photo",
+                "Lifetime Access to Guestbook"
+              ].map((feature, i) => (
+                <li key={i} className="flex items-center gap-3 text-sm font-medium text-gray-500">
+                  <Check className="w-4 h-4 text-[#C5A059]" />
+                  {feature}
+                </li>
+              ))}
+            </ul>
+
+            <button 
+              disabled={isRedirecting}
+              onClick={() => handleSubscribe('price_one_time')}
+              className="w-full py-5 bg-[#C5A059] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
+            >
+              {isRedirecting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Unlock Premimum"}
+              <ArrowRight className="w-5 h-5" />
             </button>
           </motion.div>
         ) : (

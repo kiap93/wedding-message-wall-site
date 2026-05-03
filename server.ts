@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import cors from 'cors';
 
 dotenv.config();
 
@@ -65,16 +66,21 @@ async function startServer() {
         const customerId = session.customer as string;
 
         if (agencyId) {
+          const updateData: any = {
+            subscription_status: 'active',
+            stripe_customer_id: customerId,
+            plan_id: session.metadata?.planId
+          };
+          
+          if (subscriptionId) {
+            updateData.subscription_id = subscriptionId;
+          }
+
           await supabaseAdmin
             .from('agencies')
-            .update({ 
-              subscription_status: 'active',
-              subscription_id: subscriptionId,
-              stripe_customer_id: customerId,
-              plan_id: session.metadata?.planId
-            })
+            .update(updateData)
             .eq('id', agencyId);
-          console.log(`Agency ${agencyId} subscribed!`);
+          console.log(`Agency/Couple ${agencyId} paid/subscribed!`);
         }
         break;
       }
@@ -93,6 +99,12 @@ async function startServer() {
 
   app.use(express.json());
   app.use(cookieParser());
+  app.use(cors({
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  }));
 
   // Diagnostics middleware
   app.use((req, res, next) => {
@@ -207,10 +219,7 @@ async function startServer() {
 
     try {
       // In a production app, we'd look up the price ID from planId
-      const priceId = planId === 'price_monthly' ? 'price_1...monthly_id' : 'price_1...yearly_id';
-      
-      // Dummy price IDs if not configured (user will need to provide real ones)
-      // For this demo, we'll use a placeholder or handle it gracefully
+      const isOneTime = planId === 'price_one_time';
       
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
@@ -219,20 +228,24 @@ async function startServer() {
             price_data: {
               currency: 'usd',
               product_data: {
-                name: planId === 'price_monthly' ? 'Agency Pro (Monthly)' : 'Agency Pro (Yearly)',
+                name: isOneTime ? 'Individual Wedding License' : (planId === 'price_monthly' ? 'Agency Pro (Monthly)' : 'Agency Pro (Yearly)'),
               },
-              unit_amount: planId === 'price_monthly' ? 4900 : 47000,
-              recurring: {
-                interval: planId === 'price_monthly' ? 'month' : 'year',
-              },
+              unit_amount: isOneTime ? 1900 : (planId === 'price_monthly' ? 4900 : 47000),
+              ...(!isOneTime && {
+                recurring: {
+                  interval: planId === 'price_monthly' ? 'month' : 'year',
+                },
+              }),
             },
             quantity: 1,
           },
         ],
-        mode: 'subscription',
-        subscription_data: {
-          trial_period_days: 30,
-        },
+        mode: isOneTime ? 'payment' : 'subscription',
+        ...( !isOneTime && {
+          subscription_data: {
+            trial_period_days: 30,
+          },
+        }),
         success_url: `${APP_URL}/subscription?success=true`,
         cancel_url: `${APP_URL}/subscription?canceled=true`,
         metadata: {

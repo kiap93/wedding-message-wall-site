@@ -16,6 +16,7 @@ export interface Agency {
   subscription_id?: string;
   plan_id?: string;
   is_demo?: boolean;
+  user_role?: 'agency' | 'couple';
   created_at: string;
 }
 

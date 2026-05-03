@@ -49,6 +49,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         // Check if root domain (e.g., eventframe.io or localhost)
         const isRoot = hostParts.length <= 2 || (hostParts.length === 3 && hostParts[0] === 'www');
         
+        // Disable subdomain redirects on run.app domains as they don't support wildcard subdomains
+        if (currentHost.includes('.run.app')) return;
+
         if (isRoot && userWorkspaces.length > 0 && location.pathname === '/admin') {
           const slug = userWorkspaces[0].slug;
           const protocol = window.location.protocol;

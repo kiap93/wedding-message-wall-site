@@ -151,21 +151,34 @@ export default function Admin() {
   const isSubscribed = agency?.subscription_status === 'active' || 
                       agency?.is_demo === true || 
                       user?.email === 'buildsiteasia@gmail.com';
+  const isCouple = agency?.user_role === 'couple';
+
+  useEffect(() => {
+    if (isCouple && events.length === 1 && view === 'list' && !isLoadingEvents) {
+      // For couples, if they have one event, auto-open it in editor
+      setEditingEvent(events[0]);
+      setView('editor');
+    }
+  }, [isCouple, events, view, isLoadingEvents]);
 
   const handleCreateNew = () => {
     if (!agency) return;
+    if (isCouple && events.length >= 1) {
+      alert('Individual accounts are limited to one event. Upgrade to an Agency account to manage multiple events.');
+      return;
+    }
     if (!isSubscribed) {
       alert('A pro subscription is required to create new events.');
       navigate('/subscription');
       return;
     }
     const newEvent: Partial<WeddingEvent> = {
-      name: 'New Celebration',
-      slug: `event-${Math.random().toString(36).substring(2, 7)}`,
-      groom_name: 'Partner A',
-      bride_name: 'Partner B',
+      name: `${agency.name}`,
+      slug: `wedding-${Math.random().toString(36).substring(2, 7)}`,
+      groom_name: agency.name.split(' & ')[0] || 'Partner A',
+      bride_name: agency.name.split(' & ')[1] || 'Partner B',
       wedding_date: new Date().toISOString().split('T')[0],
-      location: 'Venue Name',
+      location: 'Your Beautiful Venue',
       theme_id: 'minimal_luxury',
       agency_id: agency.id,
       access_password: Math.random().toString(36).substring(2, 8).toUpperCase(),
@@ -395,39 +408,47 @@ export default function Admin() {
             >
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
-                  <h2 className="text-4xl font-serif mb-2 text-[#2D2424]">Organization Events</h2>
-                  <p className="text-gray-500">Manage white-label wedding events and guest experiences.</p>
+                  <h2 className="text-4xl font-serif mb-2 text-[#2D2424]">
+                    {isCouple ? 'Your Wedding' : 'Organization Events'}
+                  </h2>
+                  <p className="text-gray-500">
+                    {isCouple ? 'Manage your digital guestbook and event experience.' : 'Manage white-label wedding events and guest experiences.'}
+                  </p>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="flex p-1 bg-white rounded-2xl border border-[#C5A059]/10 shadow-sm">
+                  {!isCouple && (
+                    <div className="flex p-1 bg-white rounded-2xl border border-[#C5A059]/10 shadow-sm">
+                      <button 
+                        onClick={() => setView('list')}
+                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                          view === 'list' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                      >
+                        List
+                      </button>
+                      <button 
+                        onClick={() => setView('calendar')}
+                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                          view === 'calendar' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                      >
+                        Calendar
+                      </button>
+                    </div>
+                  )}
+                  {(!isCouple || events.length === 0) && (
                     <button 
-                      onClick={() => setView('list')}
-                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                        view === 'list' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+                      onClick={handleCreateNew}
+                      className={`px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 transition-all shadow-xl active:scale-95 ${
+                        isSubscribed 
+                          ? 'bg-[#C5A059] text-white hover:bg-[#B38D45]' 
+                          : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-50'
                       }`}
                     >
-                      List
+                      <Plus className="w-5 h-5" />
+                      {isCouple ? 'Initialize Wedding' : 'New Event'}
                     </button>
-                    <button 
-                      onClick={() => setView('calendar')}
-                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                        view === 'calendar' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
-                      }`}
-                    >
-                      Calendar
-                    </button>
-                  </div>
-                  <button 
-                    onClick={handleCreateNew}
-                    className={`px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 transition-all shadow-xl active:scale-95 ${
-                      isSubscribed 
-                        ? 'bg-[#C5A059] text-white hover:bg-[#B38D45]' 
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-50'
-                    }`}
-                  >
-                    <Plus className="w-5 h-5" />
-                    New Event
-                  </button>
+                  )}
                 </div>
               </div>
 
