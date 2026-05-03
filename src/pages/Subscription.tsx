@@ -4,6 +4,8 @@ import { Check, Zap, Shield, CreditCard, ArrowRight, Loader2 } from 'lucide-reac
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { useUser } from '../lib/UserContext';
 
+import { authenticatedFetch } from '../lib/auth';
+
 export default function Subscription() {
   const { workspace, isLoading } = useWorkspace();
   const [isRedirecting, setIsRedirecting] = useState(false);
@@ -11,7 +13,7 @@ export default function Subscription() {
   const handleSubscribe = async (planId: string) => {
     setIsRedirecting(true);
     try {
-      const response = await fetch('/api/create-checkout-session', {
+      const response = await authenticatedFetch('/api/create-checkout-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
