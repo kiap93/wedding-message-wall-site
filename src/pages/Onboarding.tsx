@@ -123,6 +123,9 @@ export default function Onboarding() {
 
       // 3.5 If couple, create the first event automatically with sample data
       if (role === 'couple' && agencyData) {
+        // Use a unique slug based on their subdomain to avoid collisions
+        const projectSlug = slug;
+        
         const { data: projectData, error: projectError } = await supabase
           .from('projects')
           .insert([
@@ -131,7 +134,7 @@ export default function Onboarding() {
               name: `${groomName} & ${brideName}'s Wedding`,
               groom_name: groomName,
               bride_name: brideName,
-              slug: 'our-wedding', // default slug for their first wedding
+              slug: projectSlug,
               theme_id: 'garden' as any, // default theme
               wedding_date: new Date(Date.now() + 15552000000).toISOString().split('T')[0], // 6 months from now
               location: 'Grand Ballroom, Plaza Hotel'

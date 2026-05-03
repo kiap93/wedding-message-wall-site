@@ -25,8 +25,9 @@ export default function Display() {
 
   useEffect(() => {
     if (isLoadingWorkspace) return;
-    loadProject(projectId, slug);
-  }, [projectId, slug, isLoadingWorkspace, workspace]);
+    const urlProjectId = projectId || searchParams.get('id') || searchParams.get('projectId');
+    loadProject(urlProjectId || undefined, slug);
+  }, [projectId, slug, searchParams, isLoadingWorkspace, workspace]);
 
   const loadProject = async (id?: string, slugName?: string) => {
     if (id === 'demo' || slugName === 'demo') {

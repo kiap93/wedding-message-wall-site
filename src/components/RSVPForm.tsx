@@ -30,6 +30,12 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
     setIsSubmitting(true);
     setError(null);
 
+    if (!projectId || projectId === 'undefined') {
+      setError("Could not identify the event. Please check the URL.");
+      setIsSubmitting(false);
+      return;
+    }
+
     if (isPreview && currentCount >= 5) {
       setError("This event is in preview mode and has reached the limit of 5 RSVPs. Please contact the host.");
       setIsSubmitting(false);

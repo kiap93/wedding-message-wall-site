@@ -38,12 +38,13 @@ export default function Guest() {
 
   useEffect(() => {
     if (isLoadingWorkspace) return;
-    if (projectId || slug) {
-      loadProject(projectId, slug);
+    const urlProjectId = projectId || searchParams.get('id') || searchParams.get('projectId');
+    if (urlProjectId || slug) {
+      loadProject(urlProjectId || undefined, slug);
     } else {
       setIsLoading(false);
     }
-  }, [projectId, slug, isLoadingWorkspace, workspace]);
+  }, [projectId, slug, searchParams, isLoadingWorkspace, workspace]);
 
   const [messages, setMessages] = useState<any[]>([]);
   const [rsvpCount, setRsvpCount] = useState(0);
@@ -157,6 +158,10 @@ export default function Guest() {
 
     try {
       const targetId = project?.id || projectId;
+      if (!targetId || targetId === 'undefined') {
+        setError("Could not identify the event. Please check the URL.");
+        return;
+      }
       await postMessage(name, message, targetId, !!project?.auto_approve_messages);
       setMessages([...messages, { id: Date.now() }]); // Optimistic count update
       confetti({
