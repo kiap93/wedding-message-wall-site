@@ -62,20 +62,23 @@ export default function Guest() {
         subscription_status: 'active',
         is_demo: true,
         logo_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=100&h=100',
-        theme_config: { primaryColor: '#C5A059', accentColor: '#2D2424' }
+        theme_config: { primaryColor: '#C5A059', accentColor: '#2D2424' },
+        created_at: new Date().toISOString()
       };
       const demoProject: WeddingEvent = {
         id: 'demo-project',
         agency_id: 'demo-agency',
-        user_id: 'demo-user',
         groom_name: 'Lucas',
         bride_name: 'Sofia',
+        name: 'Lucas & Sofia Wedding',
         slug: 'demo',
-        theme_id: 'floral',
+        theme_id: 'garden',
         image_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80',
-        event_date: '2025-06-15',
+        wedding_date: '2025-06-15',
+        location: 'San Francisco, CA',
         auto_approve_messages: true,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
       setAgency(demoAgency);
       setProject(demoProject);

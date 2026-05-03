@@ -15,6 +15,40 @@ export default function Onboarding() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  React.useEffect(() => {
+    const checkExisting = async () => {
+      try {
+        const supabase = getSupabase();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: existingAgency } = await supabase
+          .from('agencies')
+          .select('id, slug, user_role')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (existingAgency) {
+          // Already onboarded, redirect to correct place
+          const protocol = window.location.protocol;
+          const hostParts = window.location.host.split('.');
+          const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          const baseDomain = isLocalhost ? 'localhost:3000' : (hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.'));
+          const token = localStorage.getItem('wedding_session_token');
+
+          if (existingAgency.user_role === 'agency') {
+            window.location.href = `${protocol}//${existingAgency.slug}.${baseDomain}/admin${token ? `?token=${token}` : ''}`;
+          } else {
+            navigate('/admin');
+          }
+        }
+      } catch (err) {
+        console.error('Error checking existing agency:', err);
+      }
+    };
+    checkExisting();
+  }, [navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!role) return;
@@ -37,6 +71,28 @@ export default function Onboarding() {
       if (!userData.user) throw new Error('Not authenticated');
 
       const supabase = getSupabase();
+
+      // 1.5 Safety check: Check if user already has an agency (to prevent race conditions)
+      const { data: userAgency } = await supabase
+        .from('agencies')
+        .select('id, slug, user_role')
+        .eq('user_id', userData.user.id)
+        .maybeSingle();
+
+      if (userAgency) {
+        const protocol = window.location.protocol;
+        const hostParts = window.location.host.split('.');
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const baseDomain = isLocalhost ? 'localhost:3000' : (hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.'));
+        const token = localStorage.getItem('wedding_session_token');
+        
+        if (userAgency.user_role === 'agency') {
+          window.location.href = `${protocol}//${userAgency.slug}.${baseDomain}/admin${token ? `?token=${token}` : ''}`;
+        } else {
+          navigate('/admin');
+        }
+        return;
+      }
       
       // 2. Check if slug exists
       const { data: existing } = await supabase
