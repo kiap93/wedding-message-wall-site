@@ -186,7 +186,7 @@ export default function Admin() {
       alert('Individual accounts are limited to one event. Upgrade to an Agency account to manage multiple events.');
       return;
     }
-    if (!isSubscribed) {
+    if (!isSubscribed && !isCouple) {
       alert('A pro subscription is required to create new events.');
       navigate('/subscription');
       return;
@@ -523,7 +523,7 @@ export default function Admin() {
                     onClick={() => navigate('/subscription')}
                     className="px-6 py-3 bg-[#C5A059] text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-[#C5A059]/20 hover:scale-105 transition-all"
                   >
-                    View Pricing
+                    {isCouple ? 'Publish Wedding' : 'View Pricing'}
                   </button>
                 </div>
               )}
@@ -901,13 +901,34 @@ export default function Admin() {
                       </div>
                     </div>
 
-                    <div className="p-8 pt-4">
+                    <div className="p-8 pt-4 space-y-4">
+                      {isCouple && !isSubscribed && (
+                        <div className="bg-[#C5A059]/5 border border-[#C5A059]/20 p-4 rounded-2xl">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-[#C5A059] mb-2 flex items-center gap-2">
+                             <Zap className="w-3 h-3" /> Preview Mode
+                          </p>
+                          <p className="text-[10px] text-gray-500 font-medium leading-relaxed mb-4">
+                            Your wedding is currently in preview mode. Guests can see it, but interactions like RSVP and Guestbook are limited.
+                          </p>
+                          <button 
+                            onClick={() => navigate('/subscription')}
+                            className="w-full py-4 bg-[#C5A059] text-white rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-[#C5A059]/20 hover:scale-[1.02] transition-all"
+                          >
+                            Publish to Go Live ($19)
+                          </button>
+                        </div>
+                      )}
+                      
                       <button 
                         onClick={handleSave}
                         disabled={isSaving}
-                        className="w-full bg-[#C5A059] text-white py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-[#B38D45] transition-all shadow-xl active:scale-95 disabled:opacity-50"
+                        className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl active:scale-95 disabled:opacity-50 ${
+                          isCouple && !isSubscribed 
+                            ? 'bg-gray-800 text-white hover:bg-black' 
+                            : 'bg-[#C5A059] text-white hover:bg-[#B38D45]'
+                        }`}
                       >
-                        {isSaving ? 'Synchronizing...' : 'Save and Deploy'}
+                        {isSaving ? 'Synchronizing...' : (isCouple && !isSubscribed ? 'Save Preview' : 'Save and Deploy')}
                         <Save className="w-5 h-5" />
                       </button>
                     </div>

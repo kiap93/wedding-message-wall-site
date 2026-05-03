@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, Send, CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower, Users } from 'lucide-react';
+import { Heart, Send, CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower, Users, Zap } from 'lucide-react';
 import { postMessage } from '../lib/api';
 import RSVPForm from '../components/RSVPForm';
 import confetti from 'canvas-confetti';
@@ -45,61 +45,38 @@ export default function Guest() {
     }
   }, [projectId, slug, isLoadingWorkspace, workspace]);
 
+  const [messages, setMessages] = useState<any[]>([]);
+  const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
+  const isCoupleLogic = agency?.user_role === 'couple';
+  const isPreview = isCoupleLogic && !isSubscribed;
+
   const loadProject = async (id?: string, slugName?: string) => {
     try {
       const supabase = getSupabase();
       
-      if (id) {
-        const { data, error } = await supabase.from('projects').select('*').eq('id', id).single();
-        if (error) throw error;
-        setProject(data);
-        if (data.agency_id) {
-          const agencyData = await getAgencyById(data.agency_id);
-          setAgency(agencyData);
-        }
-        return;
-      }
+      if (id || slugName) {
+         let query = supabase.from('projects').select('*');
+         if (id) {
+           query = query.eq('id', id);
+         } else if (slugName) {
+           query = query.eq('slug', slugName);
+           if (workspace) query = query.eq('agency_id', workspace.id);
+         }
 
-      if (slugName) {
-        // 1. Try to find project by slug (with agency context if on subdomain)
-        let query = supabase.from('projects').select('*').eq('slug', slugName);
-        if (workspace) {
-          query = query.eq('agency_id', workspace.id);
-        }
-        
-        let { data: projectData, error: projectError } = await query.maybeSingle();
+         const { data: projectData } = await query.maybeSingle();
 
-        // 2. If not found and NOT on subdomain, try treating slugName as an Agency slug
-        if (!projectData && !workspace) {
-          const { data: agencyData, error: agencyError } = await supabase
-            .from('agencies')
-            .select('*')
-            .eq('slug', slugName)
-            .single();
-
-          if (agencyData) {
-            setAgency(agencyData);
-            // Fetch the first event for this agency
-            const { data: events, error: eventsError } = await supabase
-              .from('projects')
-              .select('*')
-              .eq('agency_id', agencyData.id)
-              .order('created_at', { ascending: true })
-              .limit(1);
-
-            if (events && events.length > 0) {
-              projectData = events[0];
-            }
-          }
-        }
-
-        if (projectData) {
-          setProject(projectData);
-          if (!agency && projectData.agency_id) {
-            const agencyData = await getAgencyById(projectData.agency_id);
-            setAgency(agencyData);
-          }
-        }
+         if (projectData) {
+           setProject(projectData);
+           const agencyData = await getAgencyById(projectData.agency_id);
+           setAgency(agencyData);
+           
+           // Fetch messages count
+           const { data: msgs } = await supabase
+             .from('messages')
+             .select('id')
+             .eq('project_id', projectData.id);
+           setMessages(msgs || []);
+         }
       }
     } catch (err) {
       console.error('Error loading event:', err);
@@ -129,9 +106,15 @@ export default function Guest() {
     setIsSubmitting(true);
     setError(null);
 
+    if (isPreview && messages.length >= 5) {
+      setError("This event is in preview mode and has reached the limit of 5 messages. Please contact the host.");
+      return;
+    }
+
     try {
       const targetId = project?.id || projectId;
       await postMessage(name, message, targetId, !!project?.auto_approve_messages);
+      setMessages([...messages, { id: Date.now() }]); // Optimistic count update
       confetti({
         particleCount: 150,
         spread: 70,
@@ -162,6 +145,13 @@ export default function Guest() {
 
   return (
     <div className={`min-h-screen flex flex-col items-center justify-center p-6 ${template.colors.background} transition-colors duration-700 relative overflow-hidden ${template.fontSans} ${template.colors.text}`}>
+      {isPreview && (
+        <div className="absolute top-0 left-0 right-0 bg-[#2D2424] text-white py-1.5 px-4 text-[9px] font-black uppercase tracking-[0.2em] text-center z-50 flex items-center justify-center gap-3">
+           <Zap className="w-3 h-3 text-[#C5A059]" />
+           <span>Preview Mode: {messages.length}/5 Messages</span>
+        </div>
+      )}
+      
       {/* Agency Branding */}
       {agency && (
         <div className="absolute top-8 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-white/20 backdrop-blur-md px-6 py-2 rounded-full border border-white/30">

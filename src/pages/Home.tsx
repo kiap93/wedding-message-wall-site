@@ -88,10 +88,11 @@ export default function Home() {
                   <ArrowRight className="w-5 h-5" />
                 </button>
                 <button 
-                onClick={() => navigate('/couple/login')}
-                className="w-full sm:w-auto px-10 py-5 bg-white text-[#2D2424] border border-gray-100 rounded-2xl font-black uppercase tracking-widest hover:border-[#C5A059]/30 transition-all shadow-xl active:scale-95"
+                  onClick={() => window.open('/demo/guest', '_blank')}
+                  className="w-full sm:w-auto px-10 py-5 bg-white text-[#C5A059] border border-[#C5A059]/20 rounded-2xl font-black uppercase tracking-widest hover:bg-[#C5A059]/5 transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2"
                 >
-                  Couple Login
+                  <Globe className="w-5 h-5" />
+                  View Live Demo
                 </button>
               </div>
 

@@ -89,13 +89,13 @@ export default function Subscription() {
             animate={{ opacity: 1, y: 0 }}
           >
             <h1 className="text-4xl md:text-6xl font-serif text-[#2D2424] mb-4">
-              {isSubscribed ? 'Everything is Ready' : isCouple ? 'Wedding License' : 'Try Pro Free for 30 Days'}
+              {isSubscribed ? 'Everything is Ready' : isCouple ? 'Build First, Pay to Publish' : 'Try Pro Free for 30 Days'}
             </h1>
             <p className="text-gray-500 font-medium max-w-xl mx-auto">
               {isSubscribed 
                 ? "You're all set! You have full access to your wedding features."
                 : isCouple 
-                  ? "Unlock your full guest experience and digital display with a single event license."
+                  ? "Create, customize, and preview your entire wedding experience for free. Pay once when you're ready to share with guests."
                   : "Start your 30-day free trial today. Cancel anytime if you're not satisfied."
               }
             </p>

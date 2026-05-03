@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, QrCode, Leaf, Star, Mail, Camera, Flower } from 'lucide-react';
+import { Heart, QrCode, Leaf, Star, Mail, Camera, Flower, Zap } from 'lucide-react';
 import { fetchMessages, Message } from '../lib/api';
 import { getSupabase } from '../lib/supabase';
 import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
@@ -15,6 +15,9 @@ export default function Display() {
   const [project, setProject] = useState<WeddingEvent | null>(null);
   const [agency, setAgency] = useState<Agency | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
+  const isCoupleLogic = agency?.user_role === 'couple';
+  const isPreview = isCoupleLogic && !isSubscribed;
   const [searchParams] = useSearchParams();
   const [showQR, setShowQR] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,7 +111,8 @@ export default function Display() {
     const loadInitialMessages = async () => {
       try {
         const data = await fetchMessages(targetId);
-        setMessages(data);
+        const processed = isPreview ? data.slice(0, 5) : data;
+        setMessages(processed);
       } catch (err) {
         console.error('Initial fetch error:', err);
       }
@@ -142,7 +146,8 @@ export default function Display() {
                 const updated = [newMessage, ...filtered];
                 // Keep only unique and sort
                 const unique = Array.from(new Map(updated.map(m => [m.id, m])).values());
-                return unique.sort((a, b) => b.timestamp - a.timestamp).slice(0, 50);
+                const sorted = unique.sort((a, b) => b.timestamp - a.timestamp);
+                return isPreview ? sorted.slice(0, 5) : sorted.slice(0, 50);
               });
             } else if (eventType === 'UPDATE' || eventType === 'DELETE') {
               // If it's no longer approved or was deleted, remove it immediately
@@ -158,14 +163,14 @@ export default function Display() {
     } catch (err) {
       console.error('Realtime subscription error:', err);
     }
-
+    
     return () => {
       if (channel) {
         const supabase = getSupabase();
         supabase.removeChannel(channel);
       }
     };
-  }, [project?.id, projectId]);
+  }, [project?.id, projectId, isPreview]);
 
   if (isLoading) {
     return (
@@ -177,6 +182,13 @@ export default function Display() {
 
   return (
     <div className={`min-h-screen ${template.colors.background} transition-colors duration-700 relative ${template.fontSans} ${template.colors.text}`}>
+      {isPreview && (
+        <div className="absolute top-0 left-0 right-0 bg-[#2D2424]/90 backdrop-blur-md text-white py-1.5 px-4 text-[9px] font-black uppercase tracking-[0.2em] text-center z-[100] flex items-center justify-center gap-3">
+           <Zap className="w-3 h-3 text-[#C5A059]" />
+           <span>Preview Mode • Guestbook Limited to 5 Messages</span>
+        </div>
+      )}
+      
       {/* Agency Branding Overlay */}
       {agency && (
         <div className="absolute top-8 left-8 z-40 flex items-center gap-3 bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/30">
