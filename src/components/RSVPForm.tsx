@@ -87,11 +87,11 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="flex gap-4 p-1 bg-black/5 rounded-2xl border border-white/10">
+      <div className="flex flex-col sm:flex-row gap-3 p-1 bg-black/5 rounded-2xl border border-white/10">
         <button
           type="button"
           onClick={() => setFormData({ ...formData, attending: true })}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
             formData.attending 
               ? 'bg-white shadow-sm ' + template.colors.text
               : 'opacity-50 hover:opacity-100'
@@ -102,13 +102,13 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
         <button
           type="button"
           onClick={() => setFormData({ ...formData, attending: false, guest_count: 0 })}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
             !formData.attending 
               ? 'bg-white shadow-sm ' + template.colors.text
               : 'opacity-50 hover:opacity-100'
           }`}
         >
-          <X className="w-4 h-4" /> Respectfully Decline
+          <X className="w-4 h-4" /> Decline
         </button>
       </div>
 
@@ -121,7 +121,7 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className={`w-full pl-12 pr-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium`}
+              className={`w-full pl-12 pr-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium text-sm`}
             />
             <Users className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 opacity-30" />
           </div>
@@ -134,7 +134,7 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className={`w-full pl-12 pr-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium`}
+              className={`w-full pl-12 pr-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium text-sm`}
             />
             <Mail className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 opacity-30" />
           </div>
@@ -148,13 +148,13 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
           >
             <div className="space-y-2">
               <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>Number of Guests</label>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-4">
                 {[1, 2, 3, 4, 5].map(num => (
                   <button
                     key={num}
                     type="button"
                     onClick={() => setFormData({ ...formData, guest_count: num })}
-                    className={`w-10 h-10 rounded-full font-bold transition-all border ${
+                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full font-bold transition-all border text-sm ${
                       formData.guest_count === num 
                         ? template.colors.accent + ' border-current'
                         : 'border-white/10 opacity-50 hover:opacity-100'
@@ -171,7 +171,7 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
               <select
                 value={formData.meal_preference}
                 onChange={(e) => setFormData({ ...formData, meal_preference: e.target.value })}
-                className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium appearance-none`}
+                className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium appearance-none text-sm`}
               >
                 <option value="standard" className="text-black">Standard (Meat/Fish)</option>
                 <option value="vegetarian" className="text-black">Vegetarian</option>

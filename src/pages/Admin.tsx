@@ -1071,27 +1071,27 @@ export default function Admin() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-7xl h-[85vh] bg-[#FDFCF0] rounded-[3rem] shadow-2xl overflow-hidden flex flex-col border border-white/20"
+              className="relative w-full max-w-7xl h-[90vh] sm:h-[85vh] bg-[#FDFCF0] rounded-[2rem] sm:rounded-[3rem] shadow-2xl overflow-hidden flex flex-col border border-white/20"
             >
-              <div className="p-6 border-b border-[#C5A059]/10 flex items-center justify-between bg-white/50">
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-[#C5A059]/10 rounded-xl">
+              <div className="p-4 sm:p-6 border-b border-[#C5A059]/10 flex items-center justify-between bg-white/50">
+                <div className="flex items-center gap-3 sm:gap-4 font-serif">
+                  <div className="p-2 bg-[#C5A059]/10 rounded-xl hidden xs:block">
                     <Layout className="w-5 h-5 text-[#C5A059]" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-serif">Simultaneous Preview</h3>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Display Layout & Guest Interface</p>
+                    <h3 className="text-base sm:text-xl">Simultaneous Preview</h3>
+                    <p className="text-[8px] sm:text-[10px] font-bold font-sans uppercase tracking-[0.1em] text-gray-400">Display & Guest View</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => setShowPreviewModal(false)}
-                  className="p-3 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-2xl transition-all"
+                  className="p-2 sm:p-3 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-2xl transition-all"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
                 </button>
               </div>
 
-              <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-px bg-gray-100">
+              <div className="flex-1 overflow-y-auto lg:overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-px bg-gray-100">
                 {/* Display (Desktop View) */}
                 <div className="lg:col-span-8 bg-[#FDFCF0] flex flex-col">
                   <div className="p-4 bg-white/30 border-b border-gray-100 flex items-center justify-between">
@@ -1131,7 +1131,7 @@ export default function Admin() {
                   </div>
                   <div className="flex-1 relative bg-[#C5A059]/5 p-8 flex items-center justify-center">
                     {/* Phone Frame */}
-                    <div className="w-[280px] h-[580px] bg-black rounded-[3rem] p-3 shadow-2xl relative border-4 border-gray-800">
+                    <div className="w-[320px] h-[640px] bg-black rounded-[3rem] p-3 shadow-2xl relative border-4 border-gray-800 shrink-0">
                       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-6 bg-black rounded-b-2xl z-10" />
                       <div className="w-full h-full rounded-[2.2rem] overflow-hidden bg-white">
                         <iframe 

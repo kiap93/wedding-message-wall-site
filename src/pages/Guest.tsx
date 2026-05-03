@@ -285,7 +285,7 @@ export default function Guest() {
       
       {/* Agency Branding */}
       {agency && (
-        <div className="absolute top-8 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-white/20 backdrop-blur-md px-6 py-2 rounded-full border border-white/30">
+        <div className={`absolute ${isPreview ? 'top-14' : 'top-8'} left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-white/20 backdrop-blur-md px-6 py-2 rounded-full border border-white/30 whitespace-nowrap`}>
           {agency.logo_url && <img src={agency.logo_url} alt={agency.name} className="h-4 w-auto" />}
           <span className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Created by {agency.name}</span>
         </div>
@@ -298,22 +298,22 @@ export default function Guest() {
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-lg relative z-10"
+        className="w-full max-w-lg relative z-10 pt-16 pb-12"
       >
-        <div className={`${template.colors.card} backdrop-blur-xl p-8 md:p-12 rounded-[2.5rem] border ${template.colors.border} shadow-2xl`}>
-          <div className="text-center mb-10">
+        <div className={`${template.colors.card} backdrop-blur-xl p-6 xs:p-8 md:p-12 rounded-[2rem] sm:rounded-[2.5rem] border ${template.colors.border} shadow-2xl`}>
+          <div className="text-center mb-8 sm:mb-10">
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ type: "spring", stiffness: 260, damping: 20 }}
-              className={`inline-block p-4 rounded-full ${template.colors.accent} bg-opacity-10 mb-6`}
+              className={`inline-block p-3 sm:p-4 rounded-full ${template.colors.accent} bg-opacity-10 mb-4 sm:mb-6`}
             >
-              <Icon className={`w-10 h-10 fill-current bg-opacity-20`} />
+              <Icon className={`w-8 h-8 sm:w-10 sm:h-10 fill-current bg-opacity-20`} />
             </motion.div>
-            <h1 className={`text-5xl ${template.fontSerif} ${template.colors.headerText} mb-4 tracking-tight`}>
+            <h1 className={`text-3xl sm:text-5xl ${template.fontSerif} ${template.colors.headerText} mb-2 sm:mb-4 tracking-tight`}>
               {groom} & {bride}
             </h1>
-            <p className={`text-base ${template.colors.subtleText} tracking-wide font-medium`}>Leave a message for the happy couple</p>
+            <p className={`text-sm sm:text-base ${template.colors.subtleText} tracking-wide font-medium`}>Leave a message for the happy couple</p>
           </div>
 
             <div className="flex gap-4 mb-8 border-b border-white/10 pb-4">
