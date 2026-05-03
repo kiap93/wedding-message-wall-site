@@ -128,11 +128,13 @@ export default function Onboarding() {
           .insert([
             {
               agency_id: agencyData.id,
-              user_id: userData.user.id,
+              name: `${groomName} & ${brideName}'s Wedding`,
               groom_name: groomName,
               bride_name: brideName,
               slug: 'our-wedding', // default slug for their first wedding
-              template_id: 'floral' // default template
+              theme_id: 'garden' as any, // default theme
+              wedding_date: new Date(Date.now() + 15552000000).toISOString().split('T')[0], // 6 months from now
+              location: 'Grand Ballroom, Plaza Hotel'
             }
           ])
           .select()
@@ -173,8 +175,7 @@ export default function Onboarding() {
               name: 'John Doe', 
               email: 'john@example.com', 
               attending: true, 
-              guests: 2, 
-              note: "Can't wait!",
+              guest_count: 2, 
               created_at: new Date(Date.now() - 86400000).toISOString()
             },
             { 
@@ -182,8 +183,7 @@ export default function Onboarding() {
               name: 'Jane Smith', 
               email: 'jane@example.com', 
               attending: true, 
-              guests: 1, 
-              note: 'See you there!',
+              guest_count: 1, 
               created_at: new Date(Date.now() - 43200000).toISOString()
             }
           ]);
