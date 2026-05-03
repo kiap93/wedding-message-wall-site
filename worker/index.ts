@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { sign, verify } from 'hono/jwt';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
+import { createClient } from '@supabase/supabase-js';
+import Stripe from 'stripe';
 
 type Bindings = {
   GOOGLE_CLIENT_ID: string;
@@ -9,7 +11,9 @@ type Bindings = {
   APP_URL: string;      // The Worker URL (for Google callback)
   FRONTEND_URL: string; // The Website URL (for final redirect)
   SUPABASE_URL: string;
-  SUPABASE_ANON_KEY: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
+  STRIPE_SECRET_KEY: string;
+  STRIPE_WEBHOOK_SECRET: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -202,11 +206,140 @@ app.get('/api/debug-env', (c) => {
   return c.json({
     has_jwt_secret: !!c.env.JWT_SECRET,
     has_google_secret: !!c.env.GOOGLE_CLIENT_SECRET,
+    has_stripe_secret: !!c.env.STRIPE_SECRET_KEY,
+    has_supabase_url: !!c.env.SUPABASE_URL,
     app_url: c.env.APP_URL
   });
 });
 
-// 5. Proxy all other requests to the Frontend App (White Label Logic)
+// 6. Stripe Checkout Session
+app.post('/api/create-checkout-session', async (c) => {
+  const { planId, agencyId } = await c.req.json();
+  const stripeSecret = c.env.STRIPE_SECRET_KEY;
+  
+  if (!stripeSecret) {
+    return c.json({ error: 'Stripe is not configured in worker' }, 500);
+  }
+
+  const stripe = new Stripe(stripeSecret, {
+    apiVersion: '2025-02-24-preview' as any,
+    httpClient: Stripe.createFetchHttpClient(), // REQUIRED for Cloudflare Workers
+  });
+
+  try {
+    const isOneTime = planId === 'price_one_time';
+    const appUrl = c.env.APP_URL || 'https://eventframe.io';
+    
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: isOneTime ? 'Individual Wedding License' : (planId === 'price_monthly' ? 'Agency Pro (Monthly)' : 'Agency Pro (Yearly)'),
+            },
+            unit_amount: isOneTime ? 1900 : (planId === 'price_monthly' ? 4900 : 47000),
+            ...(!isOneTime && {
+              recurring: {
+                interval: planId === 'price_monthly' ? 'month' : 'year',
+              },
+            }),
+          },
+          quantity: 1,
+        },
+      ],
+      mode: isOneTime ? 'payment' : 'subscription',
+      ...( !isOneTime && {
+        subscription_data: {
+          trial_period_days: 30,
+        },
+      }),
+      success_url: `${appUrl}/subscription?success=true`,
+      cancel_url: `${appUrl}/subscription?canceled=true`,
+      metadata: {
+        agencyId,
+        planId,
+      },
+    });
+
+    return c.json({ url: session.url });
+  } catch (error: any) {
+    console.error('Stripe error in worker:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// 7. Stripe Webhook
+app.post('/api/webhook', async (c) => {
+  const stripeSecret = c.env.STRIPE_SECRET_KEY;
+  const webhookSecret = c.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!stripeSecret || !webhookSecret) {
+    console.warn('Webhook received but Stripe secrets missing');
+    return c.text('Secrets missing', 200);
+  }
+
+  const stripe = new Stripe(stripeSecret, {
+    apiVersion: '2025-02-24-preview' as any,
+    httpClient: Stripe.createFetchHttpClient(),
+  });
+
+  const signature = c.req.header('stripe-signature');
+  const body = await c.req.text();
+
+  let event;
+  try {
+    event = await stripe.webhooks.constructEventAsync(body, signature || '', webhookSecret);
+  } catch (err: any) {
+    console.error(`Webhook Verification Error: ${err.message}`);
+    return c.text(`Webhook Error: ${err.message}`, 400);
+  }
+
+  const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
+
+  // Handle the event
+  switch (event.type) {
+    case 'checkout.session.completed': {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const agencyId = session.metadata?.agencyId;
+      const subscriptionId = session.subscription as string;
+      const customerId = session.customer as string;
+
+      if (agencyId) {
+        const updateData: any = {
+          subscription_status: 'active',
+          stripe_customer_id: customerId,
+          plan_id: session.metadata?.planId
+        };
+        
+        if (subscriptionId) {
+          updateData.subscription_id = subscriptionId;
+        }
+
+        await supabase
+          .from('agencies')
+          .update(updateData)
+          .eq('id', agencyId);
+        
+        console.log(`Agency/Couple ${agencyId} confirmed via worker webhook`);
+      }
+      break;
+    }
+    case 'customer.subscription.deleted': {
+      const subscription = event.data.object as Stripe.Subscription;
+      await supabase
+        .from('agencies')
+        .update({ subscription_status: 'canceled' })
+        .eq('subscription_id', subscription.id);
+      break;
+    }
+  }
+
+  return c.json({ received: true });
+});
+
+// 8. Proxy all other requests to the Frontend App (White Label Logic)
 app.all('*', async (c) => {
   const url = new URL(c.req.url);
   
