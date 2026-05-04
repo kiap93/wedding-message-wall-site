@@ -295,13 +295,14 @@ app.put('/api/projects/:id', async (c) => {
     const project_id = c.req.param('id');
     const projectData = await c.req.json();
 
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY : undefined);
 
-    if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
-      return c.json({ error: 'Supabase configuration missing on worker', details: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set' }, 500);
+    if (!supabaseUrl || !serviceRoleKey) {
+      return c.json({ error: 'Supabase configuration missing', details: 'URL or Service Role Key not set in environment (Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)' }, 500);
     }
 
-    const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     // Verify agency
     const { data: agency } = await supabase
@@ -342,13 +343,14 @@ app.put('/api/projects/:id', async (c) => {
 app.post('/api/rsvps', async (c) => {
   try {
     const rsvpData = await c.req.json();
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY : undefined);
 
-    if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
-      return c.json({ error: 'Supabase configuration missing on worker' }, 500);
+    if (!supabaseUrl || !serviceRoleKey) {
+      return c.json({ error: 'Supabase configuration missing' }, 500);
     }
 
-    const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { data, error } = await supabase
       .from('rsvps')
@@ -375,7 +377,9 @@ app.get('/api/debug-env', (c) => {
     has_jwt_secret: !!c.env.JWT_SECRET,
     has_google_secret: !!c.env.GOOGLE_CLIENT_SECRET,
     has_stripe_secret: !!c.env.STRIPE_SECRET_KEY,
-    has_supabase_url: !!(c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL),
+    has_supabase_url: !!c.env.SUPABASE_URL,
+    has_vite_supabase_url: !!c.env.VITE_SUPABASE_URL,
+    has_supabase_service_role: !!c.env.SUPABASE_SERVICE_ROLE_KEY,
     app_url: c.env.APP_URL
   });
 });

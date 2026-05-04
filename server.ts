@@ -27,10 +27,16 @@ const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 let _supabaseAdmin: any = null;
 function getSupabaseAdmin() {
   if (!_supabaseAdmin) {
-    const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) {
-      throw new Error('Supabase configuration missing (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)');
+    const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || process.env.SUPABASE_URL; // Repeat for safety or add more
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+    if (!url && !key) {
+      throw new Error('Supabase configuration completely missing. Please set VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the Settings menu.');
+    }
+    if (!url) {
+      throw new Error('Supabase URL (VITE_SUPABASE_URL or SUPABASE_URL) is missing in environment.');
+    }
+    if (!key) {
+      throw new Error('Supabase Service Role Key (SUPABASE_SERVICE_ROLE_KEY) is missing in environment.');
     }
     _supabaseAdmin = createClient(url, key);
   }
@@ -124,7 +130,15 @@ async function startServer() {
   const apiRouter = express.Router();
 
   apiRouter.get('/health', (req, res) => {
-    res.json({ status: 'ok', time: new Date().toISOString() });
+    res.json({ 
+      status: 'ok', 
+      time: new Date().toISOString(),
+      config: {
+        has_supabase: !!(process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL) && !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        has_jwt: !!process.env.JWT_SECRET,
+        has_google: !!process.env.GOOGLE_CLIENT_ID
+      }
+    });
   });
 
   // --- Auth Routes ---
