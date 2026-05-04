@@ -24,11 +24,18 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 
-// Supabase Service Role for non-client restricted operations (like webhook updates)
-const supabaseAdmin = createClient(
-  process.env.VITE_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
+let _supabaseAdmin: any = null;
+function getSupabaseAdmin() {
+  if (!_supabaseAdmin) {
+    const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) {
+      throw new Error('Supabase configuration missing (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)');
+    }
+    _supabaseAdmin = createClient(url, key);
+  }
+  return _supabaseAdmin;
+}
 
 const oauth2Client = new OAuth2Client(
   GOOGLE_CLIENT_ID,
@@ -76,7 +83,7 @@ async function startServer() {
             updateData.subscription_id = subscriptionId;
           }
 
-          await supabaseAdmin
+          await getSupabaseAdmin()
             .from('agencies')
             .update(updateData)
             .eq('id', agencyId);
@@ -86,7 +93,7 @@ async function startServer() {
       }
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
-        await supabaseAdmin
+        await getSupabaseAdmin()
           .from('agencies')
           .update({ subscription_status: 'canceled' })
           .eq('subscription_id', subscription.id);
@@ -271,7 +278,7 @@ async function startServer() {
 
       // Verify the project belongs to the user's agency
       // First, get the agency for the user
-      const { data: agency } = await supabaseAdmin
+      const { data: agency } = await getSupabaseAdmin()
         .from('agencies')
         .select('id')
         .eq('user_id', decoded.id || decoded.sub)
@@ -280,7 +287,7 @@ async function startServer() {
       if (!agency) return res.status(403).json({ error: 'Agency not found' });
 
       // Update the project
-      const { data, error: updateError } = await supabaseAdmin
+      const { data, error: updateError } = await getSupabaseAdmin()
         .from('projects')
         .update(updateData)
         .eq('id', id)
@@ -295,8 +302,12 @@ async function startServer() {
 
       res.json({ success: true, data });
     } catch (error: any) {
-      console.error('Session verification failed for project update:', error.message);
-      res.status(401).json({ error: 'Invalid session', details: error.message });
+      if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError' || error.message?.includes('JWT')) {
+        console.error('Session verification failed:', error.message);
+        return res.status(401).json({ error: 'Invalid session', details: error.message });
+      }
+      console.error('Internal server error during project update:', error.message);
+      res.status(500).json({ error: 'Internal server error', details: error.message });
     }
   });
 
@@ -304,7 +315,7 @@ async function startServer() {
   apiRouter.post('/rsvps', async (req, res) => {
     try {
       const rsvpData = req.body;
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await getSupabaseAdmin()
         .from('rsvps')
         .insert([{ 
           ...rsvpData,

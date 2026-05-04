@@ -11,6 +11,7 @@ type Bindings = {
   APP_URL: string;      // The Worker URL (for Google callback)
   FRONTEND_URL: string; // The Website URL (for final redirect)
   SUPABASE_URL: string;
+  VITE_SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
@@ -294,7 +295,13 @@ app.put('/api/projects/:id', async (c) => {
     const project_id = c.req.param('id');
     const projectData = await c.req.json();
 
-    const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+
+    if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return c.json({ error: 'Supabase configuration missing on worker', details: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set' }, 500);
+    }
+
+    const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
 
     // Verify agency
     const { data: agency } = await supabase
@@ -323,15 +330,25 @@ app.put('/api/projects/:id', async (c) => {
 
     return c.json({ success: true, data });
   } catch (e: any) {
-    console.error('Worker project update verification failed:', e.message);
-    return c.json({ error: 'Invalid session', details: e.message }, 401);
+    if (e.name === 'JwtTokenInvalid' || e.name === 'JwtTokenExpired' || e.name === 'JwtTokenIssuedAt' || e.message?.includes('JWT')) {
+      console.error('Worker project update auth failed:', e.message);
+      return c.json({ error: 'Invalid session', details: e.message }, 401);
+    }
+    console.error('Worker project update internal error:', e.message);
+    return c.json({ error: 'Internal server error', details: e.message }, 500);
   }
 });
 
 app.post('/api/rsvps', async (c) => {
   try {
     const rsvpData = await c.req.json();
-    const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+
+    if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return c.json({ error: 'Supabase configuration missing on worker' }, 500);
+    }
+
+    const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
 
     const { data, error } = await supabase
       .from('rsvps')
@@ -358,7 +375,7 @@ app.get('/api/debug-env', (c) => {
     has_jwt_secret: !!c.env.JWT_SECRET,
     has_google_secret: !!c.env.GOOGLE_CLIENT_SECRET,
     has_stripe_secret: !!c.env.STRIPE_SECRET_KEY,
-    has_supabase_url: !!c.env.SUPABASE_URL,
+    has_supabase_url: !!(c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL),
     app_url: c.env.APP_URL
   });
 });
@@ -445,7 +462,13 @@ app.post('/api/webhook', async (c) => {
     return c.text(`Webhook Error: ${err.message}`, 400);
   }
 
-  const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
+  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('Webhook received but Supabase config missing');
+    return c.text('Supabase config missing', 200);
+  }
+
+  const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
 
   // Handle the event
   switch (event.type) {
