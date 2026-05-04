@@ -18,10 +18,17 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     async function loadUser() {
       // 1. Capture token from URL if present (from cross-domain redirect)
       const params = new URLSearchParams(window.location.search);
-      const urlToken = params.get('token');
+      let urlToken = params.get('token');
+      
+      // Also check for token in fragment (more secure redirect method)
+      if (!urlToken && window.location.hash.includes('token=')) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        urlToken = hashParams.get('token');
+      }
+
       if (urlToken) {
         localStorage.setItem('wedding_session_token', urlToken);
-        // Clean up URL without reload if possible, or just proceed
+        // Clean up URL without reload
         window.history.replaceState({}, document.title, window.location.pathname);
       }
 

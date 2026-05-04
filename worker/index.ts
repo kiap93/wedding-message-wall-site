@@ -13,6 +13,9 @@ type Bindings = {
   SUPABASE_URL: string;
   VITE_SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  SUPABASE_SERVICE_KEY: string;
+  SUPABASE_SECRET_KEY: string;
+  VITE_SUPABASE_ANON_KEY: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
 };
@@ -215,8 +218,13 @@ app.get('/api/auth/me', async (c) => {
     const payload = await verify(token, jwtSecret, 'HS256');
     return c.json({ user: payload });
   } catch (e: any) {
-    console.error('Worker auth/me verification failed:', e.message);
-    return c.json({ error: 'Invalid session', details: e.message }, 401);
+    const isJwtError = e.name === 'JwtTokenInvalid' || e.name === 'JwtTokenExpired' || e.name === 'JwtTokenIssuedAt' || e.message?.toLowerCase().includes('jwt');
+    if (isJwtError) {
+      console.error('Worker auth/me verification failed:', e.message);
+      return c.json({ error: 'Invalid session', details: e.message }, 401);
+    }
+    console.error('Worker auth/me internal error:', e.message);
+    return c.json({ error: 'Internal server error', details: e.message }, 500);
   }
 });
 
@@ -296,10 +304,10 @@ app.put('/api/projects/:id', async (c) => {
     const projectData = await c.req.json();
 
     const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY : undefined);
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);
 
     if (!supabaseUrl || !serviceRoleKey) {
-      return c.json({ error: 'Supabase configuration missing', details: 'URL or Service Role Key not set in environment (Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)' }, 500);
+      return c.json({ error: 'Supabase configuration missing', details: 'URL or Key not set in environment (Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Settings)' }, 500);
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
@@ -344,10 +352,10 @@ app.post('/api/rsvps', async (c) => {
   try {
     const rsvpData = await c.req.json();
     const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY : undefined);
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);
 
     if (!supabaseUrl || !serviceRoleKey) {
-      return c.json({ error: 'Supabase configuration missing' }, 500);
+      return c.json({ error: 'Supabase configuration missing', details: 'URL or Key not set' }, 500);
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
