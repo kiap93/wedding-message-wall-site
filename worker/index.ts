@@ -86,7 +86,7 @@ app.get('/api/auth/callback', async (c) => {
   if (!code) return c.redirect(`${targetOrigin}/login?error=no_code`);
 
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET, APP_URL } = c.env;
-  const jwtSecret = JWT_SECRET || 'wedding-v1-super-secret-key-xyz-789';
+  const jwtSecret = JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 
   try {
     // Exchange code for tokens
@@ -124,7 +124,11 @@ app.get('/api/auth/callback', async (c) => {
 
     // Sign our session JWT
     // Use an object that definitely has keys to avoid empty payload issues
-    const token = await sign({ ...user, iat: Math.floor(Date.now() / 1000) }, jwtSecret, 'HS256');
+    const token = await sign({ 
+      ...user, 
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60)
+    }, jwtSecret, 'HS256');
 
     // Set cookie with SameSite=None for cross-domain support
     const cookieOptions: any = {
@@ -204,7 +208,7 @@ app.get('/api/auth/me', async (c) => {
 
   if (!token) return c.json({ error: 'Not authenticated' }, 401);
 
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-super-secret-key-xyz-789';
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 
   try {
     const payload = await verify(token, jwtSecret, 'HS256');
@@ -237,7 +241,7 @@ app.post('/api/auth/email', async (c) => {
   const { email } = await c.req.json();
   if (!email) return c.json({ error: 'Email is required' }, 400);
 
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-super-secret-key-xyz-789';
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 
   try {
     const user = {
@@ -247,7 +251,11 @@ app.post('/api/auth/email', async (c) => {
       picture: null,
     };
 
-    const token = await sign({ ...user, iat: Math.floor(Date.now() / 1000) }, jwtSecret, 'HS256');
+    const token = await sign({ 
+      ...user, 
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60)
+    }, jwtSecret, 'HS256');
 
     const cookieOptions: any = {
       httpOnly: true,
@@ -279,7 +287,7 @@ app.put('/api/projects/:id', async (c) => {
 
   if (!token) return c.json({ error: 'Not authenticated' }, 401);
 
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-super-secret-key-xyz-789';
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 
   try {
     const payload = await verify(token, jwtSecret, 'HS256') as any;

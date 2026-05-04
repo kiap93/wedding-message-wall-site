@@ -17,7 +17,7 @@ const __dirname = path.dirname(__filename);
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const JWT_SECRET = process.env.JWT_SECRET || 'wedding-v1-super-secret-key-xyz-789';
+const JWT_SECRET = process.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
@@ -212,8 +212,9 @@ async function startServer() {
     try {
       const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
       res.json({ user: decoded });
-    } catch (error) {
-      res.status(401).json({ error: 'Invalid session' });
+    } catch (error: any) {
+      console.error('Server auth/me error:', error.message);
+      res.status(401).json({ error: 'Invalid session', details: error.message });
     }
   });
 
@@ -293,9 +294,9 @@ async function startServer() {
       }
 
       res.json({ success: true, data });
-    } catch (error) {
-      console.error('Session verification failed for project update:', error);
-      res.status(401).json({ error: 'Invalid session' });
+    } catch (error: any) {
+      console.error('Session verification failed for project update:', error.message);
+      res.status(401).json({ error: 'Invalid session', details: error.message });
     }
   });
 
@@ -332,8 +333,8 @@ async function startServer() {
       jwt.verify(token, JWT_SECRET);
       // In a real app, we'd use the server-side Supabase client here
       res.json({ success: true });
-    } catch (error) {
-      res.status(401).json({ error: 'Invalid session' });
+    } catch (error: any) {
+      res.status(401).json({ error: 'Invalid session', details: error.message });
     }
   });
 

@@ -35,6 +35,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         if (data.user) {
           setUser(data.user);
         } else {
+          console.warn('Session check failed:', data.error, data.details);
           // If token was invalid or missing on server, clear it locally
           if (token) localStorage.removeItem('wedding_session_token');
         }

@@ -18,6 +18,9 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
 
   if (token && token !== 'null' && token !== 'undefined') {
     headers['Authorization'] = `Bearer ${token}`;
+    // console.log(`[auth] Sending request with Bearer token to: ${url}`);
+  } else {
+    // console.log(`[auth] Sending request without Bearer token to: ${url} (Cookie will be used)`);
   }
 
   return fetch(url, {
