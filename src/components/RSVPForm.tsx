@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Check, X, Users, Utensils, MessageSquare, Mail } from 'lucide-react';
-import { WeddingTemplate, RSVP } from '../types';
+import { WeddingTemplate, RSVP, RSVPField } from '../types';
 import { postRSVP } from '../lib/api';
 
 interface RSVPFormProps {
@@ -10,10 +10,11 @@ interface RSVPFormProps {
   onSuccess: () => void;
   isPreview?: boolean;
   currentCount?: number;
+  rsvpFields?: RSVPField[];
 }
 
-export default function RSVPForm({ projectId, template, onSuccess, isPreview, currentCount = 0 }: RSVPFormProps) {
-  const [formData, setFormData] = useState({
+export default function RSVPForm({ projectId, template, onSuccess, isPreview, currentCount = 0, rsvpFields }: RSVPFormProps) {
+  const [formData, setFormData] = useState<Record<string, any>>({
     name: '',
     email: '',
     attending: true,
@@ -24,6 +25,15 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  // If rsvpFields is not provided, use standard defaults
+  const activeFields = rsvpFields && rsvpFields.length > 0 ? rsvpFields : [
+    { id: 'name', label: 'Full Name', type: 'text', required: true },
+    { id: 'email', label: 'Email Address', type: 'text', required: false },
+    { id: 'guest_count', label: 'Number of Guests', type: 'number', required: true, showIfAttending: true },
+    { id: 'meal_preference', label: 'Meal Preference', type: 'select', required: true, options: ['Standard (Meat/Fish)', 'Vegetarian', 'Vegan', 'Gluten Free'], showIfAttending: true },
+    { id: 'dietary_requirements', label: 'Dietary Notes', type: 'textarea', required: false, showIfAttending: true }
+  ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,11 +53,23 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
     }
 
     try {
-      await postRSVP({
-        ...formData,
+      // Split responses into core fields and custom responses
+      const coreFields = ['name', 'email', 'attending', 'guest_count', 'meal_preference', 'dietary_requirements'];
+      const payload: any = {
         project_id: projectId,
-        attending: formData.attending
+        attending: formData.attending,
+        responses: {}
+      };
+
+      Object.keys(formData).forEach(key => {
+        if (coreFields.includes(key)) {
+          payload[key] = formData[key];
+        } else if (key !== 'attending') {
+          payload.responses[key] = formData[key];
+        }
       });
+
+      await postRSVP(payload);
       setIsSuccess(true);
       onSuccess();
     } catch (err: any) {
@@ -85,6 +107,132 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
     );
   }
 
+  const renderField = (field: RSVPField) => {
+    const isHidden = field.showIfAttending && !formData.attending;
+    if (isHidden) return null;
+
+    const commonClasses = `w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium text-sm`;
+
+    return (
+      <div key={field.id} className="space-y-2">
+        <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>
+          {field.label} {field.required && <span className="text-red-400">*</span>}
+        </label>
+        
+        {field.type === 'text' && (
+          <div className="relative">
+            <input
+              required={field.required}
+              type="text"
+              placeholder={field.placeholder}
+              value={formData[field.id] || ''}
+              onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
+              className={commonClasses}
+            />
+          </div>
+        )}
+
+        {field.type === 'textarea' && (
+          <textarea
+            required={field.required}
+            placeholder={field.placeholder}
+            value={formData[field.id] || ''}
+            onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
+            rows={3}
+            className={`${commonClasses} resize-none`}
+          />
+        )}
+
+        {field.type === 'number' && (
+          field.id === 'guest_count' ? (
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+              {[1, 2, 3, 4, 5].map(num => (
+                <button
+                  key={num}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, guest_count: num })}
+                  className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full font-bold transition-all border text-sm ${
+                    formData.guest_count === num 
+                      ? template.colors.accent + ' border-current'
+                      : 'border-white/10 opacity-50 hover:opacity-100'
+                  }`}
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <input
+              required={field.required}
+              type="number"
+              value={formData[field.id] || ''}
+              onChange={(e) => setFormData({ ...formData, [field.id]: parseInt(e.target.value) })}
+              className={commonClasses}
+            />
+          )
+        )}
+
+        {field.type === 'select' && (
+          <select
+            required={field.required}
+            value={formData[field.id] || ''}
+            onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
+            className={`${commonClasses} appearance-none`}
+          >
+            <option value="" disabled className="text-black">Select an option...</option>
+            {field.options?.map(opt => (
+              <option key={opt} value={opt} className="text-black">{opt}</option>
+            ))}
+          </select>
+        )}
+
+        {field.type === 'radio' && (
+          <div className="flex flex-col gap-2">
+            {field.options?.map(opt => (
+              <label key={opt} className="flex items-center gap-3 cursor-pointer p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-colors">
+                <input
+                  type="radio"
+                  name={field.id}
+                  required={field.required}
+                  value={opt}
+                  checked={formData[field.id] === opt}
+                  onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
+                  className="w-4 h-4 text-[#C5A059] border-white/20 bg-transparent focus:ring-0"
+                />
+                <span className="text-sm font-medium">{opt}</span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        {field.type === 'checkbox' && (
+           <div className="flex flex-col gap-2">
+            {field.options?.map(opt => {
+              const currentValues = formData[field.id] || [];
+              const isChecked = currentValues.includes(opt);
+              return (
+                <label key={opt} className="flex items-center gap-3 cursor-pointer p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={(e) => {
+                      const newValues = isChecked 
+                        ? currentValues.filter((v: string) => v !== opt)
+                        : [...currentValues, opt];
+                      setFormData({ ...formData, [field.id]: newValues });
+                    }}
+                    className="w-4 h-4 rounded border-white/20 bg-transparent focus:ring-0"
+                  />
+                  <span className="text-sm font-medium">{opt}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-3 p-1 bg-black/5 rounded-2xl border border-white/10">
@@ -112,88 +260,8 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
         </button>
       </div>
 
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>Full Name</label>
-          <div className="relative">
-            <input
-              required
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className={`w-full pl-12 pr-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium text-sm`}
-            />
-            <Users className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 opacity-30" />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>Email Address</label>
-          <div className="relative">
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className={`w-full pl-12 pr-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium text-sm`}
-            />
-            <Mail className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 opacity-30" />
-          </div>
-        </div>
-
-        {formData.attending && (
-          <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            className="space-y-4"
-          >
-            <div className="space-y-2">
-              <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>Number of Guests</label>
-              <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-                {[1, 2, 3, 4, 5].map(num => (
-                  <button
-                    key={num}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, guest_count: num })}
-                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full font-bold transition-all border text-sm ${
-                      formData.guest_count === num 
-                        ? template.colors.accent + ' border-current'
-                        : 'border-white/10 opacity-50 hover:opacity-100'
-                    }`}
-                  >
-                    {num}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>Meal Preference</label>
-              <select
-                value={formData.meal_preference}
-                onChange={(e) => setFormData({ ...formData, meal_preference: e.target.value })}
-                className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium appearance-none text-sm`}
-              >
-                <option value="standard" className="text-black">Standard (Meat/Fish)</option>
-                <option value="vegetarian" className="text-black">Vegetarian</option>
-                <option value="vegan" className="text-black">Vegan</option>
-                <option value="gluten-free" className="text-black">Gluten Free</option>
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>Dietary Notes</label>
-              <div className="relative">
-                <textarea
-                  placeholder="Any allergies we should know about?"
-                  value={formData.dietary_requirements}
-                  onChange={(e) => setFormData({ ...formData, dietary_requirements: e.target.value })}
-                  rows={2}
-                  className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium resize-none text-sm`}
-                />
-              </div>
-            </div>
-          </motion.div>
-        )}
+      <div className="space-y-6">
+        {activeFields.map(field => renderField(field))}
       </div>
 
       {error && (

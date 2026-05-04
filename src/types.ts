@@ -20,6 +20,16 @@ export interface Agency {
   created_at: string;
 }
 
+export interface RSVPField {
+  id: string;
+  label: string;
+  type: 'text' | 'textarea' | 'number' | 'select' | 'radio' | 'checkbox';
+  required: boolean;
+  options?: string[]; // For select/radio/checkbox
+  placeholder?: string;
+  showIfAttending?: boolean; // Whether to only show this if they say they are attending
+}
+
 export interface WeddingEvent {
   id: string;
   agency_id: string;
@@ -33,6 +43,7 @@ export interface WeddingEvent {
   access_password?: string;
   auto_approve_messages?: boolean;
   image_url?: string;
+  rsvp_fields?: RSVPField[];
   created_at: string;
   updated_at: string;
 }
@@ -46,6 +57,7 @@ export interface RSVP {
   guest_count: number;
   meal_preference?: string;
   dietary_requirements?: string;
+  responses?: Record<string, any>;
   created_at: string;
 }
 

@@ -407,6 +407,7 @@ export default function Guest() {
                 template={template}
                 isPreview={isPreview}
                 currentCount={rsvpCount}
+                rsvpFields={project?.rsvp_fields}
                 onSuccess={() => {
                   setRsvpCount(prev => prev + 1);
                   setShowSuccess(true);

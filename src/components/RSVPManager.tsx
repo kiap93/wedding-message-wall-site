@@ -34,7 +34,7 @@ export default function RSVPManager({ projectId }: RSVPManagerProps) {
   const decliningCount = rsvps.filter(r => !r.attending).length;
 
   const downloadCSV = () => {
-    const headers = ['Name', 'Email', 'Attending', 'Guest Count', 'Meal', 'Dietary Notes', 'Date'];
+    const headers = ['Name', 'Email', 'Attending', 'Guest Count', 'Meal', 'Dietary Notes', 'Custom Responses', 'Date'];
     const rows = rsvps.map(r => [
       r.name,
       r.email || '',
@@ -42,6 +42,7 @@ export default function RSVPManager({ projectId }: RSVPManagerProps) {
       r.guest_count,
       r.meal_preference || '',
       r.dietary_requirements || '',
+      r.responses ? Object.entries(r.responses).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join('|') : v}`).join('; ') : '',
       new Date(r.created_at).toLocaleDateString()
     ]);
 
@@ -180,6 +181,13 @@ export default function RSVPManager({ projectId }: RSVPManagerProps) {
                               <AlertCircle className="w-3 h-3" /> {rsvp.dietary_requirements}
                             </div>
                           )}
+                          {/* Custom Responses */}
+                          {rsvp.responses && Object.entries(rsvp.responses).map(([key, val]) => (
+                            <div key={key} className="text-[10px] text-gray-500 border-t border-gray-100 pt-1 mt-1">
+                              <span className="font-bold uppercase tracking-tighter opacity-70 mr-1">{key.replace(/_/g, ' ')}:</span>
+                              {Array.isArray(val) ? val.join(', ') : String(val)}
+                            </div>
+                          ))}
                         </div>
                       ) : '--'}
                     </td>

@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Agency, WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate } from '../types';
 import RSVPManager from '../components/RSVPManager';
+import RSVPFieldEditor from '../components/RSVPFieldEditor';
 import MessageModerator from '../components/MessageModerator';
 import { API_BASE } from '../lib/config';
 import { authenticatedFetch, removeAuthToken } from '../lib/auth';
@@ -60,7 +61,7 @@ export default function Workspace() {
   const [editingEvent, setEditingEvent] = useState<Partial<WeddingEvent> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
-  const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'moderation'>('aesthetic');
+  const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'form' | 'moderation'>('aesthetic');
 
   useEffect(() => {
     async function load() {
@@ -993,6 +994,17 @@ export default function Workspace() {
                     </div>
                   </button>
                   <button 
+                    onClick={() => setActiveEditorTab('form')}
+                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+                      activeEditorTab === 'form' ? 'bg-[#C5A059] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                       <Layout className="w-4 h-4" />
+                       RSVP Form
+                    </div>
+                  </button>
+                  <button 
                     onClick={() => setActiveEditorTab('rsvp')}
                     className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
                       activeEditorTab === 'rsvp' ? 'bg-[#C5A059] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
@@ -1076,6 +1088,24 @@ export default function Workspace() {
                             </button>
                           ))}
                         </div>
+                      </motion.div>
+                    )}
+
+                    {activeEditorTab === 'form' && editingEvent?.id && (
+                      <motion.div
+                        key="form"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                         <div className="mb-8">
+                           <h2 className="text-3xl font-serif">Setup RSVP Form</h2>
+                           <p className="text-gray-500">Customize the questions you want to ask your guests.</p>
+                         </div>
+                         <RSVPFieldEditor 
+                            fields={editingEvent.rsvp_fields || []} 
+                            onChange={(fields) => setEditingEvent({ ...editingEvent!, rsvp_fields: fields })}
+                         />
                       </motion.div>
                     )}
 
