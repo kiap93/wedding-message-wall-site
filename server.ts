@@ -171,7 +171,32 @@ async function startServer() {
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
-      res.redirect('/workspace');
+      // Use JS replace to ensure history cleanup and popup support
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Redirecting...</title>
+            <script>
+              try {
+                if (window.opener && window.opener !== window) {
+                  window.opener.postMessage({ type: 'AUTH_SUCCESS', token: "${token}" }, "*");
+                  setTimeout(() => window.close(), 100);
+                } else {
+                  window.location.replace("/workspace");
+                }
+              } catch (err) {
+                window.location.replace("/workspace");
+              }
+            </script>
+          </head>
+          <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #FDFCF0;">
+            <div style="text-align: center;">
+              <p>Authentication successful! Redirecting you back to your workspace...</p>
+            </div>
+          </body>
+        </html>
+      `);
     } catch (error) {
       console.error('OAuth callback error:', error);
       res.redirect('/login?error=auth_failed');

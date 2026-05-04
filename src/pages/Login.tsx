@@ -66,7 +66,45 @@ export default function Login() {
       }
       
       if (data.url) {
-        window.location.replace(data.url);
+        // Try popup first for better UX and history management
+        const width = 500;
+        const height = 600;
+        const left = window.screenX + (window.innerWidth - width) / 2;
+        const top = window.screenY + (window.innerHeight - height) / 2;
+        
+        const popup = window.open(
+          data.url, 
+          'google_login', 
+          `width=${width},height=${height},left=${left},top=${top},status=no,menubar=no,toolbar=no`
+        );
+
+        if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+          // Popup blocked or failed, fallback to redirect
+          window.location.replace(data.url);
+          return;
+        }
+
+        // Listener for popup message
+        const messageListener = (event: MessageEvent) => {
+          if (event.data && event.data.type === 'AUTH_SUCCESS') {
+            window.removeEventListener('message', messageListener);
+            if (event.data.token) {
+              localStorage.setItem('wedding_session_token', event.data.token);
+            }
+            navigate('/workspace', { replace: true });
+          }
+        };
+
+        window.addEventListener('message', messageListener);
+
+        // Cleanup listener if popup closed manually
+        const checkClosed = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(checkClosed);
+            window.removeEventListener('message', messageListener);
+            setLoading(false);
+          }
+        }, 1000);
       } else {
         throw new Error(data.error || 'Failed to initialize Google Login');
       }

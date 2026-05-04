@@ -142,8 +142,34 @@ app.get('/api/auth/callback', async (c) => {
 
     setCookie(c, 'wedding_session', token, cookieOptions);
 
-    // Use the dynamic targetOrigin determined above
-    return c.redirect(`${targetOrigin}/workspace?token=${token}`);
+    // Use JS replace to ensure history cleanup and popup support
+    const redirectUrl = `${targetOrigin}/workspace?token=${token}`;
+    return c.html(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Redirecting...</title>
+          <script>
+            try {
+              if (window.opener && window.opener !== window) {
+                window.opener.postMessage({ type: 'AUTH_SUCCESS', token: "${token}" }, "*");
+                // Give a tiny bit of time for message to send before closing
+                setTimeout(() => window.close(), 100);
+              } else {
+                window.location.replace("${redirectUrl}");
+              }
+            } catch (err) {
+              window.location.replace("${redirectUrl}");
+            }
+          </script>
+        </head>
+        <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #FDFCF0;">
+          <div style="text-align: center;">
+            <p>Authentication successful! Redirecting you back to your workspace...</p>
+          </div>
+        </body>
+      </html>
+    `);
   } catch (error) {
     console.error('Worker Auth Error:', error);
     // Use the dynamic targetOrigin for error redirect too

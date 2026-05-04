@@ -338,7 +338,7 @@ export default function Workspace() {
   const handleLogout = async () => {
     await authenticatedFetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
     removeAuthToken();
-    window.location.href = '/login';
+    window.location.replace('/login');
   };
 
   if (isLoadingWorkspace) return (
