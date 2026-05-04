@@ -182,7 +182,7 @@ export default function Subscription() {
                 </div>
                 <h3 className="text-2xl font-serif mb-2">Monthly Pro</h3>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-serif">$49</span>
+                  <span className="text-4xl font-serif">RM49</span>
                   <span className="text-gray-400 text-sm">/month</span>
                 </div>
               </div>
@@ -230,7 +230,7 @@ export default function Subscription() {
                 </div>
                 <h3 className="text-2xl font-serif mb-2">Yearly Pro</h3>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-serif">$470</span>
+                  <span className="text-4xl font-serif">RM470</span>
                   <span className="opacity-40 text-sm">/year</span>
                 </div>
               </div>
