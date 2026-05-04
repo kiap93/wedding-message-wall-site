@@ -1,15 +1,35 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { TEMPLATES, WeddingTemplate } from '../types';
-import { Heart, Camera, Mail, Star, Leaf, Flower, Palette, User } from 'lucide-react';
+import { WeddingTemplate } from '../types';
+import { Heart, Camera, Mail, Star, Leaf, Flower, Palette, User, Loader2 } from 'lucide-react';
+import { fetchTemplates } from '../lib/templates';
 
 export default function TemplateSelector() {
   const navigate = useNavigate();
+  const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const data = await fetchTemplates();
+      setTemplates(data);
+      setIsLoading(false);
+    }
+    load();
+  }, []);
 
   const handleSelect = (id: string) => {
     navigate(`/display?template=${id}`);
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FDFCF0]">
+        <Loader2 className="w-8 h-8 text-[#C5A059] animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FDFCF0] text-[#2D2424] p-8 md:p-16">
@@ -36,7 +56,7 @@ export default function TemplateSelector() {
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-          {TEMPLATES.map((template, index) => (
+          {templates.map((template, index) => (
             <TemplateCard 
               key={template.id} 
               template={template} 

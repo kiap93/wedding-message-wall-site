@@ -21,9 +21,10 @@ import {
   Zap,
   Monitor,
   Smartphone,
+  Sparkles,
   X
 } from 'lucide-react';
-import { Agency, WeddingEvent, TEMPLATES, TemplateId } from '../types';
+import { Agency, WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate } from '../types';
 import RSVPManager from '../components/RSVPManager';
 import MessageModerator from '../components/MessageModerator';
 import { API_BASE } from '../lib/config';
@@ -31,6 +32,8 @@ import { authenticatedFetch, removeAuthToken } from '../lib/auth';
 import { getSupabase } from '../lib/supabase';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { useUser } from '../lib/UserContext';
+import { fetchTemplates } from '../lib/templates';
+import { Palette } from 'lucide-react';
 
 export default function Admin() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
@@ -53,7 +56,16 @@ export default function Admin() {
   // Current Editor State
   const [editingEvent, setEditingEvent] = useState<Partial<WeddingEvent> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
   const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'moderation'>('aesthetic');
+
+  useEffect(() => {
+    async function load() {
+      const data = await fetchTemplates();
+      setTemplates(data);
+    }
+    load();
+  }, []);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
 
   useEffect(() => {
@@ -185,6 +197,7 @@ export default function Admin() {
                       agency?.is_demo === true || 
                       user?.email === 'buildsiteasia@gmail.com';
   const isCouple = agency?.user_role === 'couple';
+  const isStaff = user?.email === 'buildsiteasia@gmail.com' || user?.email?.includes('@eventframe.io');
 
   useEffect(() => {
     // If couple and 0 events, auto-trigger creation if they are subscribed
@@ -343,6 +356,15 @@ export default function Admin() {
           </div>
         </div>
         <div className="flex items-center gap-4">
+          {isStaff && (
+            <button 
+              onClick={() => navigate('/templates/manage')}
+              className="p-2 hover:bg-[#C5A059]/10 rounded-xl transition-colors text-[#C5A059]"
+              title="Aesthetic Plugins Manager"
+            >
+              <Palette className="w-5 h-5" />
+            </button>
+          )}
           <button 
             onClick={() => navigate('/subscription')}
             className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
@@ -566,7 +588,7 @@ export default function Admin() {
                       <div className="p-8 flex-1">
                         <div className="flex items-center justify-between mb-6">
                           <span className="text-[10px] font-black uppercase tracking-widest bg-[#C5A059]/10 text-[#C5A059] px-3 py-1 rounded-full">
-                            {TEMPLATES.find(t => t.id === event.theme_id)?.name || 'Classic'}
+                            {templates.find(t => t.id === event.theme_id)?.name || DEFAULT_TEMPLATES.find(t => t.id === event.theme_id)?.name || 'Classic'}
                           </span>
                           <div className="flex gap-2">
                             <button 
@@ -992,13 +1014,13 @@ export default function Admin() {
                               </button>
                             )}
                             <span className="text-xs font-bold uppercase tracking-widest text-[#C5A059] bg-[#C5A059]/10 px-4 py-2 rounded-full">
-                              {TEMPLATES.length} Art Styles
+                              {templates.length} Art Styles
                             </span>
                           </div>
                         </div>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                          {TEMPLATES.map((t) => (
+                          {templates.map((t) => (
                             <button 
                               key={t.id}
                               onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
@@ -1009,9 +1031,12 @@ export default function Admin() {
                               <div className={`${t.colors.background} ${t.colors.text} p-8 rounded-[calc(1.5rem-4px)] min-h-[240px] flex flex-col justify-between`}>
                                 <div>
                                   <div className={`w-10 h-10 rounded-xl ${t.colors.accent} bg-opacity-10 mb-6 flex items-center justify-center`}>
-                                    <Heart className="w-5 h-5 fill-current opacity-30" />
+                                    {t.is_custom ? <Palette className="w-5 h-5 fill-current opacity-30" /> : <Heart className="w-5 h-5 fill-current opacity-30" />}
                                   </div>
-                                  <h4 className={`text-2xl font-bold mb-2 ${t.colors.headerText}`}>{t.name}</h4>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <h4 className={`text-2xl font-bold ${t.colors.headerText}`}>{t.name}</h4>
+                                    {t.is_custom && <Sparkles className="w-4 h-4 text-[#C5A059]" />}
+                                  </div>
                                   <p className="text-sm opacity-60 leading-relaxed max-w-[200px]">{t.description}</p>
                                 </div>
                                 

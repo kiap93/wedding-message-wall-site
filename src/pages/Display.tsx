@@ -4,10 +4,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Heart, QrCode, Leaf, Star, Mail, Camera, Flower, Zap } from 'lucide-react';
 import { fetchMessages, Message } from '../lib/api';
 import { getSupabase } from '../lib/supabase';
-import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
+import { WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 import { getAgencyById } from '../lib/agency';
 import { useWorkspace } from '../lib/WorkspaceContext';
+import { fetchTemplates } from '../lib/templates';
 
 export default function Display() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
@@ -22,7 +23,16 @@ export default function Display() {
   const isPreview = isCoupleLogic && !isSubscribed && !isPreviewParam;
   const [showQR, setShowQR] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    async function load() {
+      const data = await fetchTemplates();
+      setTemplates(data);
+    }
+    load();
+  }, []);
 
   useEffect(() => {
     if (isLoadingWorkspace) return;
@@ -162,7 +172,7 @@ export default function Display() {
   const templateIdFromUrl = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
   
   const activeTemplateId = project?.theme_id || templateIdFromUrl;
-  const template = TEMPLATES.find(t => t.id === activeTemplateId) || TEMPLATES[0];
+  const template = templates.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES[0];
 
   const groom = project?.groom_name || searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
   const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';

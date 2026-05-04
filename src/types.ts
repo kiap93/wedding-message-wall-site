@@ -49,19 +49,7 @@ export interface RSVP {
   created_at: string;
 }
 
-export type TemplateId = 
-  | 'garden' 
-  | 'minimal_luxury' 
-  | 'romantic' 
-  | 'postal' 
-  | 'polaroid' 
-  | 'creative' 
-  | 'gallery' 
-  | 'starry' 
-  | 'vintage' 
-  | 'digital' 
-  | 'cute' 
-  | 'minimalist';
+export type TemplateId = string;
 
 export interface TemplateColors {
   background: string;
@@ -85,10 +73,11 @@ export interface WeddingTemplate {
   variant: 'masonry' | 'hanging' | 'floating' | 'grid';
   cardStyle?: string;
   animationType?: 'float' | 'slide' | 'pop' | 'fade';
-  iconType?: 'heart' | 'leaf' | 'star' | 'mail' | 'camera' | 'flower';
+  iconType?: 'heart' | 'leaf' | 'star' | 'mail' | 'camera' | 'flower' | 'palette';
+  is_custom?: boolean;
 }
 
-export const TEMPLATES: WeddingTemplate[] = [
+export const DEFAULT_TEMPLATES: WeddingTemplate[] = [
   {
     id: 'garden',
     name: 'Natural Garden',
@@ -302,3 +291,5 @@ export const TEMPLATES: WeddingTemplate[] = [
     fontSans: 'font-serif',
   }
 ];
+
+export const TEMPLATES = DEFAULT_TEMPLATES;
