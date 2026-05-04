@@ -5,11 +5,12 @@ import { Heart, Send, CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower, Us
 import { postMessage } from '../lib/api';
 import RSVPForm from '../components/RSVPForm';
 import confetti from 'canvas-confetti';
-import { WeddingEvent, TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
+import { WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 import { getSupabase } from '../lib/supabase';
 import { getAgencyById } from '../lib/agency';
 import { useWorkspace } from '../lib/WorkspaceContext';
+import { fetchTemplates } from '../lib/templates';
 
 export default function Guest() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
@@ -26,12 +27,26 @@ export default function Guest() {
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [rsvpCount, setRsvpCount] = useState(0);
+  const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
   
   const [searchParams] = useSearchParams();
+  const isPreviewParam = searchParams.get('preview') === 'true';
+
+  useEffect(() => {
+    async function load() {
+      const data = await fetchTemplates();
+      setTemplates(data);
+    }
+    load();
+  }, []);
   
   const templateIdFromUrl = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
-  const activeTemplateId = project?.theme_id || templateIdFromUrl;
-  const template = TEMPLATES.find(t => t.id === activeTemplateId) || TEMPLATES[0];
+  
+  const activeTemplateId = isPreviewParam && searchParams.get('template') 
+    ? (searchParams.get('template') as TemplateId) 
+    : (project?.theme_id || templateIdFromUrl);
+
+  const template = templates.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES[0];
 
   const groom = project?.groom_name || searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
   const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
@@ -93,7 +108,6 @@ export default function Guest() {
 
   const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
   const isCoupleLogic = agency?.user_role === 'couple';
-  const isPreviewParam = searchParams.get('preview') === 'true';
   const isPreview = isCoupleLogic && !isSubscribed && !isPreviewParam;
 
   const loadProject = async (id?: string, slugName?: string) => {

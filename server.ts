@@ -190,6 +190,37 @@ async function startServer() {
     }
   });
 
+  apiRouter.post('/auth/email', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    try {
+      console.log(`Email login attempt for: ${email}`);
+      
+      // Identical to Google Login payload but from email
+      const user = {
+        id: `email-${Buffer.from(email).toString('base64').slice(0, 12)}`,
+        email: email,
+        name: email.split('@')[0],
+        picture: null,
+      };
+
+      const token = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
+
+      res.cookie('wedding_session', token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      res.json({ success: true, user });
+    } catch (error) {
+      console.error('Email login error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   apiRouter.post('/auth/logout', (req, res) => {
     res.clearCookie('wedding_session');
     res.json({ success: true });

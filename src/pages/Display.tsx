@@ -171,7 +171,9 @@ export default function Display() {
   // Fallback defaults if no event loaded
   const templateIdFromUrl = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
   
-  const activeTemplateId = project?.theme_id || templateIdFromUrl;
+  const activeTemplateId = isPreviewParam && searchParams.get('template') 
+    ? (searchParams.get('template') as TemplateId) 
+    : (project?.theme_id || templateIdFromUrl);
   const template = templates.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES[0];
 
   const groom = project?.groom_name || searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';

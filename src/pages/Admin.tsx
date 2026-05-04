@@ -1045,12 +1045,6 @@ export default function Admin() {
                                   <div className={`w-4 h-4 rounded-full ${t.colors.border.split(' ')[0].replace('border-', 'bg-') || 'bg-gray-200'} opacity-50`} />
                                 </div>
                               </div>
-
-                              {editingEvent?.theme_id === t.id && (
-                                <div className="absolute top-6 right-6 bg-[#C5A059] text-white p-2 rounded-full shadow-lg">
-                                  <Save className="w-4 h-4" />
-                                </div>
-                              )}
                             </button>
                           ))}
                         </div>
@@ -1148,7 +1142,7 @@ export default function Admin() {
                   <div className="flex-1 relative bg-black/5 p-4 flex items-center justify-center">
                     <div className="w-full h-full rounded-2xl overflow-hidden shadow-2xl border border-white/50 bg-white">
                       <iframe 
-                        src={`${getEventUrl(editingEvent as WeddingEvent, 'display')}?preview=true`}
+                        src={`${getEventUrl(editingEvent as WeddingEvent, 'display')}?preview=true&template=${editingEvent?.theme_id}`}
                         className="w-full h-full border-0"
                         title="Display Preview"
                       />
@@ -1175,7 +1169,7 @@ export default function Admin() {
                       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-6 bg-black rounded-b-2xl z-10" />
                       <div className="w-full h-full rounded-[2.2rem] overflow-hidden bg-white">
                         <iframe 
-                          src={`${getEventUrl(editingEvent as WeddingEvent, 'guest')}?preview=true`}
+                          src={`${getEventUrl(editingEvent as WeddingEvent, 'guest')}?preview=true&template=${editingEvent?.theme_id}`}
                           className="w-full h-full border-0 shadow-inner"
                           title="Guest Preview"
                         />

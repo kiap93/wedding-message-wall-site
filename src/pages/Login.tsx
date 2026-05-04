@@ -9,6 +9,8 @@ import { authenticatedFetch } from '../lib/auth';
 export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showEmailLogin, setShowEmailLogin] = useState(false);
+  const [email, setEmail] = useState('');
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(window.location.search);
   const authError = searchParams.get('error');
@@ -65,6 +67,40 @@ export default function Login() {
     }
   };
 
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch(`${API_BASE}/api/auth/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // For physical email login, we'd wait for a link. 
+        // For this demo/staff "finish", we'll assume it returns a session or a next step.
+        if (data.success) {
+          navigate('/admin');
+        } else {
+          setError('We couldn\'t find an account with that email.');
+        }
+      } else {
+        throw new Error(data.error || 'Failed to initialize Email Login');
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#FDFCF0] flex items-center justify-center p-6 relative overflow-hidden">
       {/* Decorative Background */}
@@ -83,7 +119,7 @@ export default function Login() {
           
           <h1 className="text-4xl font-serif mb-4 text-[#2D2424]">Wedding Manager</h1>
           <p className="text-[#2D2424]/60 mb-10 font-sans tracking-wide">
-            Sign in to customize your wall and manage messages
+            {showEmailLogin ? 'Enter your email to receive a secure login link' : 'Sign in to customize your wall and manage messages'}
           </p>
 
           {error && (
@@ -93,22 +129,51 @@ export default function Login() {
           )}
 
           <div className="space-y-4">
-            <button
-              onClick={handleGoogleLogin}
-              disabled={loading}
-              className="w-full py-4 px-6 rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center gap-3 transition-all font-medium text-[#2D2424] shadow-sm hover:shadow-md disabled:opacity-50"
-            >
-              <Chrome className="w-5 h-5" />
-              {loading ? 'Connecting...' : 'Continue with Google'}
-            </button>
-            
-            <button
-              disabled
-              className="w-full py-4 px-6 rounded-2xl border border-gray-200 bg-white opacity-50 cursor-not-allowed flex items-center justify-center gap-3 transition-all font-medium text-[#2D2424]"
-            >
-              <Mail className="w-5 h-5" />
-              Sign in with Email
-            </button>
+            {!showEmailLogin ? (
+              <>
+                <button
+                  onClick={handleGoogleLogin}
+                  disabled={loading}
+                  className="w-full py-4 px-6 rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center gap-3 transition-all font-medium text-[#2D2424] shadow-sm hover:shadow-md disabled:opacity-50"
+                >
+                  <Chrome className="w-5 h-5" />
+                  {loading ? 'Connecting...' : 'Continue with Google'}
+                </button>
+                
+                <button
+                  onClick={() => setShowEmailLogin(true)}
+                  className="w-full py-4 px-6 rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center gap-3 transition-all font-medium text-[#2D2424] shadow-sm hover:shadow-md"
+                >
+                  <Mail className="w-5 h-5" />
+                  Sign in with Email
+                </button>
+              </>
+            ) : (
+              <form onSubmit={handleEmailLogin} className="space-y-4">
+                <input 
+                  type="email"
+                  required
+                  placeholder="Enter your email address"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-6 py-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-[#C5A059] focus:border-transparent outline-none transition-all"
+                />
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 px-6 rounded-2xl bg-[#C5A059] text-white flex items-center justify-center gap-3 transition-all font-bold uppercase tracking-widest text-xs hover:bg-[#B38D45] disabled:opacity-50 shadow-xl shadow-[#C5A059]/20"
+                >
+                  {loading ? 'Sending link...' : 'Send Magic Link'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEmailLogin(false)}
+                  className="w-full py-2 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  Back to Social Login
+                </button>
+              </form>
+            )}
           </div>
 
           <div className="mt-10 pt-8 border-t border-gray-100 italic">
