@@ -17,7 +17,7 @@ const __dirname = path.dirname(__filename);
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
+const JWT_SECRET = process.env.JWT_SECRET || 'wedding-secret-key-2024-v1';
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
@@ -294,7 +294,7 @@ async function startServer() {
 
       res.json({ success: true, data });
     } catch (error) {
-      console.error('Session error:', error);
+      console.error('Session verification failed for project update:', error);
       res.status(401).json({ error: 'Invalid session' });
     }
   });

@@ -12,14 +12,17 @@ export function removeAuthToken() {
 
 export async function authenticatedFetch(url: string, options: RequestInit = {}) {
   const token = getAuthToken();
-  const headers = {
-    ...options.headers,
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  const headers: Record<string, string> = {
+    ...options.headers as Record<string, string>,
   };
+
+  if (token && token !== 'null' && token !== 'undefined') {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   return fetch(url, {
     ...options,
     headers,
-    credentials: 'include', // Still include for cookie support if available
+    credentials: 'include',
   });
 }
