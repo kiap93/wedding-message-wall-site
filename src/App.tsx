@@ -40,30 +40,40 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         setWorkspaces(userWorkspaces);
         
         // Redirect logic
-        if (userWorkspaces.length === 0 && location.pathname !== '/onboarding') {
+        // Only redirect to onboarding if on root domain and truly have no workspaces
+        const currentHost = window.location.host;
+        const hostParts = currentHost.split('.');
+        
+        // Strict root check: exactly eventframe.io or www.eventframe.io
+        const isRootDomain = currentHost === 'eventframe.io' || currentHost === 'www.eventframe.io';
+        // Generic fallback for other domains/IPs
+        const isGenericRoot = hostParts.length <= 2 && !currentHost.includes('localhost');
+        const isRoot = isRootDomain || isGenericRoot;
+        
+        const isRunApp = currentHost.includes('.run.app');
+
+        if (isRoot && !isRunApp && userWorkspaces.length === 0 && location.pathname !== '/onboarding') {
           window.location.replace('/onboarding');
           return;
         }
-
-        const currentHost = window.location.host;
-        const hostParts = currentHost.split('.');
-        // Check if root domain (e.g., eventframe.io or localhost)
-        const isRoot = hostParts.length <= 2 || (hostParts.length === 3 && hostParts[0] === 'www');
         
         // Disable subdomain redirects on run.app domains as they don't support wildcard subdomains
-        if (currentHost.includes('.run.app')) return;
+        if (isRunApp) return;
 
         if (isRoot && userWorkspaces.length > 0 && location.pathname === '/workspace') {
           const workspace = userWorkspaces[0];
-          // Only redirect to subdomain if it's an agency
-          if (workspace.user_role === 'agency') {
+          // Only redirect to subdomain if it's an agency and has a valid slug
+          if (workspace.user_role === 'agency' && workspace.slug) {
             const slug = workspace.slug;
             const protocol = window.location.protocol;
             // Extract base domain carefully
             const baseDomain = hostParts.slice(-2).join('.');
-            const token = localStorage.getItem('wedding_session_token');
-            window.location.replace(`${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
-            return;
+            // Avoid looping if we are already on the correct host (shouldn't happen with isRoot but being safe)
+            if (currentHost !== `${slug}.${baseDomain}`) {
+              const token = localStorage.getItem('wedding_session_token');
+              window.location.replace(`${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
+              return;
+            }
           }
         }
       } catch (err) {

@@ -1098,9 +1098,19 @@ export default function Workspace() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
                       >
-                         <div className="mb-8">
-                           <h2 className="text-3xl font-serif">Setup RSVP Form</h2>
-                           <p className="text-gray-500">Customize the questions you want to ask your guests.</p>
+                         <div className="mb-8 flex items-center justify-between">
+                           <div>
+                             <h2 className="text-3xl font-serif">Setup RSVP Form</h2>
+                             <p className="text-gray-500">Customize the questions you want to ask your guests.</p>
+                           </div>
+                           <button 
+                             onClick={handleSave}
+                             disabled={isSaving}
+                             className="flex items-center gap-2 px-8 py-3 bg-[#C5A059] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-xl disabled:opacity-50"
+                           >
+                             <Save className="w-4 h-4" />
+                             {isSaving ? 'Saving...' : 'Save Form'}
+                           </button>
                          </div>
                          <RSVPFieldEditor 
                             fields={editingEvent.rsvp_fields || []} 

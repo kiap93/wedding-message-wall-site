@@ -17,8 +17,9 @@ const DEFAULT_FIELDS: RSVPField[] = [
 ];
 
 export default function RSVPFieldEditor({ fields, onChange }: RSVPFieldEditorProps) {
-  // If fields is empty or undefined, initialize with defaults
-  const currentFields = fields && fields.length > 0 ? fields : DEFAULT_FIELDS;
+  // Ensure fields is always an array
+  const safeFields = Array.isArray(fields) ? fields : [];
+  const currentFields = safeFields.length > 0 ? safeFields : DEFAULT_FIELDS;
 
   const handleAddField = () => {
     const newField: RSVPField = {
@@ -69,7 +70,7 @@ export default function RSVPFieldEditor({ fields, onChange }: RSVPFieldEditorPro
             <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2">Standard Fields</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {DEFAULT_FIELDS.map(df => {
-                    const isActive = currentFields.some(f => f.id === df.id);
+                    const isActive = Array.isArray(currentFields) && currentFields.some(f => f.id === df.id);
                     return (
                         <button
                             key={df.id}
@@ -91,7 +92,7 @@ export default function RSVPFieldEditor({ fields, onChange }: RSVPFieldEditorPro
         <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-4">Custom Questions</h4>
         
         <Reorder.Group axis="y" values={currentFields} onReorder={onChange} className="space-y-3">
-          {currentFields.filter(f => !DEFAULT_FIELDS.some(df => df.id === f.id)).map((field) => (
+          {Array.isArray(currentFields) && currentFields.filter(f => !DEFAULT_FIELDS.some(df => df.id === f.id)).map((field) => (
             <Reorder.Item 
               key={field.id} 
               value={field}
@@ -172,9 +173,18 @@ export default function RSVPFieldEditor({ fields, onChange }: RSVPFieldEditorPro
           ))}
         </Reorder.Group>
 
-        {currentFields.filter(f => !DEFAULT_FIELDS.some(df => df.id === f.id)).length === 0 && (
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={handleAddField}
+            className="flex items-center gap-2 px-6 py-3 bg-[#C5A059]/10 text-[#C5A059] border border-dashed border-[#C5A059]/30 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#C5A059]/20 transition-all w-full justify-center"
+          >
+            <Plus className="w-4 h-4" /> Add Another Question
+          </button>
+        </div>
+
+        {Array.isArray(currentFields) && currentFields.filter(f => !DEFAULT_FIELDS.some(df => df.id === f.id)).length === 0 && (
             <div className="py-8 text-center border-2 border-dashed border-gray-100 rounded-3xl mt-4">
-                <p className="text-sm text-gray-400">No custom questions added yet.</p>
+                <p className="text-sm text-gray-400">No custom questions added yet. Click "Add Field" to start customizing your RSVP form.</p>
             </div>
         )}
       </div>

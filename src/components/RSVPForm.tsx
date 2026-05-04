@@ -27,11 +27,12 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
   const [isSuccess, setIsSuccess] = useState(false);
 
   // If rsvpFields is not provided, use standard defaults
-  const activeFields = rsvpFields && rsvpFields.length > 0 ? rsvpFields : [
+  const safeRsvpFields = Array.isArray(rsvpFields) ? rsvpFields : [];
+  const activeFields = safeRsvpFields.length > 0 ? safeRsvpFields : [
     { id: 'name', label: 'Full Name', type: 'text', required: true },
     { id: 'email', label: 'Email Address', type: 'text', required: false },
     { id: 'guest_count', label: 'Number of Guests', type: 'number', required: true, showIfAttending: true },
-    { id: 'meal_preference', label: 'Meal Preference', type: 'select', required: true, options: ['Standard (Meat/Fish)', 'Vegetarian', 'Vegan', 'Gluten Free'], showIfAttending: true },
+    { id: 'meal_preference', label: 'Meal Preference', type: 'select', required: true, options: ['Standard', 'Vegetarian', 'Vegan', 'Gluten Free'], showIfAttending: true },
     { id: 'dietary_requirements', label: 'Dietary Notes', type: 'textarea', required: false, showIfAttending: true }
   ];
 
@@ -180,7 +181,7 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
             className={`${commonClasses} appearance-none`}
           >
             <option value="" disabled className="text-black">Select an option...</option>
-            {field.options?.filter(s => s.trim()).map(opt => (
+            {Array.isArray(field.options) && field.options.filter(s => s.trim()).map(opt => (
               <option key={opt} value={opt} className="text-black">{opt}</option>
             ))}
           </select>
@@ -188,7 +189,7 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
 
         {field.type === 'radio' && (
           <div className="flex flex-col gap-2">
-            {field.options?.filter(s => s.trim()).map(opt => (
+            {Array.isArray(field.options) && field.options.filter(s => s.trim()).map(opt => (
               <label key={opt} className="flex items-center gap-3 cursor-pointer p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-colors">
                 <input
                   type="radio"
@@ -207,8 +208,8 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
 
         {field.type === 'checkbox' && (
            <div className="flex flex-col gap-2">
-            {field.options?.filter(s => s.trim()).map(opt => {
-              const currentValues = formData[field.id] || [];
+            {Array.isArray(field.options) && field.options.filter(s => s.trim()).map(opt => {
+              const currentValues = Array.isArray(formData[field.id]) ? formData[field.id] : [];
               const isChecked = currentValues.includes(opt);
               return (
                 <label key={opt} className="flex items-center gap-3 cursor-pointer p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-colors">
