@@ -33,6 +33,15 @@ export default function Login() {
       .catch(() => {});
   }, [navigate]);
 
+  // Fix stuck loading state when using back button (bfcache)
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      setLoading(false);
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, []);
+
   const handleGoogleLogin = async () => {
     try {
       setLoading(true);
