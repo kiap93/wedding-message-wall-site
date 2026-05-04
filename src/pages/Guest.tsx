@@ -93,7 +93,8 @@ export default function Guest() {
 
   const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
   const isCoupleLogic = agency?.user_role === 'couple';
-  const isPreview = isCoupleLogic && !isSubscribed;
+  const isPreviewParam = searchParams.get('preview') === 'true';
+  const isPreview = isCoupleLogic && !isSubscribed && !isPreviewParam;
 
   const loadProject = async (id?: string, slugName?: string) => {
     if (id === 'demo' || slugName === 'demo') {

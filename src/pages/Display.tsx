@@ -15,10 +15,11 @@ export default function Display() {
   const [project, setProject] = useState<WeddingEvent | null>(null);
   const [agency, setAgency] = useState<Agency | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [searchParams] = useSearchParams();
   const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
   const isCoupleLogic = agency?.user_role === 'couple';
-  const isPreview = isCoupleLogic && !isSubscribed;
-  const [searchParams] = useSearchParams();
+  const isPreviewParam = searchParams.get('preview') === 'true';
+  const isPreview = isCoupleLogic && !isSubscribed && !isPreviewParam;
   const [showQR, setShowQR] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
