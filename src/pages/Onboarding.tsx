@@ -37,9 +37,9 @@ export default function Onboarding() {
           const token = localStorage.getItem('wedding_session_token');
 
           if (existingAgency.user_role === 'agency') {
-            window.location.href = `${protocol}//${existingAgency.slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`;
+            window.location.replace(`${protocol}//${existingAgency.slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
           } else {
-            navigate('/workspace');
+            navigate('/workspace', { replace: true });
           }
         }
       } catch (err) {
@@ -87,9 +87,9 @@ export default function Onboarding() {
         const token = localStorage.getItem('wedding_session_token');
         
         if (userAgency.user_role === 'agency') {
-          window.location.href = `${protocol}//${userAgency.slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`;
+          window.location.replace(`${protocol}//${userAgency.slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
         } else {
-          navigate('/workspace');
+          navigate('/workspace', { replace: true });
         }
         return;
       }
@@ -202,9 +202,9 @@ export default function Onboarding() {
       const token = localStorage.getItem('wedding_session_token');
       
       if (role === 'agency') {
-        window.location.href = `${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`;
+        window.location.replace(`${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
       } else {
-        navigate(`/workspace${createdProjectId ? `?project=${createdProjectId}` : ''}`);
+        navigate(`/workspace${createdProjectId ? `?project=${createdProjectId}` : ''}`, { replace: true });
       }
 
     } catch (err: any) {

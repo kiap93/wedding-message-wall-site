@@ -66,7 +66,7 @@ export default function Login() {
       }
       
       if (data.url) {
-        window.location.href = data.url;
+        window.location.replace(data.url);
       } else {
         throw new Error(data.error || 'Failed to initialize Google Login');
       }
@@ -93,10 +93,12 @@ export default function Login() {
       const data = await response.json();
 
       if (response.ok) {
-        // For physical email login, we'd wait for a link. 
-        // For this demo/staff "finish", we'll assume it returns a session or a next step.
         if (data.success) {
-          navigate('/workspace');
+          // Store token if returned for cross-domain/subdomain consistency
+          if (data.token) {
+            localStorage.setItem('wedding_session_token', data.token);
+          }
+          navigate('/workspace', { replace: true });
         } else {
           setError('We couldn\'t find an account with that email.');
         }

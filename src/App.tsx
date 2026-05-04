@@ -41,7 +41,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         
         // Redirect logic
         if (userWorkspaces.length === 0 && location.pathname !== '/onboarding') {
-          window.location.href = '/onboarding';
+          window.location.replace('/onboarding');
           return;
         }
 
@@ -62,7 +62,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
             // Extract base domain carefully
             const baseDomain = hostParts.slice(-2).join('.');
             const token = localStorage.getItem('wedding_session_token');
-            window.location.href = `${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`;
+            window.location.replace(`${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
             return;
           }
         }

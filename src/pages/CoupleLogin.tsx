@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Heart, Lock, User, AlertCircle, Globe } from 'lucide-react';
 import { getSupabase } from '../lib/supabase';
@@ -7,8 +7,9 @@ import { useWorkspace } from '../lib/WorkspaceContext';
 
 export default function CoupleLogin() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
-  const [slug, setSlug] = useState('');
-  const [agencySlug, setAgencySlug] = useState('');
+  const [searchParams] = useSearchParams();
+  const [slug, setSlug] = useState(searchParams.get('slug') || '');
+  const [agencySlug, setAgencySlug] = useState(searchParams.get('agency') || '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -78,9 +79,9 @@ export default function CoupleLogin() {
           // On root domain, redirect to subdomain dashboard
           const protocol = window.location.protocol;
           const baseDomain = hostParts.slice(-2).join('.');
-          window.location.href = `${protocol}//${agencySlug}.${baseDomain}/${data.slug}/dashboard`;
+          window.location.replace(`${protocol}//${agencySlug}.${baseDomain}/${data.slug}/dashboard`);
         } else {
-          navigate(`/${data.slug}/dashboard`);
+          navigate(`/${data.slug}/dashboard`, { replace: true });
         }
       } else {
         setError('Incorrect password. Please try again.');

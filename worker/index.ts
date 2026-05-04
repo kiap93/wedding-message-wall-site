@@ -202,6 +202,45 @@ app.post('/api/auth/logout', (c) => {
   return c.json({ success: true });
 });
 
+// 5. Email Auth (Native for Worker)
+app.post('/api/auth/email', async (c) => {
+  const { email } = await c.req.json();
+  if (!email) return c.json({ error: 'Email is required' }, 400);
+
+  const { JWT_SECRET } = c.env;
+
+  try {
+    const user = {
+      id: `email-${btoa(email).slice(0, 12)}`,
+      email: email,
+      name: email.split('@')[0],
+      picture: null,
+    };
+
+    const token = await sign({ ...user, iat: Math.floor(Date.now() / 1000) }, JWT_SECRET, 'HS256');
+
+    const cookieOptions: any = {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'None',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
+    };
+
+    const hostname = new URL(c.req.url).hostname;
+    if (hostname.endsWith('eventframe.io')) {
+      cookieOptions.domain = '.eventframe.io';
+    }
+
+    setCookie(c, 'wedding_session', token, cookieOptions);
+
+    return c.json({ success: true, user, token });
+  } catch (error) {
+    console.error('Worker Email Auth Error:', error);
+    return c.json({ error: 'Authentication failed' }, 500);
+  }
+});
+
 app.get('/api/debug-env', (c) => {
   return c.json({
     has_jwt_secret: !!c.env.JWT_SECRET,

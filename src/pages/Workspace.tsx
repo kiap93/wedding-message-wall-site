@@ -22,6 +22,8 @@ import {
   Monitor,
   Smartphone,
   Sparkles,
+  Share2,
+  Check,
   X
 } from 'lucide-react';
 import { Agency, WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate } from '../types';
@@ -49,6 +51,7 @@ export default function Workspace() {
   // Event List
   const [events, setEvents] = useState<WeddingEvent[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Calendar State
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -181,7 +184,7 @@ export default function Workspace() {
         
         // Only redirect if not localhost or if we want to simulate subdomains
         if (!isLocalhost || hostParts.length > 1) {
-          window.location.href = `${protocol}//${newSlug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`;
+          window.location.replace(`${protocol}//${newSlug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
         } else {
           window.location.reload();
         }
@@ -295,7 +298,7 @@ export default function Workspace() {
     }
   };
 
-  const getEventUrl = (event: WeddingEvent, type: 'display' | 'guest') => {
+  const getEventUrl = (event: WeddingEvent, type: 'display' | 'guest' | 'couple_login') => {
     const currentHost = window.location.host;
     const hostParts = currentHost.split('.');
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -311,13 +314,25 @@ export default function Workspace() {
       // Couples use root domain path
       const base = `https://${baseDomain}/${agency?.slug}`;
       if (type === 'display') return base;
-      return `${base}/guest`;
+      if (type === 'guest') return `${base}/guest`;
+      return `https://${baseDomain}/couple/login?agency=${agency?.slug}`;
     }
 
     // Agencies use subdomains
     const base = agency?.domain ? `https://${agency.domain}` : `https://${agency?.slug}.${baseDomain}`;
     if (type === 'display') return `${base}/${event.slug}/display`;
-    return `${base}/${event.slug}/guest`;
+    if (type === 'guest') return `${base}/${event.slug}/guest`;
+    return `${base}/couple/login?slug=${event.slug}`;
+  };
+
+  const handleShareCoupleLogin = (event: WeddingEvent) => {
+    const loginUrl = getEventUrl(event, 'couple_login');
+    const shareText = `Couple Dashboard Login:\nLink: ${loginUrl}\nPIN: ${event.access_password}`;
+    
+    navigator.clipboard.writeText(shareText).then(() => {
+      setCopiedId(event.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
   };
 
   const handleLogout = async () => {
@@ -633,21 +648,34 @@ export default function Workspace() {
                         </div>
                       </div>
 
-                      <div className="px-8 pb-8 flex gap-3">
+                       <div className="px-8 pb-8 flex gap-3">
                         <button 
                           onClick={() => window.open(getEventUrl(event, 'display'), '_blank')}
-                          className="flex-1 bg-[#2D2424] text-white py-3 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black transition-colors"
+                          className="flex-1 bg-[#2D2424] text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black transition-colors"
                         >
                           <ExternalLink className="w-3 h-3" />
                           Display
                         </button>
                         <button 
                           onClick={() => window.open(getEventUrl(event, 'guest'), '_blank')}
-                          className="flex-1 bg-[#C5A059] text-white py-3 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#B38D45] transition-colors"
+                          className="flex-1 bg-[#C5A059] text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#B38D45] transition-colors"
                         >
                           <Heart className="w-3 h-3" />
                           Guest
                         </button>
+                        {!isCouple && (
+                          <button 
+                            onClick={() => handleShareCoupleLogin(event)}
+                            className={`p-3 rounded-xl transition-all flex items-center justify-center ${
+                              copiedId === event.id 
+                                ? 'bg-green-500 text-white shadow-lg shadow-green-200' 
+                                : 'bg-[#C5A059]/10 text-[#C5A059] hover:bg-[#C5A059]/20'
+                            }`}
+                            title="Share Couple Login"
+                          >
+                            {copiedId === event.id ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+                          </button>
+                        )}
                       </div>
                     </motion.div>
                   ))}
