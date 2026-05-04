@@ -251,6 +251,74 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // --- Project Routes ---
+  apiRouter.put('/projects/:id', async (req, res) => {
+    const token = req.cookies.wedding_session || req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const { id } = req.params;
+      const projectData = req.body;
+
+      // Exclude sensitive/immutable fields
+      const { id: _, agency_id, created_at, ...updateData } = projectData;
+
+      // Verify the project belongs to the user's agency
+      // First, get the agency for the user
+      const { data: agency } = await supabaseAdmin
+        .from('agencies')
+        .select('id')
+        .eq('user_id', decoded.id || decoded.sub)
+        .single();
+      
+      if (!agency) return res.status(403).json({ error: 'Agency not found' });
+
+      // Update the project
+      const { data, error: updateError } = await supabaseAdmin
+        .from('projects')
+        .update(updateData)
+        .eq('id', id)
+        .eq('agency_id', agency.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error('Project update error:', updateError);
+        return res.status(500).json({ error: updateError.message });
+      }
+
+      res.json({ success: true, data });
+    } catch (error) {
+      console.error('Session error:', error);
+      res.status(401).json({ error: 'Invalid session' });
+    }
+  });
+
+  // --- RSVP Routes ---
+  apiRouter.post('/rsvps', async (req, res) => {
+    try {
+      const rsvpData = req.body;
+      const { data, error } = await supabaseAdmin
+        .from('rsvps')
+        .insert([{ 
+          ...rsvpData,
+          created_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('RSVP submission error:', error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.status(201).json({ success: true, data });
+    } catch (error) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // --- Moderation Routes ---
   apiRouter.post('/messages/:id/status', async (req, res) => {
     const token = req.cookies.wedding_session;

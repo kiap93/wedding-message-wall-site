@@ -1,5 +1,6 @@
 import { getSupabase } from './supabase';
 import { RSVP } from '../types';
+import { API_BASE } from './config';
 
 export interface Message {
   id: string;
@@ -92,25 +93,18 @@ export async function postMessage(name: string, message: string, projectId?: str
 
 export async function postRSVP(rsvp: Partial<RSVP>): Promise<void> {
   try {
-    const supabase = getSupabase();
-    const { error } = await supabase
-      .from('rsvps')
-      .insert([
-        { 
-          ...rsvp,
-          created_at: new Date().toISOString()
-        }
-      ]);
-    
-    if (error) {
-      console.error('Supabase RSVP error:', error);
-      throw new Error(error.message);
+    const response = await fetch(`${API_BASE}/api/rsvps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rsvp)
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to submit RSVP');
     }
   } catch (err) {
     console.error('Failed to post RSVP:', err);
-    if (String(err).includes('Supabase configuration is missing')) {
-      return;
-    }
     throw err;
   }
 }

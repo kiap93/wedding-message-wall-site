@@ -267,6 +267,81 @@ app.post('/api/auth/email', async (c) => {
   }
 });
 
+// 5.5 Projects API
+app.put('/api/projects/:id', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  let token = cookieToken;
+  
+  if (!token && tokenHeader?.startsWith('Bearer ')) {
+    token = tokenHeader.substring(7);
+  }
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  try {
+    const payload = await verify(token, c.env.JWT_SECRET, 'HS256') as any;
+    const project_id = c.req.param('id');
+    const projectData = await c.req.json();
+
+    const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
+
+    // Verify agency
+    const { data: agency } = await supabase
+      .from('agencies')
+      .select('id')
+      .eq('user_id', payload.id || payload.sub)
+      .single();
+
+    if (!agency) return c.json({ error: 'Agency not found' }, 403);
+
+    // Exclude immutable
+    const { id, agency_id, created_at, ...updateData } = projectData;
+
+    const { data, error } = await supabase
+      .from('projects')
+      .update(updateData)
+      .eq('id', project_id)
+      .eq('agency_id', agency.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Worker project update error:', error);
+      return c.json({ error: error.message }, 500);
+    }
+
+    return c.json({ success: true, data });
+  } catch (e) {
+    return c.json({ error: 'Invalid session' }, 401);
+  }
+});
+
+app.post('/api/rsvps', async (c) => {
+  try {
+    const rsvpData = await c.req.json();
+    const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_SERVICE_ROLE_KEY);
+
+    const { data, error } = await supabase
+      .from('rsvps')
+      .insert([{ 
+        ...rsvpData,
+        created_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Worker RSVP error:', error);
+      return c.json({ error: error.message }, 500);
+    }
+
+    return c.json({ success: true, data }, 201);
+  } catch (e) {
+    return c.json({ error: 'Failed to submit RSVP' }, 500);
+  }
+});
+
 app.get('/api/debug-env', (c) => {
   return c.json({
     has_jwt_secret: !!c.env.JWT_SECRET,

@@ -257,28 +257,38 @@ export default function Workspace() {
     // Explicitly remove user_id if it existed to avoid constraint issues if using agency legacy
     delete (eventData as any).user_id;
 
-    let error;
     if (eventData.id) {
-      // Update: exclude immutable fields
-      const { id, created_at, ...updateData } = eventData as any;
-      const { error: updateError } = await supabase
-        .from('projects')
-        .update(updateData)
-        .eq('id', id);
-      error = updateError;
+      // Update via API for security/RLS bypass in live worker
+      try {
+        const response = await authenticatedFetch(`${API_BASE}/api/projects/${eventData.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(eventData)
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || 'Failed to save event');
+        }
+
+        if (agency) await fetchEvents(agency.id);
+        setView('list');
+      } catch (err: any) {
+        console.error('Save error:', err);
+        alert('Error saving event: ' + err.message);
+      }
     } else {
-      // Insert
+      // Insert (could also be moved to API if needed, but keeping for now if it works)
       const { error: insertError } = await supabase
         .from('projects')
         .insert([eventData]);
-      error = insertError;
-    }
-
-    if (error) {
-      alert('Error saving event: ' + error.message);
-    } else {
-      if (agency) await fetchEvents(agency.id);
-      setView('list');
+      
+      if (insertError) {
+        alert('Error creating event: ' + insertError.message);
+      } else {
+        if (agency) await fetchEvents(agency.id);
+        setView('list');
+      }
     }
     setIsSaving(false);
   };
