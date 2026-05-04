@@ -39,7 +39,7 @@ export default function Onboarding() {
           if (existingAgency.user_role === 'agency') {
             window.location.replace(`${protocol}//${existingAgency.slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
           } else {
-            navigate('/workspace', { replace: true });
+            window.location.replace('/workspace');
           }
         }
       } catch (err) {
@@ -89,7 +89,7 @@ export default function Onboarding() {
         if (userAgency.user_role === 'agency') {
           window.location.replace(`${protocol}//${userAgency.slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
         } else {
-          navigate('/workspace', { replace: true });
+          window.location.replace('/workspace');
         }
         return;
       }
@@ -204,7 +204,7 @@ export default function Onboarding() {
       if (role === 'agency') {
         window.location.replace(`${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
       } else {
-        navigate(`/workspace${createdProjectId ? `?project=${createdProjectId}` : ''}`, { replace: true });
+        window.location.replace(`/workspace${createdProjectId ? `?project=${createdProjectId}` : ''}`);
       }
 
     } catch (err: any) {

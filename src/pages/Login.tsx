@@ -27,7 +27,7 @@ export default function Login() {
       .then(res => res.json())
       .then(data => {
         if (data.user && (data.user.sub || data.user.id)) {
-          navigate('/workspace', { replace: true });
+          window.location.replace('/workspace');
         }
       })
       .catch(() => {});
@@ -91,7 +91,7 @@ export default function Login() {
             if (event.data.token) {
               localStorage.setItem('wedding_session_token', event.data.token);
             }
-            navigate('/workspace', { replace: true });
+            window.location.replace('/workspace');
           }
         };
 
@@ -136,7 +136,7 @@ export default function Login() {
           if (data.token) {
             localStorage.setItem('wedding_session_token', data.token);
           }
-          navigate('/workspace', { replace: true });
+          window.location.replace('/workspace');
         } else {
           setError('We couldn\'t find an account with that email.');
         }
