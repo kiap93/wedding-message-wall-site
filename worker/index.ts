@@ -86,7 +86,7 @@ app.get('/api/auth/callback', async (c) => {
   if (!code) return c.redirect(`${targetOrigin}/login?error=no_code`);
 
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET, APP_URL } = c.env;
-  const jwtSecret = JWT_SECRET || 'wedding-secret-key-2024-v1';
+  const jwtSecret = JWT_SECRET || 'wedding-v1-super-secret-key-xyz-789';
 
   try {
     // Exchange code for tokens
@@ -204,14 +204,14 @@ app.get('/api/auth/me', async (c) => {
 
   if (!token) return c.json({ error: 'Not authenticated' }, 401);
 
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-secret-key-2024-v1';
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-super-secret-key-xyz-789';
 
   try {
     const payload = await verify(token, jwtSecret, 'HS256');
     return c.json({ user: payload });
-  } catch (e) {
-    console.error('Worker auth/me verification failed:', e);
-    return c.json({ error: 'Invalid session' }, 401);
+  } catch (e: any) {
+    console.error('Worker auth/me verification failed:', e.message);
+    return c.json({ error: 'Invalid session', details: e.message }, 401);
   }
 });
 
@@ -237,7 +237,7 @@ app.post('/api/auth/email', async (c) => {
   const { email } = await c.req.json();
   if (!email) return c.json({ error: 'Email is required' }, 400);
 
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-secret-key-2024-v1';
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-super-secret-key-xyz-789';
 
   try {
     const user = {
@@ -279,7 +279,7 @@ app.put('/api/projects/:id', async (c) => {
 
   if (!token) return c.json({ error: 'Not authenticated' }, 401);
 
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-secret-key-2024-v1';
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-super-secret-key-xyz-789';
 
   try {
     const payload = await verify(token, jwtSecret, 'HS256') as any;
@@ -314,9 +314,9 @@ app.put('/api/projects/:id', async (c) => {
     }
 
     return c.json({ success: true, data });
-  } catch (e) {
-    console.error('Worker project update verification failed:', e);
-    return c.json({ error: 'Invalid session' }, 401);
+  } catch (e: any) {
+    console.error('Worker project update verification failed:', e.message);
+    return c.json({ error: 'Invalid session', details: e.message }, 401);
   }
 });
 

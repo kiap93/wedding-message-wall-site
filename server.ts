@@ -17,7 +17,7 @@ const __dirname = path.dirname(__filename);
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const JWT_SECRET = process.env.JWT_SECRET || 'wedding-secret-key-2024-v1';
+const JWT_SECRET = process.env.JWT_SECRET || 'wedding-v1-super-secret-key-xyz-789';
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
@@ -162,7 +162,7 @@ async function startServer() {
         picture: payload.picture,
       };
 
-      const token = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign(user, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
 
       res.cookie('wedding_session', token, {
         httpOnly: true,
@@ -210,7 +210,7 @@ async function startServer() {
     if (!token) return res.status(401).json({ error: 'Not authenticated' });
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET);
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
       res.json({ user: decoded });
     } catch (error) {
       res.status(401).json({ error: 'Invalid session' });
@@ -232,7 +232,7 @@ async function startServer() {
         picture: null,
       };
 
-      const token = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign(user, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
 
       res.cookie('wedding_session', token, {
         httpOnly: true,
@@ -261,7 +261,7 @@ async function startServer() {
     if (!token) return res.status(401).json({ error: 'Not authenticated' });
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
       const { id } = req.params;
       const projectData = req.body;
 
