@@ -166,7 +166,7 @@ async function startServer() {
 
       res.cookie('wedding_session', token, {
         httpOnly: true,
-        secure: true,
+        secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
@@ -204,7 +204,9 @@ async function startServer() {
   });
 
   apiRouter.get('/auth/me', (req, res) => {
-    const token = req.cookies.wedding_session;
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    
     if (!token) return res.status(401).json({ error: 'Not authenticated' });
 
     try {
@@ -234,7 +236,7 @@ async function startServer() {
 
       res.cookie('wedding_session', token, {
         httpOnly: true,
-        secure: true,
+        secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
@@ -253,7 +255,9 @@ async function startServer() {
 
   // --- Project Routes ---
   apiRouter.put('/projects/:id', async (req, res) => {
-    const token = req.cookies.wedding_session || req.headers.authorization?.split(' ')[1];
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    
     if (!token) return res.status(401).json({ error: 'Not authenticated' });
 
     try {

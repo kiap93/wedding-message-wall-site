@@ -233,7 +233,7 @@ app.post('/api/auth/email', async (c) => {
   const { email } = await c.req.json();
   if (!email) return c.json({ error: 'Email is required' }, 400);
 
-  const { JWT_SECRET } = c.env;
+  const jwtSecret = c.env.JWT_SECRET || 'fallback-secret';
 
   try {
     const user = {
@@ -243,7 +243,7 @@ app.post('/api/auth/email', async (c) => {
       picture: null,
     };
 
-    const token = await sign({ ...user, iat: Math.floor(Date.now() / 1000) }, JWT_SECRET, 'HS256');
+    const token = await sign({ ...user, iat: Math.floor(Date.now() / 1000) }, jwtSecret, 'HS256');
 
     const cookieOptions: any = {
       httpOnly: true,
@@ -271,16 +271,14 @@ app.post('/api/auth/email', async (c) => {
 app.put('/api/projects/:id', async (c) => {
   const tokenHeader = c.req.header('Authorization');
   const cookieToken = getCookie(c, 'wedding_session');
-  let token = cookieToken;
-  
-  if (!token && tokenHeader?.startsWith('Bearer ')) {
-    token = tokenHeader.substring(7);
-  }
+  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
 
   if (!token) return c.json({ error: 'Not authenticated' }, 401);
 
+  const jwtSecret = c.env.JWT_SECRET || 'fallback-secret';
+
   try {
-    const payload = await verify(token, c.env.JWT_SECRET, 'HS256') as any;
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
     const project_id = c.req.param('id');
     const projectData = await c.req.json();
 
