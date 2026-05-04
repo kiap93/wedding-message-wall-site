@@ -180,7 +180,7 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
             className={`${commonClasses} appearance-none`}
           >
             <option value="" disabled className="text-black">Select an option...</option>
-            {field.options?.map(opt => (
+            {field.options?.filter(s => s.trim()).map(opt => (
               <option key={opt} value={opt} className="text-black">{opt}</option>
             ))}
           </select>
@@ -188,7 +188,7 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
 
         {field.type === 'radio' && (
           <div className="flex flex-col gap-2">
-            {field.options?.map(opt => (
+            {field.options?.filter(s => s.trim()).map(opt => (
               <label key={opt} className="flex items-center gap-3 cursor-pointer p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-colors">
                 <input
                   type="radio"
@@ -207,7 +207,7 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
 
         {field.type === 'checkbox' && (
            <div className="flex flex-col gap-2">
-            {field.options?.map(opt => {
+            {field.options?.filter(s => s.trim()).map(opt => {
               const currentValues = formData[field.id] || [];
               const isChecked = currentValues.includes(opt);
               return (
