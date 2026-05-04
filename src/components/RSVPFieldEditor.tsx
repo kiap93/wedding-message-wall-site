@@ -128,13 +128,12 @@ export default function RSVPFieldEditor({ fields, onChange }: RSVPFieldEditorPro
                 </div>
                 {(field.type === 'select' || field.type === 'radio' || field.type === 'checkbox') && (
                   <div className="md:col-span-2 space-y-1">
-                    <label className="text-[8px] font-black uppercase tracking-widest text-gray-400">Options (comma separated)</label>
-                    <input
-                      type="text"
-                      value={field.options?.join(', ') || ''}
-                      onChange={(e) => handleUpdateField(field.id, { options: e.target.value.split(',').map(s => s.trim()).filter(s => s) })}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 text-sm"
-                      placeholder="Option 1, Option 2, Option 3"
+                    <label className="text-[8px] font-black uppercase tracking-widest text-gray-400">Options (one per line)</label>
+                    <textarea
+                      value={field.options?.join('\n') || ''}
+                      onChange={(e) => handleUpdateField(field.id, { options: e.target.value.split('\n').map(s => s.trim()).filter(s => s) })}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 text-sm min-h-[80px]"
+                      placeholder={"Option 1\nOption 2\nOption 3"}
                     />
                   </div>
                 )}
