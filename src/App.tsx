@@ -4,7 +4,7 @@ import { LogIn } from 'lucide-react';
 import Guest from './pages/Guest';
 import Display from './pages/Display';
 import TemplateSelector from './pages/TemplateSelector';
-import Admin from './pages/Admin';
+import Workspace from './pages/Workspace';
 import Login from './pages/Login';
 import Onboarding from './pages/Onboarding';
 import CoupleLogin from './pages/CoupleLogin';
@@ -53,7 +53,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         // Disable subdomain redirects on run.app domains as they don't support wildcard subdomains
         if (currentHost.includes('.run.app')) return;
 
-        if (isRoot && userWorkspaces.length > 0 && location.pathname === '/admin') {
+        if (isRoot && userWorkspaces.length > 0 && location.pathname === '/workspace') {
           const workspace = userWorkspaces[0];
           // Only redirect to subdomain if it's an agency
           if (workspace.user_role === 'agency') {
@@ -62,7 +62,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
             // Extract base domain carefully
             const baseDomain = hostParts.slice(-2).join('.');
             const token = localStorage.getItem('wedding_session_token');
-            window.location.href = `${protocol}//${slug}.${baseDomain}/admin${token ? `?token=${token}` : ''}`;
+            window.location.href = `${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`;
             return;
           }
         }
@@ -103,7 +103,7 @@ export default function App() {
             <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
             <Route path="/templates/manage" element={<AuthGuard><StaffTemplates /></AuthGuard>} />
             <Route path="/templates" element={<TemplateSelector />} />
-            <Route path="/admin" element={<AuthGuard><Admin /></AuthGuard>} />
+            <Route path="/workspace" element={<AuthGuard><Workspace /></AuthGuard>} />
             
             {/* Couple Login & Dashboard */}
             <Route path="/couple/login" element={<CoupleLogin />} />

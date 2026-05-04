@@ -143,7 +143,7 @@ app.get('/api/auth/callback', async (c) => {
     setCookie(c, 'wedding_session', token, cookieOptions);
 
     // Use the dynamic targetOrigin determined above
-    return c.redirect(`${targetOrigin}/admin?token=${token}`);
+    return c.redirect(`${targetOrigin}/workspace?token=${token}`);
   } catch (error) {
     console.error('Worker Auth Error:', error);
     // Use the dynamic targetOrigin for error redirect too

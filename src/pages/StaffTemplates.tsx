@@ -19,7 +19,7 @@ export default function StaffTemplates() {
 
   useEffect(() => {
     if (!isStaff && user) {
-      navigate('/admin');
+      navigate('/workspace');
       return;
     }
     loadTemplates();
@@ -73,7 +73,7 @@ export default function StaffTemplates() {
         <header className="flex flex-col md:flex-row items-center justify-between mb-16 gap-6">
           <div className="flex items-center gap-6">
             <button 
-              onClick={() => navigate('/admin')}
+              onClick={() => navigate('/workspace')}
               className="p-3 rounded-full bg-white border border-[#C5A059]/30 text-[#C5A059] hover:bg-[#C5A059] hover:text-white transition-all shadow-sm"
             >
               <ArrowLeft className="w-5 h-5" />

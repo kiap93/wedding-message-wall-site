@@ -27,7 +27,7 @@ export default function Login() {
       .then(res => res.json())
       .then(data => {
         if (data.user && (data.user.sub || data.user.id)) {
-          navigate('/admin', { replace: true });
+          navigate('/workspace', { replace: true });
         }
       })
       .catch(() => {});
@@ -87,7 +87,7 @@ export default function Login() {
         // For physical email login, we'd wait for a link. 
         // For this demo/staff "finish", we'll assume it returns a session or a next step.
         if (data.success) {
-          navigate('/admin');
+          navigate('/workspace');
         } else {
           setError('We couldn\'t find an account with that email.');
         }

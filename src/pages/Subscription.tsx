@@ -141,7 +141,7 @@ export default function Subscription() {
             </div>
             <h3 className="text-3xl font-serif mb-2">Single Event License</h3>
             <div className="flex items-baseline justify-center gap-1 mb-8">
-              <span className="text-5xl font-serif">RM29</span>
+              <span className="text-5xl font-serif">$19</span>
               <span className="text-gray-400 text-sm">one-time payment</span>
             </div>
 

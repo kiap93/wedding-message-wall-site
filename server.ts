@@ -171,7 +171,7 @@ async function startServer() {
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
-      res.redirect('/admin');
+      res.redirect('/workspace');
     } catch (error) {
       console.error('OAuth callback error:', error);
       res.redirect('/login?error=auth_failed');

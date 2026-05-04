@@ -36,7 +36,7 @@ export default function TemplateSelector() {
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-end mb-8">
            <button 
-            onClick={() => navigate('/admin')}
+            onClick={() => navigate('/workspace')}
             className="flex items-center gap-2 px-6 py-3 bg-white border border-[#C5A059]/30 rounded-2xl text-[#C5A059] font-bold uppercase tracking-widest text-xs hover:bg-[#C5A059] hover:text-white transition-all shadow-sm"
           >
             <User className="w-4 h-4" />
