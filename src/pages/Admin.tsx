@@ -399,6 +399,7 @@ export default function Admin() {
                        slug: (formData.get('slug') as string).toLowerCase().replace(/[^a-z0-9-]/g, ''),
                        logo_url: formData.get('logo_url') as string,
                        domain: formData.get('domain') as string,
+                       is_demo: formData.get('is_demo') === 'on',
                        theme_config: {
                           primaryColor: formData.get('primaryColor') as string,
                           accentColor: formData.get('accentColor') as string,
@@ -451,6 +452,20 @@ export default function Admin() {
                             <input type="text" defaultValue={agency?.theme_config?.accentColor || '#2D2424'} className="flex-1 px-4 py-2 rounded-xl border border-gray-100 bg-white font-mono text-xs" />
                           </div>
                         </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 p-4 bg-[#C5A059]/5 rounded-2xl border border-[#C5A059]/10">
+                        <input 
+                          id="is_demo"
+                          name="is_demo"
+                          type="checkbox" 
+                          defaultChecked={agency?.is_demo || false}
+                          className="w-5 h-5 rounded border-gray-300 text-[#C5A059] focus:ring-[#C5A059]"
+                        />
+                        <label htmlFor="is_demo" className="text-xs font-bold text-[#2D2424] cursor-pointer">
+                          Demo Mode (Subscription Active)
+                          <p className="text-[10px] text-gray-400 font-normal">If checked, this account will have pro features enabled for testing.</p>
+                        </label>
                       </div>
 
                       <button 
