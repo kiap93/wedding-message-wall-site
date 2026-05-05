@@ -45,24 +45,57 @@ export default function RSVPManager({ projectId, rsvpFields }: RSVPManagerProps)
   async function loadRSVPs() {
     setIsLoading(true);
     const data = await fetchRSVPs(projectId);
-    setRsvps(data);
+    const parsedData = (data || []).map(rsvp => ({
+      ...rsvp,
+      responses: typeof rsvp.responses === 'string' 
+        ? JSON.parse(rsvp.responses) 
+        : (rsvp.responses || {})
+    }));
+    setRsvps(parsedData);
     setIsLoading(false);
   }
 
   const getFieldValue = (rsvp: RSVP, fieldId: string) => {
+    // Basic check for attendance
     if (!rsvp.attending && fieldId !== 'name' && fieldId !== 'email') return '--';
     
+    // 1. Try Core Fields first (top-level properties)
     if (CORE_FIELD_IDS.includes(fieldId)) {
       const val = (rsvp as any)[fieldId];
-      if (val === undefined || val === null || val === '') return '--';
-      if (fieldId === 'guest_count' && rsvp.attending) return `+${val}`;
-      return String(val);
+      if (val !== undefined && val !== null && val !== '') {
+        if (fieldId === 'guest_count' && rsvp.attending) return `+${val}`;
+        return String(val);
+      }
     }
     
-    const customVal = rsvp.responses?.[fieldId];
-    if (customVal === undefined || customVal === null || customVal === '') return '--';
-    if (Array.isArray(customVal)) return customVal.join(', ');
-    return String(customVal);
+    // 2. Try responses object (custom fields)
+    let responses = rsvp.responses;
+    
+    // Handle cases where responses might still be a string (double encoded or not parsed yet)
+    if (typeof responses === 'string') {
+      try {
+        responses = JSON.parse(responses);
+      } catch (e) {
+        console.error('Failed to parse rsvp.responses in getFieldValue:', e);
+        return '--';
+      }
+    }
+    
+    if (responses && typeof responses === 'object') {
+      const customVal = (responses as any)[fieldId];
+      if (customVal !== undefined && customVal !== null && customVal !== '') {
+        if (Array.isArray(customVal)) return customVal.join(', ');
+        return String(customVal);
+      }
+    }
+
+    // 3. Last fallback: check if it's accidentally at the top level
+    const topLevelVal = (rsvp as any)[fieldId];
+    if (topLevelVal !== undefined && topLevelVal !== null && topLevelVal !== '') {
+      return String(topLevelVal);
+    }
+    
+    return '--';
   };
 
   const filteredRSVPs = rsvps.filter(r => 

@@ -302,6 +302,11 @@ app.put('/api/projects/:id', async (c) => {
     const payload = await verify(token, jwtSecret, 'HS256') as any;
     const project_id = c.req.param('id');
     const projectData = await c.req.json();
+    
+    // Stringify JSON fields if column type is text (robustness)
+    if (projectData.rsvp_fields && typeof projectData.rsvp_fields === 'object') {
+      projectData.rsvp_fields = JSON.stringify(projectData.rsvp_fields);
+    }
 
     const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
     const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);
@@ -351,6 +356,11 @@ app.put('/api/projects/:id', async (c) => {
 app.post('/api/rsvps', async (c) => {
   try {
     const rsvpData = await c.req.json();
+    
+    // Stringify responses if column type is text (robustness)
+    if (rsvpData.responses && typeof rsvpData.responses === 'object') {
+      rsvpData.responses = JSON.stringify(rsvpData.responses);
+    }
     const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
     const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);
 
