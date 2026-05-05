@@ -50,6 +50,9 @@ export default function Login() {
       setLoading(true);
       setError(null);
       
+      // Clear legacy/existing session before starting a new one
+      localStorage.removeItem('wedding_session_token');
+      
       const response = await fetch(`${API_BASE}/api/auth/google`, {
         headers: {
           'Accept': 'application/json'
@@ -124,6 +127,9 @@ export default function Login() {
     try {
       setLoading(true);
       setError(null);
+
+      // Clear legacy/existing session before starting a new one
+      localStorage.removeItem('wedding_session_token');
 
       const response = await fetch(`${API_BASE}/api/auth/email`, {
         method: 'POST',

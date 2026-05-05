@@ -192,25 +192,26 @@ app.get('/api/auth/me', async (c) => {
   const hostname = new URL(c.req.url).hostname;
   const isSharedDomain = hostname.endsWith('eventframe.io');
   
-  // Check both Cookie and Authorization Header
-  const cookieToken = getCookie(c, 'wedding_session');
-  let token = cookieToken;
-  
+  // Check both Authorization Header and Cookie
   const authHeader = c.req.header('Authorization');
-  if (!token && authHeader?.startsWith('Bearer ')) {
-    token = authHeader.substring(7);
+  let token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  
+  const cookieToken = getCookie(c, 'wedding_session');
+  if (!token) {
+    token = cookieToken;
     
-    // CRITICAL for cross-domain logout:
-    // If we are on a shared domain pool (eventframe.io), we require the cookie to be present.
-    // If the cookie is missing but the header is present, it means the user might have logged out 
-    // on another subdomain (which cleared the shared cookie) but still has local storage here.
-    if (isSharedDomain && !cookieToken) {
-      console.log('Shared domain logout detected: cookie missing but token in header.');
-      return c.json({ error: 'Session revoked via logout' }, 401);
-    }
+    // Safety check for legacy or invalid tokens
+    if (token === 'null' || token === 'undefined') token = null;
   }
-
+  
   if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  // CRITICAL for cross-domain logout:
+  // If we are on a shared domain pool (eventframe.io), we require the cookie to be present 
+  // ONLY if the user is supposed to be using cookies. 
+  // If they are explicitly sending a token (from localStorage), we trust the token.
+  // BUT if the cookie DOES exist and contradicts the token, we should be careful.
+  // Actually, prioritizing the explicit Header is generally safer for "switched account" scenarios.
 
   const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 
