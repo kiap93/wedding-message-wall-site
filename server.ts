@@ -10,6 +10,7 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import cors from 'cors';
 import crypto from 'crypto';
+import nodemailer from 'nodemailer';
 
 dotenv.config();
 
@@ -22,6 +23,16 @@ const JWT_SECRET = process.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-au
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
+const GMAIL_USER = process.env.GMAIL_USER;
+const GMAIL_PASS = process.env.GMAIL_PASS;
+
+const transporter = (GMAIL_USER && GMAIL_PASS) ? nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: GMAIL_USER,
+    pass: GMAIL_PASS,
+  },
+}) : null;
 
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 
@@ -312,10 +323,50 @@ function verifyPasswordNode(password: string, storedHash: string) {
       console.log(`Link: ${verifyUrl}`);
       console.log('-------------------------');
 
+      // Send real email if transporter is configured
+      if (transporter) {
+        const mailOptions = {
+          from: `"Wedding Manager" <${GMAIL_USER}>`,
+          to: email,
+          subject: mode === 'signup' ? 'Verify your Wedding Manager account' : 'Sign in to Wedding Manager',
+          html: `
+            <div style="font-family: 'serif', 'Georgia', serif; max-width: 600px; margin: 0 auto; padding: 40px; background-color: #FDFCF0; border: 1px solid #C5A059;">
+              <h1 style="color: #2D2424; text-align: center; font-size: 28px;">Wedding Manager</h1>
+              <div style="background-color: white; padding: 30px; border-radius: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                <p style="color: #2D2424; font-size: 16px; line-height: 1.6;">
+                  ${mode === 'signup' 
+                    ? 'Thank you for creating an account! Please click the button below to verify your email and complete your setup.' 
+                    : 'Click the button below to sign in to your dashboard.'}
+                </p>
+                <div style="text-align: center; margin: 40px 0;">
+                  <a href="${verifyUrl}" style="background-color: #C5A059; color: white; padding: 16px 32px; border-radius: 12px; text-decoration: none; font-weight: bold; font-family: sans-serif; text-transform: uppercase; letter-spacing: 1px; font-size: 12px;">
+                    ${mode === 'signup' ? 'Verify Email' : 'Sign In Now'}
+                  </a>
+                </div>
+                <p style="color: #2D2424; font-size: 14px; opacity: 0.6;">
+                  If the button doesn't work, you can copy and paste this link: <br/>
+                  <a href="${verifyUrl}" style="color: #C5A059;">${verifyUrl}</a>
+                </p>
+                <p style="color: #2D2424; font-size: 12px; opacity: 0.4; margin-top: 40px; text-align: center;">
+                  The link will expire in 15 minutes.
+                </p>
+              </div>
+            </div>
+          `,
+        };
+
+        try {
+          await transporter.sendMail(mailOptions);
+          console.log(`Email successfully sent to ${email}`);
+        } catch (mailError) {
+          console.error('Nodemailer Error:', mailError);
+        }
+      }
+
       res.json({ 
         success: true, 
-        message: mode === 'signup' ? 'Account created. Verification link generated.' : 'Login link generated.',
-        debug_link: verifyUrl
+        message: mode === 'signup' ? 'Account created. Check your email for verification.' : 'Login link sent to your email.',
+        debug_link: process.env.NODE_ENV !== 'production' ? verifyUrl : undefined
       });
     } catch (error) {
       console.error('Email auth error:', error);
