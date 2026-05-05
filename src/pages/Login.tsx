@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Mail, Chrome, Heart } from 'lucide-react';
+import { Mail, Chrome, Heart, Globe, XCircle, CheckCircle2 } from 'lucide-react';
 
 import { API_BASE } from '../lib/config';
 import { authenticatedFetch } from '../lib/auth';
@@ -10,132 +10,67 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [showEmailLogin, setShowEmailLogin] = useState(false);
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const navigate = useNavigate();
-  const searchParams = new URLSearchParams(window.location.search);
+  const [searchParams] = useSearchParams();
   const authError = searchParams.get('error');
 
   useEffect(() => {
     if (authError) {
-      setError('Authentication failed. Please try again.');
+      setError(decodeURIComponent(authError));
     }
   }, [authError]);
-
-  // Diagnostics: Check if session already exists
-  useEffect(() => {
-    // We don't auto-redirect here anymore to allow switching accounts.
-    // The AuthGuard in App.tsx handles directing users to /workspace if they are already logged in
-    // and try to access root / or other protected routes.
-    authenticatedFetch(`${API_BASE}/api/auth/me`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.user) {
-          console.log('User is already logged in:', data.user.email);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // Fix stuck loading state when using back button (bfcache)
-  useEffect(() => {
-    const handlePageShow = (event: PageTransitionEvent) => {
-      setLoading(false);
-    };
-    window.addEventListener('pageshow', handlePageShow);
-    return () => window.removeEventListener('pageshow', handlePageShow);
-  }, []);
 
   const handleGoogleLogin = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Clear legacy/existing session before starting a new one
       localStorage.removeItem('wedding_session_token');
       
       const response = await fetch(`${API_BASE}/api/auth/google`, {
-        headers: {
-          'Accept': 'application/json'
-        }
+        headers: { 'Accept': 'application/json' }
       });
-      const text = await response.text();
-      
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        console.error('Auth API Response:', text);
-        if (text.trim().startsWith('<!DOCTYPE html') || text.trim().startsWith('<html')) {
-          throw new Error(`The API request reached your website instead of the Worker. Please ensure the Cloudflare Worker route for "eventframe.io/api/*" is correctly configured.`);
-        }
-        throw new Error(`Authentication API error (Status: ${response.status}). The server returned an invalid format.`);
-      }
+      const data = await response.json();
       
       if (data.url) {
-        // Try popup first for better UX and history management
-        const width = 500;
-        const height = 600;
-        const left = window.screenX + (window.innerWidth - width) / 2;
-        const top = window.screenY + (window.innerHeight - height) / 2;
-        
-        const popup = window.open(
-          data.url, 
-          'google_login', 
-          `width=${width},height=${height},left=${left},top=${top},status=no,menubar=no,toolbar=no`
-        );
-
-        if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-          // Popup blocked or failed, fallback to redirect
-          window.location.replace(data.url);
-          return;
-        }
-
-        // Listener for popup message
-        const messageListener = (event: MessageEvent) => {
-          if (event.data && event.data.type === 'AUTH_SUCCESS') {
-            window.removeEventListener('message', messageListener);
-            if (event.data.token) {
-              localStorage.setItem('wedding_session_token', event.data.token);
-            }
-            window.location.replace('/workspace');
-          }
-        };
-
-        window.addEventListener('message', messageListener);
-
-        // Cleanup listener if popup closed manually
-        const checkClosed = setInterval(() => {
-          if (popup.closed) {
-            clearInterval(checkClosed);
-            window.removeEventListener('message', messageListener);
-            setLoading(false);
-          }
-        }, 1000);
+        window.location.href = data.url;
       } else {
-        throw new Error(data.error || 'Failed to initialize Google Login');
+        setError('Failed to initialize Google login');
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError('An error occurred during sign in');
+    } finally {
       setLoading(false);
     }
   };
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    // Basic validation
+    if (!email || !email.includes('@')) {
+      setError('Please enter a valid email address.');
+      setLoading(false);
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      setLoading(false);
+      return;
+    }
 
     try {
-      setLoading(true);
-      setError(null);
-
-      // Clear legacy/existing session before starting a new one
       localStorage.removeItem('wedding_session_token');
 
       const response = await fetch(`${API_BASE}/api/auth/email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, password, mode }),
       });
 
       const data = await response.json();
@@ -143,127 +78,159 @@ export default function Login() {
       if (response.ok) {
         if (data.success) {
           setSuccess(data.debug_link 
-            ? `[DEBUG] Magic link generated! You can use this link to verify: ${data.debug_link}`
-            : 'Check your email for a secure login link.');
-          setError(null);
+            ? `[DEBUG] Action successful! Verification Link: ${data.debug_link}`
+            : (mode === 'signup' 
+                ? 'Account created! Please check your email for a verification link.' 
+                : 'A secure login request has been initiated. Check your email.'));
           
-          if (data.debug_link) {
-            console.log('DEBUG MAGIC LINK:', data.debug_link);
-          }
+          if (data.debug_link) console.log('DEBUG LINK:', data.debug_link);
         } else {
-          setError('We couldn\'t find an account with that email.');
+          setError(data.error || 'Authentication failed.');
         }
       } else {
-        throw new Error(data.error || 'Failed to initialize Email Login');
+        setError(data.error || (mode === 'signup' ? 'Failed to create account.' : 'Invalid credentials.'));
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError('A network error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFCF0] flex items-center justify-center p-6 relative overflow-hidden">
-      {/* Decorative Background */}
-      <div className="absolute top-[-10%] right-[-10%] w-96 h-96 bg-[#C5A059] opacity-5 rounded-full blur-[100px]" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-96 h-96 bg-[#2D2424] opacity-5 rounded-full blur-[100px]" />
+    <div className="min-h-screen bg-[#FDFCF0] flex flex-col md:flex-row shadow-inner">
+      <div className="hidden md:flex md:w-1/2 bg-[#C5A059] items-center justify-center p-12 text-white relative overflow-hidden">
+        <div className="absolute inset-0 bg-[#2D2424]/10" />
+        <div className="max-w-md relative z-10">
+          <Heart className="w-16 h-16 mb-8 text-white/40" />
+          <h1 className="text-6xl font-serif mb-6 leading-tight">Your Wedding, Perfectly Frame by Frame.</h1>
+          <p className="text-xl text-white/80 font-light">The all-in-one platform for professional wedding photographers and happy couples.</p>
+        </div>
+      </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
-      >
-        <div className="bg-white p-8 md:p-12 rounded-[2.5rem] shadow-2xl border border-[#C5A059]/10 relative z-10 text-center">
-          <div className="inline-block p-4 rounded-full bg-[#C5A059]/10 mb-8">
-            <Heart className="w-10 h-10 text-[#C5A059]" />
+      <div className="flex-1 flex items-center justify-center p-6 md:p-12">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md bg-white p-8 md:p-12 rounded-[2.5rem] shadow-2xl border border-[#C5A059]/10"
+        >
+          <div className="mb-8 items-center flex flex-col">
+            <div className="w-16 h-16 bg-[#C5A059] rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-[#C5A059]/20">
+              <Globe className="text-white w-8 h-8" />
+            </div>
+            <h2 className="text-3xl font-serif text-[#2D2424] mb-2">
+              {mode === 'login' ? 'Welcome Back' : 'Create Account'}
+            </h2>
+            <p className="text-[#2D2424]/60 text-center text-sm">
+              {mode === 'login' 
+                ? 'Sign in to manage your wedding workspace' 
+                : 'Join our community of wedding creators'}
+            </p>
           </div>
-          
-          <h1 className="text-4xl font-serif mb-4 text-[#2D2424]">Wedding Manager</h1>
-          <p className="text-[#2D2424]/60 mb-10 font-sans tracking-wide">
-            {showEmailLogin ? 'Enter your email to receive a secure login link' : 'Sign in to customize your wall and manage messages'}
-          </p>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-2xl text-sm">
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-2xl text-sm flex items-center gap-2">
+              <XCircle className="w-4 h-4 shrink-0" />
               {error}
             </div>
           )}
 
           {success && (
             <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-2xl text-sm break-all">
-              {success.includes('http') ? (
-                <>
-                  <p className="mb-2 font-bold text-green-800">Verification Link Generated (Demo):</p>
-                  <a 
-                    href={success.split(': ')[1]} 
-                    className="underline hover:text-green-900 font-mono text-[10px]"
-                  >
-                    {success.split(': ')[1]}
-                  </a>
-                  <p className="mt-2 text-[10px]">Click the link above to continue.</p>
-                </>
-              ) : (
-                success
-              )}
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  {success.includes('http') ? (
+                    <>
+                      <p className="mb-1 font-bold">Verification Link (Demo):</p>
+                      <a 
+                        href={success.split(': ')[1]} 
+                        className="underline hover:text-green-900 font-mono text-[10px]"
+                      >
+                        {success.split(': ')[1]}
+                      </a>
+                    </>
+                  ) : (
+                    success
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
           <div className="space-y-4">
-            {!showEmailLogin ? (
-              <>
-                <button
-                  onClick={handleGoogleLogin}
-                  disabled={loading}
-                  className="w-full py-4 px-6 rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center gap-3 transition-all font-medium text-[#2D2424] shadow-sm hover:shadow-md disabled:opacity-50"
-                >
-                  <Chrome className="w-5 h-5" />
-                  {loading ? 'Connecting...' : 'Continue with Google'}
-                </button>
-                
-                <button
-                  onClick={() => setShowEmailLogin(true)}
-                  className="w-full py-4 px-6 rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center gap-3 transition-all font-medium text-[#2D2424] shadow-sm hover:shadow-md"
-                >
-                  <Mail className="w-5 h-5" />
-                  Sign in with Email
-                </button>
-              </>
-            ) : (
-              <form onSubmit={handleEmailLogin} className="space-y-4">
+            <button 
+              onClick={handleGoogleLogin}
+              disabled={loading}
+              className="w-full py-4 px-6 rounded-2xl border-2 border-slate-100 hover:border-[#C5A059] flex items-center justify-center gap-3 transition-all group disabled:opacity-50"
+            >
+              <Chrome className="w-5 h-5 text-slate-400 group-hover:text-[#C5A059]" />
+              <span className="font-bold text-[#2D2424] text-xs uppercase tracking-widest">
+                Continue with Google
+              </span>
+            </button>
+
+            <div className="relative my-8">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-100"></div>
+              </div>
+              <div className="relative flex justify-center text-[10px]">
+                <span className="px-4 bg-white text-slate-400 uppercase tracking-[0.2em] font-bold">Or email</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleEmailAuth} className="space-y-4">
+              <div>
                 <input 
-                  type="email"
-                  required
-                  placeholder="Enter your email address"
+                  type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-6 py-4 rounded-2xl border border-gray-200 focus:ring-2 focus:ring-[#C5A059] focus:border-transparent outline-none transition-all"
+                  placeholder="Email Address" 
+                  className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-transparent focus:border-[#C5A059] focus:bg-white outline-none transition-all text-[#2D2424] text-sm"
+                  required
                 />
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-4 px-6 rounded-2xl bg-[#C5A059] text-white flex items-center justify-center gap-3 transition-all font-bold uppercase tracking-widest text-xs hover:bg-[#B38D45] disabled:opacity-50 shadow-xl shadow-[#C5A059]/20"
-                >
-                  {loading ? 'Sending link...' : 'Send Magic Link'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowEmailLogin(false)}
-                  className="w-full py-2 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  Back to Social Login
-                </button>
-              </form>
-            )}
+              </div>
+              <div>
+                <input 
+                  type="password" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password (Min 6 chars)" 
+                  className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-transparent focus:border-[#C5A059] focus:bg-white outline-none transition-all text-[#2D2424] text-sm"
+                  required
+                />
+              </div>
+              <button 
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 px-6 rounded-2xl bg-[#C5A059] text-white font-bold uppercase tracking-widest text-xs hover:bg-[#B38D45] transition-all shadow-xl shadow-[#C5A059]/20 disabled:opacity-50"
+              >
+                {loading ? 'Processing...' : (mode === 'login' ? 'Sign In' : 'Create Account')}
+              </button>
+            </form>
           </div>
 
-          <div className="mt-10 pt-8 border-t border-gray-100 italic">
-            <p className="text-xs text-[#2D2424]/40 font-serif">
-              "Love is not only something you feel, it is something you do."
-            </p>
+          <p className="mt-8 text-center text-sm text-[#2D2424]/60">
+            {mode === 'login' ? "Don't have an account?" : "Already have an account?"}{' '}
+            <button 
+              onClick={() => {
+                setMode(mode === 'login' ? 'signup' : 'login');
+                setError(null);
+                setSuccess(null);
+              }}
+              className="text-[#C5A059] font-bold hover:underline"
+            >
+              {mode === 'login' ? 'Sign Up' : 'Log In'}
+            </button>
+          </p>
+
+          <div className="mt-12 pt-8 border-t border-slate-50 flex justify-center gap-6">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest cursor-pointer hover:text-slate-600">Privacy</span>
+            <span className="text-[10px] text-slate-300">•</span>
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest cursor-pointer hover:text-slate-600">Terms</span>
           </div>
-        </div>
-      </motion.div>
+        </motion.div>
+      </div>
     </div>
   );
 }

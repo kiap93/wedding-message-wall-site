@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import cors from 'cors';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -239,34 +240,85 @@ async function startServer() {
     }
   });
 
+// Auth Helpers (Node.js version)
+function hashPasswordNode(password: string) {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
+  return `${salt.toString('hex')}:${hash.toString('hex')}`;
+}
+
+function verifyPasswordNode(password: string, storedHash: string) {
+  const [saltHex, originalHashHex] = storedHash.split(':');
+  const salt = Buffer.from(saltHex, 'hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
+  return hash.toString('hex') === originalHashHex;
+}
+
   apiRouter.post('/auth/email', async (req, res) => {
-    const { email } = req.body;
+    const { email, password, mode } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
     try {
-      console.log(`Email magic link requested for: ${email}`);
+      const supabase = getSupabaseAdmin();
+      console.log(`Email auth action: ${mode} for ${email}`);
       
-      // Generate short-lived token
+      // 1. Check if user exists in Supabase
+      const { data: users, error: fetchError } = await supabase
+        .from('users_auth')
+        .select('*')
+        .eq('email', email);
+
+      if (fetchError) throw fetchError;
+      const existingUser = users && users.length > 0 ? users[0] : null;
+
+      if (mode === 'signup') {
+        if (existingUser) return res.status(400).json({ error: 'User already exists' });
+        if (!password) return res.status(400).json({ error: 'Password is required' });
+
+        const passwordHash = hashPasswordNode(password);
+        
+        // Save to Supabase
+        const { error: insertError } = await supabase
+          .from('users_auth')
+          .insert([{ 
+            email, 
+            password_hash: passwordHash, 
+            is_verified: false,
+            created_at: new Date().toISOString()
+          }]);
+
+        if (insertError) throw insertError;
+      } else {
+        // Login mode
+        if (!existingUser) return res.status(404).json({ error: 'Account not found' });
+        if (!password) return res.status(400).json({ error: 'Password is required' });
+        
+        const isValid = verifyPasswordNode(password, existingUser.password_hash);
+        if (!isValid) return res.status(401).json({ error: 'Invalid password' });
+      }
+
+      // Generate verification/login token
       const magicToken = jwt.sign(
-        { email, type: 'magic_link' }, 
+        { email, type: 'verify_account' }, 
         JWT_SECRET, 
         { algorithm: 'HS256', expiresIn: '15m' }
       );
 
       const verifyUrl = `${APP_URL}/verify?token=${magicToken}`;
       
-      console.log('--- MAGIC LINK GENERATED (DEV) ---');
+      console.log('--- AUTH ACTION (DEV) ---');
+      console.log(`Action: ${mode}`);
       console.log(`Email: ${email}`);
       console.log(`Link: ${verifyUrl}`);
-      console.log('---------------------------------');
+      console.log('-------------------------');
 
       res.json({ 
         success: true, 
-        message: 'Verification link sent.',
-        debug_link: verifyUrl // Returning link for easy testing in AI Studio
+        message: mode === 'signup' ? 'Account created. Verification link generated.' : 'Login link generated.',
+        debug_link: verifyUrl
       });
     } catch (error) {
-      console.error('Email login error:', error);
+      console.error('Email auth error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -276,13 +328,21 @@ async function startServer() {
     if (!token) return res.status(400).json({ error: 'Token is required' });
 
     try {
+      const supabase = getSupabaseAdmin();
       const decoded = jwt.verify(token as string, JWT_SECRET, { algorithms: ['HS256'] }) as any;
       
-      if (decoded.type !== 'magic_link') {
+      if (decoded.type !== 'verify_account' && decoded.type !== 'magic_link') {
         return res.status(400).json({ error: 'Invalid token type' });
       }
 
       const email = decoded.email;
+
+      // Update is_verified in Supabase
+      await supabase
+        .from('users_auth')
+        .update({ is_verified: true })
+        .eq('email', email);
+
       const user = {
         id: `email-${Buffer.from(email).toString('base64').slice(0, 12)}`,
         email: email,
@@ -302,7 +362,7 @@ async function startServer() {
       res.json({ success: true, user, token: sessionToken });
     } catch (error: any) {
       console.error('Token verification failed:', error.message);
-      res.status(401).json({ error: 'Invalid or expired verification link' });
+      res.status(401).json({ error: 'Invalid or expired link' });
     }
   });
 
