@@ -6,6 +6,7 @@ interface UserContextType {
   user: any | null;
   isLoading: boolean;
   setUser: (user: any) => void;
+  logout: () => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -13,6 +14,12 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const logout = () => {
+    localStorage.removeItem('wedding_session_token');
+    setUser(null);
+    window.location.replace('/login');
+  };
 
   useEffect(() => {
     async function loadUser() {
@@ -56,7 +63,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <UserContext.Provider value={{ user, isLoading, setUser }}>
+    <UserContext.Provider value={{ user, isLoading, setUser, logout }}>
       {children}
     </UserContext.Provider>
   );

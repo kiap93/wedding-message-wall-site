@@ -32,9 +32,11 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     async function checkWorkspaces() {
       if (!user) {
         setLoadingWorkspaces(false);
+        setWorkspaces([]);
         return;
       }
       
+      setLoadingWorkspaces(true);
       try {
         const userWorkspaces = await getUserWorkspaces(user.id || user.sub);
         setWorkspaces(userWorkspaces);

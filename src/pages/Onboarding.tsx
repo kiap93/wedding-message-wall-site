@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout, Globe, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { getSupabase } from '../lib/supabase';
 import { API_BASE } from '../lib/config';
 import { authenticatedFetch } from '../lib/auth';
+import { useUser } from '../lib/UserContext';
 
 export default function Onboarding() {
+  const { user } = useUser();
   const [role, setRole] = useState<'agency' | 'couple' | null>(null);
   const [name, setName] = useState('');
   const [groomName, setGroomName] = useState('');
@@ -15,17 +17,17 @@ export default function Onboarding() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  React.useEffect(() => {
+  useEffect(() => {
     const checkExisting = async () => {
+      if (!user) return;
       try {
         const supabase = getSupabase();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
+        const userId = user.id || user.sub;
+        
         const { data: existingAgency } = await supabase
           .from('agencies')
           .select('id, slug, user_role')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .maybeSingle();
 
         if (existingAgency) {
@@ -47,7 +49,7 @@ export default function Onboarding() {
       }
     };
     checkExisting();
-  }, [navigate]);
+  }, [navigate, user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -21,17 +21,20 @@ export default function Login() {
     }
   }, [authError]);
 
-  // Check if session already exists
+  // Diagnostics: Check if session already exists
   useEffect(() => {
+    // We don't auto-redirect here anymore to allow switching accounts.
+    // The AuthGuard in App.tsx handles directing users to /workspace if they are already logged in
+    // and try to access root / or other protected routes.
     authenticatedFetch(`${API_BASE}/api/auth/me`)
       .then(res => res.json())
       .then(data => {
-        if (data.user && (data.user.sub || data.user.id)) {
-          window.location.replace('/workspace');
+        if (data.user) {
+          console.log('User is already logged in:', data.user.email);
         }
       })
       .catch(() => {});
-  }, [navigate]);
+  }, []);
 
   // Fix stuck loading state when using back button (bfcache)
   useEffect(() => {
