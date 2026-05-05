@@ -18,8 +18,19 @@ const DEFAULT_FIELDS: RSVPField[] = [
 
 export default function RSVPFieldEditor({ fields, onChange }: RSVPFieldEditorProps) {
   // Ensure fields is always an array
-  const safeFields = Array.isArray(fields) ? fields : [];
-  const currentFields = safeFields.length > 0 ? safeFields : DEFAULT_FIELDS;
+  let safeFields: RSVPField[] = [];
+  if (Array.isArray(fields)) {
+    safeFields = fields;
+  } else if (typeof fields === 'string') {
+    try {
+      safeFields = JSON.parse(fields);
+    } catch (e) {
+      console.error('Failed to parse fields string:', e);
+      safeFields = [];
+    }
+  }
+  
+  const currentFields = (safeFields && safeFields.length > 0) ? safeFields : DEFAULT_FIELDS;
 
   const handleAddField = () => {
     const newField: RSVPField = {

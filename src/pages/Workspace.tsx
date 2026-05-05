@@ -123,7 +123,12 @@ export default function Workspace() {
     if (error) {
       console.error('Error fetching events:', error);
     } else {
-      const eventList = data || [];
+      const eventList = (data || []).map(event => ({
+        ...event,
+        rsvp_fields: typeof event.rsvp_fields === 'string' 
+          ? JSON.parse(event.rsvp_fields) 
+          : (Array.isArray(event.rsvp_fields) ? event.rsvp_fields : null)
+      }));
       setEvents(eventList);
       
       // Auto-switch to editor based on target project ID or if user is a couple
@@ -134,7 +139,8 @@ export default function Workspace() {
           setView('editor');
         }
       } else if (agency?.user_role === 'couple' && eventList.length > 0 && view === 'list') {
-        setEditingEvent(eventList[0]);
+        const firstEvent = eventList[0];
+        setEditingEvent(firstEvent);
         setView('editor');
       }
     }

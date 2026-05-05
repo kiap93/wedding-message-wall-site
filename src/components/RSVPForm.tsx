@@ -27,8 +27,19 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
   const [isSuccess, setIsSuccess] = useState(false);
 
   // If rsvpFields is not provided, use standard defaults
-  const safeRsvpFields = Array.isArray(rsvpFields) ? rsvpFields : [];
-  const activeFields = safeRsvpFields.length > 0 ? safeRsvpFields : [
+  let safeRsvpFields: RSVPField[] = [];
+  if (Array.isArray(rsvpFields)) {
+    safeRsvpFields = rsvpFields;
+  } else if (typeof rsvpFields === 'string') {
+    try {
+      safeRsvpFields = JSON.parse(rsvpFields);
+    } catch (e) {
+      console.error('Failed to parse rsvpFields string:', e);
+      safeRsvpFields = [];
+    }
+  }
+
+  const activeFields = (safeRsvpFields && safeRsvpFields.length > 0) ? safeRsvpFields : [
     { id: 'name', label: 'Full Name', type: 'text', required: true },
     { id: 'email', label: 'Email Address', type: 'text', required: false },
     { id: 'guest_count', label: 'Number of Guests', type: 'number', required: true, showIfAttending: true },

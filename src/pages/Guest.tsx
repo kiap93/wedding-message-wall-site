@@ -81,6 +81,14 @@ export default function Guest() {
 
       if (projects && projects.length > 0) {
         const projectData = projects[0];
+        if (typeof projectData.rsvp_fields === 'string') {
+          try {
+            projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
+          } catch(e) {
+            console.error('Failed to parse RSVP fields:', e);
+            projectData.rsvp_fields = [];
+          }
+        }
         setProject(projectData);
         if (!agency) {
           setAgency(workspace);
@@ -190,6 +198,14 @@ export default function Guest() {
       }
 
       if (projectData) {
+        if (typeof projectData.rsvp_fields === 'string') {
+          try {
+            projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
+          } catch(e) {
+            console.error('Failed to parse RSVP fields:', e);
+            projectData.rsvp_fields = [];
+          }
+        }
         setProject(projectData);
         if (!agency && projectData.agency_id) {
           const agencyData = await getAgencyById(projectData.agency_id);
