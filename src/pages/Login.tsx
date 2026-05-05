@@ -9,6 +9,7 @@ import { authenticatedFetch } from '../lib/auth';
 export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [email, setEmail] = useState('');
   const navigate = useNavigate();
@@ -141,11 +142,14 @@ export default function Login() {
 
       if (response.ok) {
         if (data.success) {
-          // Store token if returned for cross-domain/subdomain consistency
-          if (data.token) {
-            localStorage.setItem('wedding_session_token', data.token);
+          setSuccess(data.debug_link 
+            ? `[DEBUG] Magic link generated! You can use this link to verify: ${data.debug_link}`
+            : 'Check your email for a secure login link.');
+          setError(null);
+          
+          if (data.debug_link) {
+            console.log('DEBUG MAGIC LINK:', data.debug_link);
           }
-          window.location.replace('/workspace');
         } else {
           setError('We couldn\'t find an account with that email.');
         }
@@ -183,6 +187,25 @@ export default function Login() {
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-2xl text-sm">
               {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-2xl text-sm break-all">
+              {success.includes('http') ? (
+                <>
+                  <p className="mb-2 font-bold text-green-800">Verification Link Generated (Demo):</p>
+                  <a 
+                    href={success.split(': ')[1]} 
+                    className="underline hover:text-green-900 font-mono text-[10px]"
+                  >
+                    {success.split(': ')[1]}
+                  </a>
+                  <p className="mt-2 text-[10px]">Click the link above to continue.</p>
+                </>
+              ) : (
+                success
+              )}
             </div>
           )}
 

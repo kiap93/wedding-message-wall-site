@@ -6,6 +6,7 @@ import Display from './pages/Display';
 import TemplateSelector from './pages/TemplateSelector';
 import Workspace from './pages/Workspace';
 import Login from './pages/Login';
+import Verify from './pages/Verify';
 import Onboarding from './pages/Onboarding';
 import CoupleLogin from './pages/CoupleLogin';
 import CoupleDashboard from './pages/CoupleDashboard';
@@ -112,6 +113,7 @@ export default function App() {
         <WorkspaceProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/verify" element={<Verify />} />
             <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
             <Route path="/templates/manage" element={<AuthGuard><StaffTemplates /></AuthGuard>} />
             <Route path="/templates" element={<TemplateSelector />} />

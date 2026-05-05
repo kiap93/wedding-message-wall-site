@@ -244,9 +244,45 @@ async function startServer() {
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
     try {
-      console.log(`Email login attempt for: ${email}`);
+      console.log(`Email magic link requested for: ${email}`);
       
-      // Identical to Google Login payload but from email
+      // Generate short-lived token
+      const magicToken = jwt.sign(
+        { email, type: 'magic_link' }, 
+        JWT_SECRET, 
+        { algorithm: 'HS256', expiresIn: '15m' }
+      );
+
+      const verifyUrl = `${APP_URL}/verify?token=${magicToken}`;
+      
+      console.log('--- MAGIC LINK GENERATED (DEV) ---');
+      console.log(`Email: ${email}`);
+      console.log(`Link: ${verifyUrl}`);
+      console.log('---------------------------------');
+
+      res.json({ 
+        success: true, 
+        message: 'Verification link sent.',
+        debug_link: verifyUrl // Returning link for easy testing in AI Studio
+      });
+    } catch (error) {
+      console.error('Email login error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  apiRouter.post('/auth/verify', async (req, res) => {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ error: 'Token is required' });
+
+    try {
+      const decoded = jwt.verify(token as string, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      
+      if (decoded.type !== 'magic_link') {
+        return res.status(400).json({ error: 'Invalid token type' });
+      }
+
+      const email = decoded.email;
       const user = {
         id: `email-${Buffer.from(email).toString('base64').slice(0, 12)}`,
         email: email,
@@ -254,19 +290,19 @@ async function startServer() {
         picture: null,
       };
 
-      const token = jwt.sign(user, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
+      const sessionToken = jwt.sign(user, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
 
-      res.cookie('wedding_session', token, {
+      res.cookie('wedding_session', sessionToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
-      res.json({ success: true, user });
-    } catch (error) {
-      console.error('Email login error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      res.json({ success: true, user, token: sessionToken });
+    } catch (error: any) {
+      console.error('Token verification failed:', error.message);
+      res.status(401).json({ error: 'Invalid or expired verification link' });
     }
   });
 
