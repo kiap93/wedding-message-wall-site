@@ -1,17 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Users, Utensils, AlertCircle, CheckCircle2, XCircle, Search, Download } from 'lucide-react';
-import { RSVP } from '../types';
+import { RSVP, RSVPField } from '../types';
 import { fetchRSVPs } from '../lib/api';
 
 interface RSVPManagerProps {
   projectId: string;
+  rsvpFields?: RSVPField[];
 }
 
-export default function RSVPManager({ projectId }: RSVPManagerProps) {
+export default function RSVPManager({ projectId, rsvpFields }: RSVPManagerProps) {
   const [rsvps, setRsvps] = useState<RSVP[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // If rsvpFields is not provided, use standard defaults
+  let safeRsvpFields: RSVPField[] = [];
+  if (Array.isArray(rsvpFields)) {
+    safeRsvpFields = rsvpFields;
+  } else if (typeof rsvpFields === 'string') {
+    try {
+      safeRsvpFields = JSON.parse(rsvpFields);
+    } catch (e) {
+      console.error('Failed to parse rsvpFields string:', e);
+      safeRsvpFields = [];
+    }
+  }
+
+  const activeFields = (safeRsvpFields && safeRsvpFields.length > 0) ? safeRsvpFields : [
+    { id: 'name', label: 'Full Name', type: 'text', required: true },
+    { id: 'email', label: 'Email Address', type: 'text', required: false },
+    { id: 'guest_count', label: 'Number of Guests', type: 'number', required: true, showIfAttending: true },
+    { id: 'meal_preference', label: 'Meal Preference', type: 'select', required: true, options: ['Standard', 'Vegetarian', 'Vegan', 'Gluten Free'], showIfAttending: true },
+    { id: 'dietary_requirements', label: 'Dietary Notes', type: 'textarea', required: false, showIfAttending: true }
+  ];
+
+  // Core fields are those stored at the top level of the RSVP object
+  const CORE_FIELD_IDS = ['name', 'email', 'guest_count', 'meal_preference', 'dietary_requirements'];
 
   useEffect(() => {
     loadRSVPs();
@@ -24,6 +49,22 @@ export default function RSVPManager({ projectId }: RSVPManagerProps) {
     setIsLoading(false);
   }
 
+  const getFieldValue = (rsvp: RSVP, fieldId: string) => {
+    if (!rsvp.attending && fieldId !== 'name' && fieldId !== 'email') return '--';
+    
+    if (CORE_FIELD_IDS.includes(fieldId)) {
+      const val = (rsvp as any)[fieldId];
+      if (val === undefined || val === null || val === '') return '--';
+      if (fieldId === 'guest_count' && rsvp.attending) return `+${val}`;
+      return String(val);
+    }
+    
+    const customVal = rsvp.responses?.[fieldId];
+    if (customVal === undefined || customVal === null || customVal === '') return '--';
+    if (Array.isArray(customVal)) return customVal.join(', ');
+    return String(customVal);
+  };
+
   const filteredRSVPs = rsvps.filter(r => 
     r.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (r.email && r.email.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -34,15 +75,10 @@ export default function RSVPManager({ projectId }: RSVPManagerProps) {
   const decliningCount = rsvps.filter(r => !r.attending).length;
 
   const downloadCSV = () => {
-    const headers = ['Name', 'Email', 'Attending', 'Guest Count', 'Meal', 'Dietary Notes', 'Custom Responses', 'Date'];
+    const headers = ['Status', ...activeFields.map(f => f.label), 'Date'];
     const rows = rsvps.map(r => [
-      r.name,
-      r.email || '',
-      r.attending ? 'Yes' : 'No',
-      r.guest_count,
-      r.meal_preference || '',
-      r.dietary_requirements || '',
-      r.responses ? Object.entries(r.responses).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join('|') : v}`).join('; ') : '',
+      r.attending ? 'Attending' : 'Declined',
+      ...activeFields.map(f => getFieldValue(r, f.id)),
       new Date(r.created_at).toLocaleDateString()
     ]);
 
@@ -127,24 +163,26 @@ export default function RSVPManager({ projectId }: RSVPManagerProps) {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50/50">
-                <th className="px-8 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Guest</th>
-                <th className="px-8 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Status</th>
-                <th className="px-8 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Count</th>
-                <th className="px-8 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Preferences</th>
-                <th className="px-8 py-4 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Date</th>
+              <tr className="bg-gray-50/50 text-left border-b border-gray-50">
+                <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Status</th>
+                {activeFields.map(field => (
+                  <th key={field.id} className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                    {field.label}
+                  </th>
+                ))}
+                <th className="px-8 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Date</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-8 py-12 text-center text-gray-400">
+                  <td colSpan={activeFields.length + 2} className="px-8 py-12 text-center text-gray-400">
                     <div className="w-6 h-6 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin mx-auto" />
                   </td>
                 </tr>
               ) : filteredRSVPs.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-8 py-12 text-center text-gray-400 font-medium">
+                  <td colSpan={activeFields.length + 2} className="px-8 py-12 text-center text-gray-400 font-medium">
                     No RSVP data found.
                   </td>
                 </tr>
@@ -152,46 +190,22 @@ export default function RSVPManager({ projectId }: RSVPManagerProps) {
                 filteredRSVPs.map((rsvp) => (
                   <tr key={rsvp.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-8 py-6">
-                      <div className="font-bold">{rsvp.name}</div>
-                      <div className="text-xs text-gray-400">{rsvp.email || 'No email provided'}</div>
-                    </td>
-                    <td className="px-8 py-6">
                       {rsvp.attending ? (
                         <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-                          <CheckCircle2 className="w-3 h-3" /> Attending
+                          <CheckCircle2 className="w-3 h-3" /> Yes
                         </div>
                       ) : (
                         <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 text-red-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-                          <XCircle className="w-3 h-3" /> Declined
+                          <XCircle className="w-3 h-3" /> No
                         </div>
                       )}
                     </td>
-                    <td className="px-8 py-6 font-mono text-sm">
-                      {rsvp.attending ? `+${rsvp.guest_count}` : '--'}
-                    </td>
-                    <td className="px-8 py-6">
-                      {rsvp.attending ? (
-                        <div className="space-y-1">
-                          <div className="text-xs font-bold flex items-center gap-1.5">
-                            <Utensils className="w-3 h-3 opacity-30" />
-                            {rsvp.meal_preference}
-                          </div>
-                          {rsvp.dietary_requirements && (
-                            <div className="text-[10px] text-red-400 flex items-center gap-1.5 font-medium">
-                              <AlertCircle className="w-3 h-3" /> {rsvp.dietary_requirements}
-                            </div>
-                          )}
-                          {/* Custom Responses */}
-                          {rsvp.responses && Object.entries(rsvp.responses).map(([key, val]) => (
-                            <div key={key} className="text-[10px] text-gray-500 border-t border-gray-100 pt-1 mt-1">
-                              <span className="font-bold uppercase tracking-tighter opacity-70 mr-1">{key.replace(/_/g, ' ')}:</span>
-                              {Array.isArray(val) ? val.join(', ') : String(val)}
-                            </div>
-                          ))}
-                        </div>
-                      ) : '--'}
-                    </td>
-                    <td className="px-8 py-6 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                    {activeFields.map(field => (
+                      <td key={field.id} className={`px-8 py-6 ${field.id === 'name' ? 'font-bold' : 'text-sm text-gray-500'}`}>
+                        {getFieldValue(rsvp, field.id)}
+                      </td>
+                    ))}
+                    <td className="px-8 py-6 text-[10px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                       {new Date(rsvp.created_at).toLocaleDateString()}
                     </td>
                   </tr>

@@ -1146,7 +1146,10 @@ export default function Workspace() {
                            <h2 className="text-3xl font-serif">Guest Responses</h2>
                            <p className="text-gray-500">Track attendances, meal choices, and dietary requirements.</p>
                          </div>
-                         <RSVPManager projectId={editingEvent.id} />
+                         <RSVPManager 
+                           projectId={editingEvent.id} 
+                           rsvpFields={editingEvent.rsvp_fields}
+                         />
                       </motion.div>
                     )}
 
