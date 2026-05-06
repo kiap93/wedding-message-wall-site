@@ -408,8 +408,7 @@ function verifyPasswordNode(password: string, storedHash: string) {
 
       res.json({ 
         success: true, 
-        message: mode === 'signup' ? 'Account created. Check your email for verification.' : 'Login link sent to your email.',
-        debug_link: process.env.NODE_ENV !== 'production' ? verifyUrl : undefined
+        message: mode === 'signup' ? 'Account created. Check your email for verification.' : 'Login link sent to your email.'
       });
     } catch (error) {
       console.error('Email auth error:', error);

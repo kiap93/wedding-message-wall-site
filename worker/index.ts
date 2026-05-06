@@ -439,8 +439,7 @@ app.post('/api/auth/email', async (c) => {
 
     return c.json({ 
       success: true, 
-      message: mode === 'signup' ? 'Account created. Please verify your email.' : 'Login link sent (Dual factor).',
-      debug_link: verifyUrl 
+      message: mode === 'signup' ? 'Account created. Please verify your email.' : 'Login link sent (Dual factor).'
     });
   } catch (error) {
     console.error('Worker Auth Error:', error);

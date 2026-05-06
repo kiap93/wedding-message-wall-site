@@ -77,13 +77,10 @@ export default function Login() {
 
       if (response.ok) {
         if (data.success) {
-          setSuccess(data.debug_link 
-            ? `[DEBUG] Action successful! Verification Link: ${data.debug_link}`
-            : (mode === 'signup' 
-                ? 'Account created! Please check your email for a verification link.' 
-                : 'A secure login request has been initiated. Check your email.'));
-          
-          if (data.debug_link) console.log('DEBUG LINK:', data.debug_link);
+          setSuccess(mode === 'signup' 
+            ? 'Account created! Please check your email for a verification link to activate your account.' 
+            : 'A secure login link has been sent to your email. Please click it to sign in.');
+          setError(null);
         } else {
           setError(data.error || 'Authentication failed.');
         }
@@ -136,23 +133,11 @@ export default function Login() {
           )}
 
           {success && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-2xl text-sm break-all">
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-2xl text-sm leading-relaxed">
               <div className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  {success.includes('http') ? (
-                    <>
-                      <p className="mb-1 font-bold">Verification Link (Demo):</p>
-                      <a 
-                        href={success.split(': ')[1]} 
-                        className="underline hover:text-green-900 font-mono text-[10px]"
-                      >
-                        {success.split(': ')[1]}
-                      </a>
-                    </>
-                  ) : (
-                    success
-                  )}
+                  {success}
                 </div>
               </div>
             </div>
