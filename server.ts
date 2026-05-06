@@ -25,6 +25,7 @@ const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const GMAIL_USER = process.env.GMAIL_USER;
 const GMAIL_PASS = process.env.GMAIL_PASS;
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
 const transporter = (GMAIL_USER && GMAIL_PASS) ? nodemailer.createTransport({
   service: 'gmail',
@@ -323,8 +324,49 @@ function verifyPasswordNode(password: string, storedHash: string) {
       console.log(`Link: ${verifyUrl}`);
       console.log('-------------------------');
 
-      // Send real email if transporter is configured
-      if (transporter) {
+      // Send real email
+      let emailSent = false;
+
+      if (RESEND_API_KEY) {
+        try {
+          const res = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${RESEND_API_KEY}`
+            },
+            body: JSON.stringify({
+              from: 'Wedding Manager <onboarding@resend.dev>',
+              to: email,
+              subject: mode === 'signup' ? 'Verify your Wedding Manager account' : 'Sign in to Wedding Manager',
+              html: `
+                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #FDFCF0;">
+                  <h1 style="color: #2D2424; text-align: center;">Wedding Manager</h1>
+                  <div style="background-color: white; padding: 20px; border-radius: 12px;">
+                    <p>${mode === 'signup' ? 'Welcome! Please verify your account.' : 'You requested a login link.'}</p>
+                    <div style="text-align: center; margin: 30px 0;">
+                      <a href="${verifyUrl}" style="background-color: #C5A059; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                        ${mode === 'signup' ? 'Verify Account' : 'Sign In'}
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              `
+            })
+          });
+          if (res.ok) {
+            console.log(`Email successfully sent via Resend to ${email}`);
+            emailSent = true;
+          } else {
+            const err = await res.text();
+            console.error(`Resend error: ${err}`);
+          }
+        } catch (err) {
+          console.error('Resend failed, trying fallback:', err);
+        }
+      }
+
+      if (!emailSent && transporter) {
         const mailOptions = {
           from: `"Wedding Manager" <${GMAIL_USER}>`,
           to: email,
@@ -357,7 +399,8 @@ function verifyPasswordNode(password: string, storedHash: string) {
 
         try {
           await transporter.sendMail(mailOptions);
-          console.log(`Email successfully sent to ${email}`);
+          console.log(`Email successfully sent via SMTP to ${email}`);
+          emailSent = true;
         } catch (mailError) {
           console.error('Nodemailer Error:', mailError);
         }

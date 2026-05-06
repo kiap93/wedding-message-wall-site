@@ -18,6 +18,9 @@ type Bindings = {
   VITE_SUPABASE_ANON_KEY: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
+  GMAIL_USER: string;
+  GMAIL_PASS: string;
+  RESEND_API_KEY: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -384,6 +387,55 @@ app.post('/api/auth/email', async (c) => {
     console.log(`Email: ${email}`);
     console.log(`Verify link: ${verifyUrl}`);
     console.log('-------------------');
+
+    // Attempt to send real email if configured
+    if (c.env.RESEND_API_KEY) {
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${c.env.RESEND_API_KEY}`
+          },
+          body: JSON.stringify({
+            from: 'Wedding Manager <onboarding@resend.dev>', // Default for unverified domains
+            to: email,
+            subject: mode === 'signup' ? 'Verify your Wedding Manager account' : 'Sign in to Wedding Manager',
+            html: `
+              <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #FDFCF0; border-radius: 20px;">
+                <h1 style="color: #2D2424; text-align: center;">Wedding Manager</h1>
+                <div style="background-color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                  <p>
+                    ${mode === 'signup' 
+                      ? 'Welcome! Please verify your account to get started.' 
+                      : 'You requested a login link.'}
+                  </p>
+                  <div style="text-align: center; margin: 30px 0;">
+                    <a href="${verifyUrl}" style="background-color: #C5A059; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">
+                      ${mode === 'signup' ? 'Verify Account' : 'Sign In'}
+                    </a>
+                  </div>
+                  <p style="font-size: 12px; color: #666;">
+                    The link will expire in 15 minutes.
+                  </p>
+                </div>
+              </div>
+            `
+          })
+        });
+        
+        if (res.ok) {
+          console.log(`[WORKER] Email sent successfully via Resend to ${email}`);
+        } else {
+          const err = await res.text();
+          console.error(`[WORKER] Resend API error: ${err}`);
+        }
+      } catch (e) {
+        console.error('Worker Resend attempt failed:', e);
+      }
+    } else if (c.env.GMAIL_USER && c.env.GMAIL_PASS) {
+      console.log(`[WORKER] SMTP configured (${c.env.GMAIL_USER}), but direct SMTP is not supported in Workers. Please use Resend.`);
+    }
 
     return c.json({ 
       success: true, 
