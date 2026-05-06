@@ -11,6 +11,7 @@ import Onboarding from './pages/Onboarding';
 import CoupleLogin from './pages/CoupleLogin';
 import CoupleDashboard from './pages/CoupleDashboard';
 import StaffTemplates from './pages/StaffTemplates';
+import ResetPassword from './pages/ResetPassword';
 
 import { API_BASE } from './lib/config';
 import { authenticatedFetch, setAuthToken } from './lib/auth';
@@ -114,6 +115,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/verify" element={<Verify />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
             <Route path="/templates/manage" element={<AuthGuard><StaffTemplates /></AuthGuard>} />
             <Route path="/templates" element={<TemplateSelector />} />

@@ -284,22 +284,28 @@ function verifyPasswordNode(password: string, storedHash: string) {
       const existingUser = users && users.length > 0 ? users[0] : null;
 
       if (mode === 'signup') {
-        if (existingUser) return res.status(400).json({ error: 'User already exists' });
-        if (!password) return res.status(400).json({ error: 'Password is required' });
+        if (existingUser) {
+          if (existingUser.is_verified) {
+            return res.status(400).json({ error: 'User already exists and is verified. Please log in.' });
+          }
+          // Fall through to send link for unverified user
+        } else {
+          if (!password) return res.status(400).json({ error: 'Password is required' });
 
-        const passwordHash = hashPasswordNode(password);
-        
-        // Save to Supabase
-        const { error: insertError } = await supabase
-          .from('users_auth')
-          .insert([{ 
-            email, 
-            password_hash: passwordHash, 
-            is_verified: false,
-            created_at: new Date().toISOString()
-          }]);
+          const passwordHash = hashPasswordNode(password);
+          
+          // Save to Supabase
+          const { error: insertError } = await supabase
+            .from('users_auth')
+            .insert([{ 
+              email, 
+              password_hash: passwordHash, 
+              is_verified: false,
+              created_at: new Date().toISOString()
+            }]);
 
-        if (insertError) throw insertError;
+          if (insertError) throw insertError;
+        }
       } else {
         // Login mode
         if (!existingUser) return res.status(404).json({ error: 'Account not found' });
@@ -456,6 +462,115 @@ function verifyPasswordNode(password: string, storedHash: string) {
     } catch (error: any) {
       console.error('Token verification failed:', error.message);
       res.status(401).json({ error: 'Invalid or expired link' });
+    }
+  });
+
+  apiRouter.post('/auth/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    try {
+      const supabase = getSupabaseAdmin();
+      const { data: user, error: fetchError } = await supabase
+        .from('users_auth')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      // We always return success to prevent email enumeration, 
+      // but only send the email if the user exists.
+      if (!fetchError && user) {
+        const resetToken = jwt.sign(
+          { email, type: 'password_reset' },
+          JWT_SECRET,
+          { algorithm: 'HS256', expiresIn: '1h' }
+        );
+
+        const resetUrl = `${APP_URL}/reset-password?token=${resetToken}`;
+        
+        let emailSent = false;
+        const emailContent = `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #FDFCF0;">
+            <h1 style="color: #2D2424; text-align: center;">Reset Your Password</h1>
+            <div style="background-color: white; padding: 20px; border-radius: 12px;">
+              <p>You requested a password reset for your Wedding Manager account.</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetUrl}" style="background-color: #C5A059; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                  Reset Password
+                </a>
+              </div>
+              <p style="font-size: 12px; color: #666;">This link will expire in 1 hour.</p>
+            </div>
+          </div>
+        `;
+
+        if (RESEND_API_KEY) {
+          try {
+            const res = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${RESEND_API_KEY}`
+              },
+              body: JSON.stringify({
+                from: 'Wedding Manager <onboarding@resend.dev>',
+                to: email,
+                subject: 'Reset your Wedding Manager password',
+                html: emailContent
+              })
+            });
+            if (res.ok) emailSent = true;
+          } catch (e) {
+            console.error('Forgot password Resend failed:', e);
+          }
+        }
+
+        if (!emailSent && transporter) {
+          try {
+            await transporter.sendMail({
+              from: `"Wedding Manager" <${GMAIL_USER}>`,
+              to: email,
+              subject: 'Reset your Wedding Manager password',
+              html: emailContent
+            });
+          } catch (e) {
+            console.error('Forgot password SMTP failed:', e);
+          }
+        }
+      }
+
+      res.json({ success: true, message: 'If this email is registered, a reset link will be sent.' });
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  apiRouter.post('/auth/reset-password', async (req, res) => {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ error: 'Token and password are required' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      if (decoded.type !== 'password_reset') {
+        return res.status(400).json({ error: 'Invalid token type' });
+      }
+
+      const email = decoded.email;
+      const supabase = getSupabaseAdmin();
+      const passwordHash = hashPasswordNode(password);
+
+      const { error: updateError } = await supabase
+        .from('users_auth')
+        .update({ password_hash: passwordHash })
+        .eq('email', email);
+
+      if (updateError) throw updateError;
+
+      res.json({ success: true, message: 'Password updated successfully' });
+    } catch (error: any) {
+      console.error('Reset password verification failed:', error.message);
+      res.status(401).json({ error: 'Invalid or expired reset link' });
     }
   });
 

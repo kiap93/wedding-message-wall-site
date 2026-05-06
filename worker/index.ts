@@ -334,29 +334,34 @@ app.post('/api/auth/email', async (c) => {
     const existingUser = users.length > 0 ? users[0] : null;
 
     if (mode === 'signup') {
-      if (existingUser) return c.json({ error: 'User already exists' }, 400);
-      if (!password) return c.json({ error: 'Password is required' }, 400);
+      if (existingUser) {
+        if (existingUser.is_verified) {
+          return c.json({ error: 'User already exists and is verified. Please log in.' }, 400);
+        }
+        // If unverified, we'll fall through and send a new link
+      } else {
+        if (!password) return c.json({ error: 'Password is required' }, 400);
+        const passwordHash = await hashPassword(password);
+        
+        // Save to Supabase
+        const insertRes = await fetch(`${supabaseUrl}/rest/v1/users_auth`, {
+          method: 'POST',
+          headers: {
+            'apikey': serviceRoleKey,
+            'Authorization': `Bearer ${serviceRoleKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({
+            email,
+            password_hash: passwordHash,
+            is_verified: false,
+            created_at: new Date().toISOString()
+          })
+        });
 
-      const passwordHash = await hashPassword(password);
-      
-      // Save to Supabase
-      const insertRes = await fetch(`${supabaseUrl}/rest/v1/users_auth`, {
-        method: 'POST',
-        headers: {
-          'apikey': serviceRoleKey,
-          'Authorization': `Bearer ${serviceRoleKey}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation'
-        },
-        body: JSON.stringify({
-          email,
-          password_hash: passwordHash,
-          is_verified: false,
-          created_at: new Date().toISOString()
-        })
-      });
-
-      if (!insertRes.ok) throw new Error('DB Save failed');
+        if (!insertRes.ok) throw new Error('DB Save failed');
+      }
     } else {
       // Login mode
       if (!existingUser) return c.json({ error: 'Account not found' }, 404);
@@ -507,6 +512,116 @@ app.post('/api/auth/verify', async (c) => {
   } catch (error: any) {
     console.error('Token verification failed:', error.message);
     return c.json({ error: 'Invalid or expired link' }, 401);
+  }
+});
+
+// 5.2 Forgot Password
+app.post('/api/auth/forgot-password', async (c) => {
+  const { email } = await c.req.json();
+  if (!email) return c.json({ error: 'Email is required' }, 400);
+
+  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+
+  try {
+    const res = await fetch(`${supabaseUrl}/rest/v1/users_auth?email=eq.${email}`, {
+      headers: {
+        'apikey': serviceRoleKey,
+        'Authorization': `Bearer ${serviceRoleKey}`
+      }
+    });
+    const users = await res.json() as any[];
+    const user = users.length > 0 ? users[0] : null;
+
+    if (user) {
+      const resetToken = await sign({
+        email,
+        type: 'password_reset',
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + (60 * 60) // 1 hour
+      }, jwtSecret, 'HS256');
+
+      const appUrl = (new URL(c.req.url)).origin === 'http://localhost:3000' ? 'http://localhost:3000' : 'https://eventframe.io';
+      const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
+      
+      const emailContent = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #FDFCF0; border-radius: 20px;">
+          <h1 style="color: #2D2424; text-align: center;">Reset Your Password</h1>
+          <div style="background-color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <p>You requested a password reset for your Wedding Manager account.</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetUrl}" style="background-color: #C5A059; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">
+                Reset Password
+              </a>
+            </div>
+            <p style="font-size: 12px; color: #666;">This link will expire in 1 hour.</p>
+          </div>
+        </div>
+      `;
+
+      if (c.env.RESEND_API_KEY) {
+        try {
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${c.env.RESEND_API_KEY}`
+            },
+            body: JSON.stringify({
+              from: 'Wedding Manager <onboarding@resend.dev>',
+              to: email,
+              subject: 'Reset your Wedding Manager password',
+              html: emailContent
+            })
+          });
+        } catch (e) {
+          console.error('Worker forgot password Resend failed:', e);
+        }
+      }
+    }
+
+    return c.json({ success: true, message: 'If this email is registered, a reset link will be sent.' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// 5.3 Reset Password
+app.post('/api/auth/reset-password', async (c) => {
+  const { token, password } = await c.req.json();
+  if (!token || !password) return c.json({ error: 'Token and password are required' }, 400);
+
+  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+
+  try {
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
+    if (payload.type !== 'password_reset') {
+      return c.json({ error: 'Invalid token type' }, 400);
+    }
+
+    const email = payload.email;
+    const passwordHash = await hashPassword(password);
+
+    const updateRes = await fetch(`${supabaseUrl}/rest/v1/users_auth?email=eq.${email}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': serviceRoleKey,
+        'Authorization': `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ password_hash: passwordHash })
+    });
+
+    if (!updateRes.ok) throw new Error('DB Update failed');
+
+    return c.json({ success: true, message: 'Password updated successfully' });
+  } catch (error: any) {
+    console.error('Reset password verification failed:', error.message);
+    return c.json({ error: 'Invalid or expired reset link' }, 401);
   }
 });
 

@@ -10,7 +10,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
@@ -58,7 +58,7 @@ export default function Login() {
       setLoading(false);
       return;
     }
-    if (password.length < 6) {
+    if (mode !== 'forgot-password' && password.length < 6) {
       setError('Password must be at least 6 characters.');
       setLoading(false);
       return;
@@ -67,7 +67,8 @@ export default function Login() {
     try {
       localStorage.removeItem('wedding_session_token');
 
-      const response = await fetch(`${API_BASE}/api/auth/email`, {
+      const endpoint = mode === 'forgot-password' ? '/api/auth/forgot-password' : '/api/auth/email';
+      const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, mode }),
@@ -77,15 +78,23 @@ export default function Login() {
 
       if (response.ok) {
         if (data.success) {
-          setSuccess(mode === 'signup' 
-            ? 'Account created! Please check your email for a verification link to activate your account.' 
-            : 'A secure login link has been sent to your email. Please click it to sign in.');
+          if (mode === 'forgot-password') {
+            setSuccess('If this email is registered, you will receive a password reset link shortly.');
+          } else {
+            setSuccess(mode === 'signup' 
+              ? 'Account created! Please check your email (including spam folder) for a verification link.' 
+              : 'A secure login link has been sent to your email. If it doesn\'t arrive in a few minutes, check your spam or try again.');
+          }
           setError(null);
         } else {
           setError(data.error || 'Authentication failed.');
         }
       } else {
-        setError(data.error || (mode === 'signup' ? 'Failed to create account.' : 'Invalid credentials.'));
+        if (data.error?.includes('already exists')) {
+          setError('This email is already registered. If you haven\'t verified it, try signing up again to resend the link.');
+        } else {
+          setError(data.error || (mode === 'signup' ? 'Failed to create account.' : 'Invalid credentials.'));
+        }
       }
     } catch (err) {
       setError('A network error occurred. Please try again.');
@@ -116,12 +125,14 @@ export default function Login() {
               <Globe className="text-white w-8 h-8" />
             </div>
             <h2 className="text-3xl font-serif text-[#2D2424] mb-2">
-              {mode === 'login' ? 'Welcome Back' : 'Create Account'}
+              {mode === 'login' ? 'Welcome Back' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
             </h2>
             <p className="text-[#2D2424]/60 text-center text-sm">
               {mode === 'login' 
                 ? 'Sign in to manage your wedding workspace' 
-                : 'Join our community of wedding creators'}
+                : mode === 'signup'
+                ? 'Join our community of wedding creators'
+                : 'Enter your email to receive a reset link'}
             </p>
           </div>
 
@@ -175,28 +186,41 @@ export default function Login() {
                   required
                 />
               </div>
-              <div>
-                <input 
-                  type="password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password (Min 6 chars)" 
-                  className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-transparent focus:border-[#C5A059] focus:bg-white outline-none transition-all text-[#2D2424] text-sm"
-                  required
-                />
-              </div>
+              {mode !== 'forgot-password' && (
+                <div>
+                  <input 
+                    type="password" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Password (Min 6 chars)" 
+                    className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-transparent focus:border-[#C5A059] focus:bg-white outline-none transition-all text-[#2D2424] text-sm"
+                    required
+                  />
+                  {mode === 'login' && (
+                    <div className="flex justify-end mt-2">
+                      <button 
+                        type="button"
+                        onClick={() => setMode('forgot-password')}
+                        className="text-[10px] uppercase tracking-widest font-bold text-[#C5A059] hover:text-[#B38D45]"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               <button 
                 type="submit"
                 disabled={loading}
                 className="w-full py-4 px-6 rounded-2xl bg-[#C5A059] text-white font-bold uppercase tracking-widest text-xs hover:bg-[#B38D45] transition-all shadow-xl shadow-[#C5A059]/20 disabled:opacity-50"
               >
-                {loading ? 'Processing...' : (mode === 'login' ? 'Sign In' : 'Create Account')}
+                {loading ? 'Processing...' : (mode === 'login' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Link')}
               </button>
             </form>
           </div>
 
           <p className="mt-8 text-center text-sm text-[#2D2424]/60">
-            {mode === 'login' ? "Don't have an account?" : "Already have an account?"}{' '}
+            {mode === 'login' ? "Don't have an account?" : "Ready to sign in?"}{' '}
             <button 
               onClick={() => {
                 setMode(mode === 'login' ? 'signup' : 'login');
