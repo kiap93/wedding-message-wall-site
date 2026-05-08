@@ -990,7 +990,25 @@ function verifyPasswordNode(password: string, storedHash: string) {
     }
   });
 
-  // --- Template Routes (Staff Only) ---
+  // --- Template Routes (Staff Only for Mutations) ---
+  apiRouter.get('/templates', async (req, res) => {
+    try {
+      const { data, error } = await getSupabaseAdmin()
+        .from('templates')
+        .select('*')
+        .order('name');
+
+      if (error) {
+        console.error('Template fetch error:', error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+  });
+
   apiRouter.post('/templates', async (req, res) => {
     const authHeader = req.headers.authorization;
     const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;

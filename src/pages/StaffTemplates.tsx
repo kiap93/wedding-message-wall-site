@@ -89,14 +89,15 @@ export default function StaffTemplates() {
         Requirements:
         1. Global HTML: Base structure with <div id="messages-container"></div>.
         2. Global CSS: 
-           - Style #messages-container as relatively positioned with 100% width/height.
-           - Style .custom-card-wrapper as absolute with a specific top/left and an animation.
-           - IMPORTANT: Every .custom-card-wrapper MUST have white-space: nowrap and will-change: transform.
-           - Ensure animations like drifting (danmu) use transform: translateX() for performance.
-           - Use --index variable for staggering animation-delay.
+           - Style #messages-container as relative with 100% width/height.
+           - Style .custom-card-wrapper as absolute.
+           - NO OVERLAP RULE: Use vertical lanes for non-overlapping cards. Use "top: calc(var(--row) * 18% + 5%)" to place cards in distinct lanes.
+           - STAGGER RULE: Use "animation-delay: calc(var(--index) * -7.5s)" or similar to ensure cards in the same lane are spaced horizontally.
+           - RESPONSIVE: Use responsive units (%, vh, vw, or clamp()).
+           - PERFORMANCE: Use pure CSS transform: translateX() for animations. Avoid using modulo (%) inside calc() as it is not broadly supported in all CSS engines; instead, use the provided --row and --col variables.
         3. Card HTML: Elegant template using {{name}}, {{message}}, and {{index}}.
         
-        Visibility is critical. Ensure cards have padding, background, and shadow to be clearly visible against the background.`,
+        The design must be completely non-overlapping. Use sophisticated Tailwind-inspired styling.`,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -586,7 +587,10 @@ function InternalTemplateView({ template }: { template: WeddingTemplate, key?: R
     
     const cardsHtml = liveMessages.map((msg, index) => {
       const cardInner = renderCard(template.card_html || '', msg, index);
-      return `<div class="custom-card-wrapper" style="--index: ${index}">${cardInner}</div>`;
+      // Pre-calculate spacing variables for the AI to use pure CSS reliably
+      const row = index % 5;
+      const col = Math.floor(index / 5);
+      return `<div class="custom-card-wrapper" style="--index: ${index}; --row: ${row}; --col: ${col}">${cardInner}</div>`;
     }).join('');
     
     let baseHtml = template.html || '';
