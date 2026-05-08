@@ -97,16 +97,28 @@ export default function CoupleDashboard() {
   const handleSaveTheme = async (themeId: TemplateId) => {
     if (!event) return;
     setIsSaving(true);
-    const supabase = getSupabase();
-    const { error } = await supabase
-      .from('projects')
-      .update({ theme_id: themeId })
-      .eq('id', event.id);
+    
+    try {
+      const response = await fetch(`${window.location.origin}/api/projects/${event.id}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Event-PIN': event.access_password || ''
+        },
+        body: JSON.stringify({ theme_id: themeId })
+      });
 
-    if (!error) {
+      if (!response.ok) {
+        throw new Error('Failed to update theme');
+      }
+
       setEvent({ ...event, theme_id: themeId });
+    } catch (err) {
+      console.error('Error saving theme:', err);
+      alert('Failed to save theme choice.');
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,17 +140,23 @@ export default function CoupleDashboard() {
         .from('wedding-images')
         .getPublicUrl(uploadData.path);
 
-      const { error: updateError } = await supabase
-        .from('projects')
-        .update({ image_url: publicUrl, updated_at: new Date().toISOString() })
-        .eq('id', event.id);
+      const response = await fetch(`${window.location.origin}/api/projects/${event.id}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Event-PIN': event.access_password || ''
+        },
+        body: JSON.stringify({ image_url: publicUrl, updated_at: new Date().toISOString() })
+      });
 
-      if (updateError) throw updateError;
+      if (!response.ok) {
+        throw new Error('Failed to update photo');
+      }
 
       setEvent({ ...event, image_url: publicUrl });
     } catch (error: any) {
       console.error('Error uploading:', error);
-      alert('Error uploading photo. Make sure a "wedding-images" bucket exists in Supabase storage and is public.');
+      alert('Error uploading photo. Make sure the storage is accessible.');
     } finally {
       setIsUploading(false);
     }
@@ -147,17 +165,28 @@ export default function CoupleDashboard() {
   const removePhoto = async () => {
     if (!event) return;
     setIsSaving(true);
-    const supabase = getSupabase();
     
-    const { error } = await supabase
-      .from('projects')
-      .update({ image_url: null, updated_at: new Date().toISOString() })
-      .eq('id', event.id);
+    try {
+      const response = await fetch(`${window.location.origin}/api/projects/${event.id}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Event-PIN': event.access_password || ''
+        },
+        body: JSON.stringify({ image_url: null, updated_at: new Date().toISOString() })
+      });
 
-    if (!error) {
+      if (!response.ok) {
+        throw new Error('Failed to remove photo');
+      }
+
       setEvent({ ...event, image_url: undefined });
+    } catch (err) {
+      console.error('Error removing photo:', err);
+      alert('Failed to remove background photo.');
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   const handleLogout = () => {

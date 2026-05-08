@@ -3,25 +3,34 @@ import { getSupabase } from './supabase';
 
 export async function resolveWorkspaceBySlug(slug: string): Promise<Agency | null> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from('agencies')
-    .select('*')
-    .eq('slug', slug)
-    .single();
+  try {
+    const { data, error } = await Promise.race([
+      supabase.from('agencies').select('*').eq('slug', slug).single(),
+      new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Workspace resolve timeout')), 10000))
+    ]);
 
-  if (error || !data) return null;
-  return data as Agency;
+    if (error || !data) return null;
+    return data as Agency;
+  } catch (e) {
+    console.error('Error resolving workspace:', e);
+    return null;
+  }
 }
 
 export async function getUserWorkspaces(userId: string): Promise<Agency[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from('agencies')
-    .select('*')
-    .eq('user_id', userId);
+  try {
+    const { data, error } = await Promise.race([
+      supabase.from('agencies').select('*').eq('user_id', userId),
+      new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Workspaces fetch timeout')), 10000))
+    ]);
 
-  if (error || !data) return [];
-  return data as Agency[];
+    if (error || !data) return [];
+    return data as Agency[];
+  } catch (e) {
+    console.error('Error fetching user workspaces:', e);
+    return [];
+  }
 }
 
 export function getCurrentSubdomain(): string | null {

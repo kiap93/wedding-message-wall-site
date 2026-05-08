@@ -49,13 +49,17 @@ export async function fetchMessages(projectId?: string, includeAll: boolean = fa
 
 export async function updateMessageStatus(messageId: string, status: 'approved' | 'rejected'): Promise<void> {
   try {
-    const supabase = getSupabase();
-    const { error } = await supabase
-      .from('messages')
-      .update({ status })
-      .eq('id', messageId);
-      
-    if (error) throw error;
+    const { authenticatedFetch } = await import('./auth');
+    const response = await authenticatedFetch(`${API_BASE}/api/messages/${messageId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to update message status');
+    }
   } catch (err) {
     console.error('Failed to update message status:', err);
     throw err;

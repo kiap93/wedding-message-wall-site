@@ -22,44 +22,119 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
     async function loadUser() {
+      const requestId = Math.random().toString(36).substring(7);
+      console.log(`[UserProvider] [${requestId}] Starting loadUser...`);
+      
       // 1. Capture token from URL if present (from cross-domain redirect)
       const params = new URLSearchParams(window.location.search);
       let urlToken = params.get('token');
       
-      // Also check for token in fragment (more secure redirect method)
+      // Also check for token in fragment
       if (!urlToken && window.location.hash.includes('token=')) {
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         urlToken = hashParams.get('token');
       }
 
       if (urlToken) {
+        console.log(`[UserProvider] [${requestId}] Found token in URL, saving...`);
         localStorage.setItem('wedding_session_token', urlToken);
-        // Clean up URL without reload
         window.history.replaceState({}, document.title, window.location.pathname);
       }
 
-      // We still check for token but don't return early. 
-      // If no token in localStorage, authenticatedFetch will still send credentials (cookies).
       const token = localStorage.getItem('wedding_session_token');
+      console.log(`[UserProvider] [${requestId}] Current token exists:`, !!token);
       
-      try {
-        const res = await authenticatedFetch(`${API_BASE}/api/auth/me`);
-        const data = await res.json();
-        if (data.user) {
-          setUser(data.user);
-        } else {
-          console.warn('Session check failed:', data.error, data.details);
-          // If token was invalid or missing on server, clear it locally
-          if (token) localStorage.removeItem('wedding_session_token');
+      // Optimistic load: if we have a token, decode it locally so UI can render immediately
+      if (token && token.split('.').length === 3) {
+        try {
+          const base64Url = token.split('.')[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const payload = JSON.parse(window.atob(base64));
+          
+          // Ensure name fallback
+          if (!payload.name && payload.email) {
+            payload.name = payload.email.split('@')[0];
+          } else if (!payload.name) {
+            payload.name = 'Anonymous User';
+          }
+          
+          console.log(`[UserProvider] [${requestId}] Optimistically loaded user:`, payload.email);
+          if (active) {
+            setUser(payload);
+            setIsLoading(false);
+          }
+        } catch (e) {
+          console.warn('Failed to optimistically decode token', e);
         }
-      } catch (err) {
-        console.error('Failed to load user:', err);
+      }
+
+      // Timeout helper
+      const timeoutId = setTimeout(() => {
+        console.warn(`[UserProvider] [${requestId}] Request timed out after 10s`);
+        controller.abort();
+      }, 10000);
+
+      try {
+        // Fast health check only if we don't have a token to avoid extra calls
+        if (!token) {
+          try {
+            await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(3000) });
+          } catch (e) {
+            console.warn(`[UserProvider] [${requestId}] API Health Check failed`);
+          }
+        }
+
+        console.log(`[UserProvider] [${requestId}] Fetching /api/auth/me...`);
+        const res = await authenticatedFetch(`${API_BASE}/api/auth/me`, {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        if (!active) return;
+
+        console.log(`[UserProvider] [${requestId}] Received response status:`, res.status);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            console.log(`[UserProvider] [${requestId}] User verified with server`);
+            setUser(data.user);
+          } else {
+            console.warn(`[UserProvider] [${requestId}] Session check returned no user`);
+            if (token) {
+              localStorage.removeItem('wedding_session_token');
+              setUser(null);
+            }
+          }
+        } else if (res.status === 401) {
+          console.log(`[UserProvider] [${requestId}] Server says unauthorized (401)`);
+          if (token) {
+            localStorage.removeItem('wedding_session_token');
+            setUser(null);
+          }
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          console.warn(`[UserProvider] [${requestId}] Fetch aborted (timeout or unmount)`);
+        } else {
+          console.error(`[UserProvider] [${requestId}] Error in loadUser:`, err.message || err);
+        }
       } finally {
-        setIsLoading(false);
+        if (active) {
+          console.log(`[UserProvider] [${requestId}] Finishing load (isLoading = false)`);
+          setIsLoading(false);
+        }
       }
     }
+
     loadUser();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, []);
 
   return (

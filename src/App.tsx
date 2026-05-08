@@ -30,17 +30,33 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const subdomain = getCurrentSubdomain();
 
   useEffect(() => {
+    let active = true;
+
     // 2. Fetch workspaces once user is loaded
     async function checkWorkspaces() {
+      // If we already have workspaces and a user, don't refetch on every path change
+      if (workspaces.length > 0 && user) {
+        console.log('AuthGuard: Already have workspaces, skipping refetch');
+        return;
+      }
+
       if (!user) {
-        setLoadingWorkspaces(false);
-        setWorkspaces([]);
+        console.log('AuthGuard: No user, skipping workspace check');
+        if (active) {
+          setLoadingWorkspaces(false);
+          setWorkspaces([]);
+        }
         return;
       }
       
-      setLoadingWorkspaces(true);
+      console.log('AuthGuard: Starting workspace check for user:', user.email);
+      if (active) setLoadingWorkspaces(true);
+      
       try {
         const userWorkspaces = await getUserWorkspaces(user.id || user.sub);
+        if (!active) return;
+
+        console.log('AuthGuard: Found workspaces:', userWorkspaces.length);
         setWorkspaces(userWorkspaces);
         
         // Redirect logic
@@ -50,19 +66,23 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         
         // Strict root check: exactly eventframe.io or www.eventframe.io
         const isRootDomain = currentHost === 'eventframe.io' || currentHost === 'www.eventframe.io';
-        // Generic fallback for other domains/IPs
+        // Generic fallback for other domains/IPs (like .run.app or IP addresses)
         const isGenericRoot = hostParts.length <= 2 && !currentHost.includes('localhost');
         const isRoot = isRootDomain || isGenericRoot;
         
         const isRunApp = currentHost.includes('.run.app');
 
         if (isRoot && !isRunApp && userWorkspaces.length === 0 && location.pathname !== '/onboarding') {
+          console.log('AuthGuard: Redirecting to onboarding');
           window.location.replace('/onboarding');
           return;
         }
         
         // Disable subdomain redirects on run.app domains as they don't support wildcard subdomains
-        if (isRunApp) return;
+        if (isRunApp) {
+          console.log('AuthGuard: On run.app domain, skipping subdomain redirect');
+          return;
+        }
 
         if (isRoot && userWorkspaces.length > 0 && location.pathname === '/workspace') {
           const workspace = userWorkspaces[0];
@@ -70,32 +90,48 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
           if (workspace.user_role === 'agency' && workspace.slug) {
             const slug = workspace.slug;
             const protocol = window.location.protocol;
-            // Extract base domain carefully
             const baseDomain = hostParts.slice(-2).join('.');
-            // Avoid looping if we are already on the correct host (shouldn't happen with isRoot but being safe)
             if (currentHost !== `${slug}.${baseDomain}`) {
               const token = localStorage.getItem('wedding_session_token');
+              console.log('AuthGuard: Redirecting to subdomain:', slug);
               window.location.replace(`${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
               return;
             }
           }
         }
       } catch (err) {
-        console.error('Workspace check failed:', err);
+        console.error('AuthGuard: Workspace check failed:', err);
       } finally {
-        setLoadingWorkspaces(false);
+        if (active) {
+          console.log('AuthGuard: Finished workspace check');
+          setLoadingWorkspaces(false);
+        }
       }
     }
 
     if (!isLoadingUser) {
       checkWorkspaces();
     }
-  }, [user, isLoadingUser, location.pathname, subdomain]);
 
-  if (isLoadingUser || loadingWorkspaces) {
+    return () => {
+      active = false;
+    };
+  }, [user?.id, isLoadingUser, subdomain]); // Remove location.pathname to prevent refetching during navigation
+
+  if (isLoadingUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FDFCF0]">
-        <div className="w-8 h-8 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFCF0]">
+        <div className="w-8 h-8 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-[#C5A059] font-serif animate-pulse">Checking authentication...</p>
+      </div>
+    );
+  }
+
+  if (loadingWorkspaces) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFCF0]">
+        <div className="w-8 h-8 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-[#C5A059] font-serif animate-pulse">Syncing your workspaces...</p>
       </div>
     );
   }

@@ -5,17 +5,31 @@ import { Mail, Chrome, Heart, Globe, XCircle, CheckCircle2 } from 'lucide-react'
 
 import { API_BASE } from '../lib/config';
 import { authenticatedFetch } from '../lib/auth';
+import { useUser } from '../lib/UserContext';
 
 export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [showSetupHelper, setShowSetupHelper] = useState(false);
+  const [detectedRedirectUri, setDetectedRedirectUri] = useState<string | null>(null);
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const { isLoading: isGlobalLoading } = useUser();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const authError = searchParams.get('error');
+
+  // If already have token, check if we should redirect
+  useEffect(() => {
+    const token = localStorage.getItem('wedding_session_token');
+    // ONLY redirect if we are NOT loading and we have a token
+    if (token && !loading && !isGlobalLoading) {
+      console.log('Login: Token found and global loading finished, redirecting to /workspace');
+      navigate('/workspace');
+    }
+  }, [navigate, loading, isGlobalLoading]);
 
   useEffect(() => {
     if (authError) {
@@ -23,27 +37,120 @@ export default function Login() {
     }
   }, [authError]);
 
-  const handleGoogleLogin = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      localStorage.removeItem('wedding_session_token');
-      
-      const response = await fetch(`${API_BASE}/api/auth/google`, {
-        headers: { 'Accept': 'application/json' }
-      });
-      const data = await response.json();
-      
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        setError('Failed to initialize Google login');
-      }
-    } catch (err) {
-      setError('An error occurred during sign in');
-    } finally {
+  const handleGoogleLogin = () => {
+    setLoading(true);
+    setError(null);
+    setShowSetupHelper(false);
+    localStorage.removeItem('wedding_session_token');
+    
+    // 1. Open popup immediately to bypass popup blockers
+    const width = 500;
+    const height = 600;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    
+    const popup = window.open(
+      '',
+      'google_login_popup',
+      `width=${width},height=${height},left=${left},top=${top},status=no,menubar=no,toolbar=no`
+    );
+
+    if (!popup) {
+      setError('Popup blocked. Please check your browser settings and allow popups for this site.');
       setLoading(false);
+      return;
     }
+
+    // Show a loading message in the popup
+    popup.document.write(`
+      <html><body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #FDFCF0; margin: 0; color: #C5A059;">
+        <div style="border: 4px solid #f3f3f3; border-top: 4px solid #C5A059; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 20px;"></div>
+        <p>Connecting to Google...</p>
+        <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+      </body></html>
+    `);
+
+    // 2. Fetch the actual URL
+    fetch(`${API_BASE}/api/auth/google`, {
+      headers: { 'Accept': 'application/json' }
+    })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Failed to initialize Google login');
+        }
+        
+        if (data.redirect_uri) {
+          setDetectedRedirectUri(data.redirect_uri);
+        }
+
+        if (data.url) {
+          popup.location.href = data.url;
+          startLoginFlow(popup);
+        } else {
+          throw new Error('No URL returned from server');
+        }
+      })
+      .catch(err => {
+        console.error('Login prep error:', err);
+        popup.close();
+        const message = err instanceof Error ? err.message : 'An error occurred during sign in';
+        setError(message);
+        
+        if (message.includes('403') || 
+            message.includes('Forbidden') || 
+            message.includes('client_id') ||
+            message.includes('invalid_client')) {
+          setShowSetupHelper(true);
+        }
+        setLoading(false);
+      });
+  };
+
+  const startLoginFlow = (popup: Window) => {
+    console.log('Login: Starting message listener and polling...');
+    // Listen for message from popup
+    const messageListener = (event: MessageEvent) => {
+      // In AI Studio, the origin might be the container URL
+      const isOwnOrigin = event.origin === window.location.origin;
+      const isDevOrigin = event.origin.includes('.run.app');
+      const isLocalOrigin = event.origin.includes('localhost') || event.origin.includes('127.0.0.1');
+      
+      if (!isOwnOrigin && !isDevOrigin && !isLocalOrigin) {
+        return;
+      }
+
+      if (event.data?.type === 'AUTH_SUCCESS' && event.data.token) {
+        console.log('Login: Authentication successful message received');
+        window.removeEventListener('message', messageListener);
+        if (checkClosed) clearInterval(checkClosed);
+        
+        localStorage.setItem('wedding_session_token', event.data.token);
+        window.location.replace('/workspace');
+      }
+    };
+
+    window.addEventListener('message', messageListener);
+
+    // Polling if popup closed without success
+    const checkClosed = setInterval(() => {
+      if (popup.closed) {
+        console.log('Login: Popup closed - cleaning up');
+        window.removeEventListener('message', messageListener);
+        clearInterval(checkClosed);
+        
+        // Wait a tiny bit then check if we have a token in localStorage
+        setTimeout(() => {
+          const token = localStorage.getItem('wedding_session_token');
+          if (token) {
+            console.log('Login: Token found after popup closure');
+            window.location.replace('/workspace');
+          } else {
+            setLoading(false);
+          }
+        }, 800);
+      }
+    }, 1000);
   };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
@@ -58,6 +165,13 @@ export default function Login() {
       setLoading(false);
       return;
     }
+
+    if (email.toLowerCase().endsWith('@gmail.com')) {
+      setError('Please use the "Continue with Google" button for Gmail accounts.');
+      setLoading(false);
+      return;
+    }
+
     if (mode !== 'forgot-password' && password.length < 6) {
       setError('Password must be at least 6 characters.');
       setLoading(false);
@@ -160,11 +274,45 @@ export default function Login() {
               disabled={loading}
               className="w-full py-4 px-6 rounded-2xl border-2 border-slate-100 hover:border-[#C5A059] flex items-center justify-center gap-3 transition-all group disabled:opacity-50"
             >
-              <Chrome className="w-5 h-5 text-slate-400 group-hover:text-[#C5A059]" />
+              {loading ? (
+                <div className="w-5 h-5 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Chrome className="w-5 h-5 text-slate-400 group-hover:text-[#C5A059]" />
+              )}
               <span className="font-bold text-[#2D2424] text-xs uppercase tracking-widest">
-                Continue with Google
+                {loading ? 'Authenticating...' : 'Continue with Google'}
               </span>
             </button>
+
+            {showSetupHelper && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-5 bg-amber-50 rounded-2xl border border-amber-200"
+              >
+                <div className="flex items-center gap-2 mb-3 text-amber-900 font-bold text-[10px] uppercase tracking-widest">
+                  <CheckCircle2 className="w-4 h-4 text-amber-600" />
+                  Configuration Needed
+                </div>
+                <div className="space-y-3 text-[11px] text-amber-800 leading-relaxed font-medium">
+                  <p>The <strong>403 Forbidden</strong> or <strong>invalid_client</strong> error usually means your Google OAuth is not yet fully configured:</p>
+                  <ol className="list-decimal list-inside space-y-2">
+                    <li>
+                      Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-[#C5A059] underline font-bold">Google Cloud Console</a>
+                    </li>
+                    <li>
+                      Authorized Redirect URIs must include:
+                      <div className="mt-1 p-2 bg-white/50 border border-amber-100 rounded font-mono break-all select-all text-stone-600">
+                        {detectedRedirectUri || `${window.location.origin}/api/auth/callback`}
+                      </div>
+                    </li>
+                    <li>
+                      Set <strong>GOOGLE_CLIENT_ID</strong> and <strong>GOOGLE_CLIENT_SECRET</strong> in the Settings menu (use your real keys, not placeholders like "123").
+                    </li>
+                  </ol>
+                </div>
+              </motion.div>
+            )}
 
             <div className="relative my-8">
               <div className="absolute inset-0 flex items-center">

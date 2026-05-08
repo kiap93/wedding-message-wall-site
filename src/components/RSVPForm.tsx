@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Check, X, Users, Utensils, MessageSquare, Mail } from 'lucide-react';
 import { WeddingTemplate, RSVP, RSVPField } from '../types';
 import { postRSVP } from '../lib/api';
+import { useUser } from '../lib/UserContext';
 
 interface RSVPFormProps {
   projectId: string;
@@ -14,6 +15,7 @@ interface RSVPFormProps {
 }
 
 export default function RSVPForm({ projectId, template, onSuccess, isPreview, currentCount = 0, rsvpFields }: RSVPFormProps) {
+  const { user } = useUser();
   const [formData, setFormData] = useState<Record<string, any>>({
     name: '',
     email: '',
@@ -22,6 +24,17 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
     meal_preference: 'standard',
     dietary_requirements: ''
   });
+
+  useEffect(() => {
+    if (user && !formData.name) {
+      setFormData(prev => ({
+        ...prev,
+        name: user.name || '',
+        email: user.email || ''
+      }));
+    }
+  }, [user]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);

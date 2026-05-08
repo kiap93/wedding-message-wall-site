@@ -66,140 +66,29 @@ export default function Onboarding() {
     }
 
     try {
-      // 1. Get user profile
-      const userRes = await authenticatedFetch(`${API_BASE}/api/auth/me`);
-      const userData = await userRes.json();
-      
-      if (!userData.user) throw new Error('Not authenticated');
+      const response = await authenticatedFetch(`${API_BASE}/api/onboard`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role,
+          name,
+          groomName,
+          brideName,
+          slug
+        })
+      });
 
-      const supabase = getSupabase();
-
-      // 1.5 Safety check: Check if user already has an agency (to prevent race conditions)
-      const { data: userAgency } = await supabase
-        .from('agencies')
-        .select('id, slug, user_role')
-        .eq('user_id', userData.user.id)
-        .maybeSingle();
-
-      if (userAgency) {
-        const protocol = window.location.protocol;
-        const hostParts = window.location.host.split('.');
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const baseDomain = isLocalhost ? 'localhost:3000' : (hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.'));
-        const token = localStorage.getItem('wedding_session_token');
-        
-        if (userAgency.user_role === 'agency') {
-          window.location.replace(`${protocol}//${userAgency.slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
-        } else {
-          window.location.replace('/workspace');
-        }
-        return;
-      }
-      
-      // 2. Check if slug exists
-      const { data: existing } = await supabase
-        .from('agencies')
-        .select('id')
-        .eq('slug', slug)
-        .single();
-        
-      if (existing) {
-        throw new Error('This subdomain is already taken');
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to complete onboarding');
       }
 
-      // 3. Create workspace
-      const { data: agencyData, error: insertError } = await supabase
-        .from('agencies')
-        .insert([
-          {
-            name: role === 'couple' ? `${groomName} & ${brideName}` : name,
-            slug,
-            user_id: userData.user.id,
-            user_role: role
-          }
-        ])
-        .select()
-        .single();
+      const { createdProjectId } = await response.json();
 
-      if (insertError) throw insertError;
-
-      // 3.5 If couple, create the first event automatically with sample data
-      let createdProjectId = '';
-      if (role === 'couple' && agencyData) {
-        // Use a unique slug based on their subdomain to avoid collisions
-        const projectSlug = slug;
-        
-        const { data: projectData, error: projectError } = await supabase
-          .from('projects')
-          .insert([
-            {
-              agency_id: agencyData.id,
-              name: `${groomName} & ${brideName}'s Wedding`,
-              groom_name: groomName,
-              bride_name: brideName,
-              slug: projectSlug,
-              theme_id: 'garden' as any, // default theme
-              wedding_date: new Date(Date.now() + 15552000000).toISOString().split('T')[0], // 6 months from now
-              location: 'Grand Ballroom, Plaza Hotel'
-            }
-          ])
-          .select()
-          .single();
-        
-        if (projectError) throw projectError;
-
-        if (projectData) {
-          createdProjectId = projectData.id;
-          // Add 3 sample messages
-          await supabase.from('messages').insert([
-            { 
-              project_id: projectData.id, 
-              name: 'Aunt Martha', 
-              message: 'So happy for you both! Can\'t wait for the big day! ❤️', 
-              status: 'approved',
-              timestamp: Date.now() - 86400000 // Yesterday
-            },
-            { 
-              project_id: projectData.id, 
-              name: 'The Wilsons', 
-              message: 'Wishing you a lifetime of love and happiness. Cheers!', 
-              status: 'approved',
-              timestamp: Date.now() - 43200000 // 12 hours ago
-            },
-            { 
-              project_id: projectData.id, 
-              name: 'Best Friend Mike', 
-              message: `Sofia & Lucas - let's get this party started! 🥂`, 
-              status: 'approved',
-              timestamp: Date.now() - 3600000 // 1 hour ago
-            }
-          ]);
-
-          // Add 2 sample RSVPs
-          await supabase.from('rsvps').insert([
-            { 
-              project_id: projectData.id, 
-              name: 'John Doe', 
-              email: 'john@example.com', 
-              attending: true, 
-              guest_count: 2, 
-              created_at: new Date(Date.now() - 86400000).toISOString()
-            },
-            { 
-              project_id: projectData.id, 
-              name: 'Jane Smith', 
-              email: 'jane@example.com', 
-              attending: true, 
-              guest_count: 1, 
-              created_at: new Date(Date.now() - 43200000).toISOString()
-            }
-          ]);
-        }
-      }
-
-      // 4. Redirect to workspace
+      // Redirect to workspace
       const protocol = window.location.protocol;
       const hostParts = window.location.host.split('.');
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
       const token = localStorage.getItem('wedding_session_token');
       

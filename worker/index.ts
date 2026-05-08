@@ -50,13 +50,23 @@ app.get('/api/auth/google', async (c) => {
   const GOOGLE_CLIENT_ID = c.env.GOOGLE_CLIENT_ID;
   const APP_URL = c.env.APP_URL;
   
+  // Dynamically detect redirect_uri for AI Studio compatibility
+  const host = c.req.header('host') || '';
+  const isExternal = host.includes('.run.app');
+  const protocol = c.req.header('x-forwarded-proto') || (isExternal ? 'https' : 'http');
+  
+  let currentRedirectUri = `${APP_URL}/api/auth/callback`;
+  if (APP_URL.includes('localhost') && isExternal) {
+    currentRedirectUri = `${protocol}://${host}/api/auth/callback`;
+  }
+
   // Capture the origin to redirect back to the correct subdomain
-  const origin = c.req.header('Origin') || c.env.FRONTEND_URL;
+  const origin = c.req.header('Origin') || c.env.FRONTEND_URL || `${protocol}://${host}`;
   const state = btoa(JSON.stringify({ origin }));
 
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: `${APP_URL}/api/auth/callback`,
+    redirect_uri: currentRedirectUri,
     response_type: 'code',
     scope: 'openid email profile',
     access_type: 'offline',
@@ -69,7 +79,7 @@ app.get('/api/auth/google', async (c) => {
   // Support both: JSON for fetch() and direct redirect for browser
   const accept = c.req.header('Accept');
   if (accept && accept.includes('application/json')) {
-    return c.json({ url });
+    return c.json({ url, redirect_uri: currentRedirectUri });
   }
 
   return c.redirect(url);
@@ -96,6 +106,16 @@ app.get('/api/auth/callback', async (c) => {
   const jwtSecret = JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 
   try {
+    // Dynamically detect redirect_uri
+    const host = c.req.header('host') || '';
+    const isExternal = host.includes('.run.app');
+    const protocol = c.req.header('x-forwarded-proto') || (isExternal ? 'https' : 'http');
+    
+    let currentRedirectUri = `${APP_URL}/api/auth/callback`;
+    if (APP_URL.includes('localhost') && isExternal) {
+      currentRedirectUri = `${protocol}://${host}/api/auth/callback`;
+    }
+
     // Exchange code for tokens
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -104,7 +124,7 @@ app.get('/api/auth/callback', async (c) => {
         code,
         client_id: GOOGLE_CLIENT_ID,
         client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri: `${APP_URL}/api/auth/callback`,
+        redirect_uri: currentRedirectUri,
         grant_type: 'authorization_code',
       }),
     });
@@ -160,13 +180,15 @@ app.get('/api/auth/callback', async (c) => {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Redirecting...</title>
+          <title>Verified</title>
           <script>
             try {
               if (window.opener && window.opener !== window) {
                 window.opener.postMessage({ type: 'AUTH_SUCCESS', token: "${token}" }, "*");
-                // Give a tiny bit of time for message to send before closing
-                setTimeout(() => window.close(), 100);
+                // Give enough time for message to send before closing
+                setTimeout(() => { 
+                  try { window.close(); } catch(e) {}
+                }, 1500);
               } else {
                 window.location.replace("${redirectUrl}");
               }
@@ -175,9 +197,11 @@ app.get('/api/auth/callback', async (c) => {
             }
           </script>
         </head>
-        <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #FDFCF0;">
-          <div style="text-align: center;">
-            <p>Authentication successful! Redirecting you back to your workspace...</p>
+        <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #FFFCF7; margin: 0;">
+          <div style="text-align: center; padding: 2rem; background: white; border-radius: 2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.05); max-width: 90%; width: 340px;">
+            <h2 style="margin: 0 0 1rem 0; font-family: sans-serif; color: #C5A059;">Verified</h2>
+            <p style="color: #666; font-size: 0.9rem; line-height: 1.5;">Login successful! Returning to original tab...</p>
+            <p style="color: #999; font-size: 0.7rem; margin-top: 1rem;">This window will close automatically.</p>
           </div>
         </body>
       </html>
@@ -317,6 +341,10 @@ async function verifyPassword(password: string, storedHash: string) {
 app.post('/api/auth/email', async (c) => {
   const { email, password, mode } = await c.req.json();
   if (!email) return c.json({ error: 'Email is required' }, 400);
+
+  if (email.toLowerCase().endsWith('@gmail.com')) {
+    return c.json({ error: 'For Gmail accounts, please use Continue with Google.' }, 400);
+  }
 
   const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
   const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);

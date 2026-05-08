@@ -29,6 +29,7 @@ import {
 import { Agency, WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate } from '../types';
 import RSVPManager from '../components/RSVPManager';
 import RSVPFieldEditor from '../components/RSVPFieldEditor';
+import RSVPForm from '../components/RSVPForm';
 import MessageModerator from '../components/MessageModerator';
 import { API_BASE } from '../lib/config';
 import { authenticatedFetch, removeAuthToken } from '../lib/auth';
@@ -81,7 +82,7 @@ export default function Workspace() {
       if (workspace) {
         // We have a workspace from subdomain
         setAgency(workspace);
-        fetchEvents(workspace.id, targetProjectId);
+        fetchEvents(workspace.id, workspace.user_role, targetProjectId);
       } else {
         // Root domain (likely a couple or an agency visiting global admin)
         const supabase = getSupabase();
@@ -100,7 +101,7 @@ export default function Workspace() {
         if (userAgencies && userAgencies.length > 0) {
           const primaryWorkspace = userAgencies[0];
           setAgency(primaryWorkspace);
-          fetchEvents(primaryWorkspace.id, targetProjectId);
+          fetchEvents(primaryWorkspace.id, primaryWorkspace.user_role, targetProjectId);
         } else {
           // No agency yet, maybe redirect to onboarding?
           navigate('/onboarding');
@@ -111,7 +112,7 @@ export default function Workspace() {
     initAdmin();
   }, [workspace, isLoadingWorkspace, user, navigate, searchParams]);
 
-  const fetchEvents = async (agencyId: string, targetProjectId?: string | null) => {
+  const fetchEvents = async (agencyId: string, role?: string, targetProjectId?: string | null) => {
     setIsLoadingEvents(true);
     const supabase = getSupabase();
     const { data, error } = await supabase
@@ -138,7 +139,7 @@ export default function Workspace() {
           setEditingEvent(targetEvent);
           setView('editor');
         }
-      } else if (agency?.user_role === 'couple' && eventList.length > 0 && view === 'list') {
+      } else if (role === 'couple' && eventList.length > 0 && view === 'list') {
         const firstEvent = eventList[0];
         setEditingEvent(firstEvent);
         setView('editor');
@@ -150,29 +151,33 @@ export default function Workspace() {
   const handleSaveAgency = async (agencyData: Partial<Agency>) => {
     if (!user) return;
     setIsSavingAgency(true);
-    const supabase = getSupabase();
     
-    let error;
-    if (agency?.id) {
-       // Update: exclude id and created_at
-       const { created_at, id, ...updateData } = { ...agencyData } as any;
-       const { error: err } = await supabase.from('agencies').update(updateData).eq('id', agency.id);
-       error = err;
-    } else {
-       // Insert
-       const payload = {
-         ...agencyData,
-         user_id: user.id || user.sub,
-         created_at: new Date().toISOString()
-       };
-       const { data, error: err } = await supabase.from('agencies').insert([payload]).select().single();
-       if (data) setAgency(data);
-       error = err;
-    }
+    try {
+      let response;
+      if (agency?.id) {
+        response = await authenticatedFetch(`${API_BASE}/api/agencies/${agency.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(agencyData)
+        });
+      } else {
+        response = await authenticatedFetch(`${API_BASE}/api/agencies`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(agencyData)
+        });
+      }
 
-    if (error) {
-      alert('Error saving organization: ' + error.message);
-    } else {
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to save organization');
+      }
+
+      const resData = await response.json();
+      if (resData.data) {
+        setAgency(resData.data);
+      }
+
       // If slug changed, we need to redirect to the new subdomain URL
       const newSlug = agencyData.slug;
       if (newSlug && newSlug !== agency?.slug) {
@@ -189,18 +194,20 @@ export default function Workspace() {
 
         const token = localStorage.getItem('wedding_session_token');
         
-        // Only redirect if not localhost or if we want to simulate subdomains
         if (!isLocalhost || hostParts.length > 1) {
           window.location.replace(`${protocol}//${newSlug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
         } else {
           window.location.reload();
         }
       } else {
-        // Refresh workspace data
         window.location.reload();
       }
+    } catch (err: any) {
+      console.error('Agency save error:', err);
+      alert('Error saving organization: ' + err.message);
+    } finally {
+      setIsSavingAgency(false);
     }
-    setIsSavingAgency(false);
   };
 
   const isSubscribed = agency?.subscription_status === 'active' || 
@@ -277,23 +284,31 @@ export default function Workspace() {
           throw new Error(errData.error || 'Failed to save event');
         }
 
-        if (agency) await fetchEvents(agency.id);
+        if (agency) await fetchEvents(agency.id, agency.user_role);
         setView('list');
       } catch (err: any) {
         console.error('Save error:', err);
         alert('Error saving event: ' + err.message);
       }
     } else {
-      // Insert (could also be moved to API if needed, but keeping for now if it works)
-      const { error: insertError } = await supabase
-        .from('projects')
-        .insert([eventData]);
-      
-      if (insertError) {
-        alert('Error creating event: ' + insertError.message);
-      } else {
-        if (agency) await fetchEvents(agency.id);
+      // Create via API for security/RLS bypass
+      try {
+        const response = await authenticatedFetch(`${API_BASE}/api/projects`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(eventData)
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || 'Failed to create event');
+        }
+
+        if (agency) await fetchEvents(agency.id, agency.user_role);
         setView('list');
+      } catch (err: any) {
+        console.error('Create error:', err);
+        alert('Error creating event: ' + err.message);
       }
     }
     setIsSaving(false);
@@ -302,16 +317,20 @@ export default function Workspace() {
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this event?')) return;
     
-    const supabase = getSupabase();
-    const { error } = await supabase
-      .from('projects')
-      .delete()
-      .eq('id', id);
+    try {
+      const response = await authenticatedFetch(`${API_BASE}/api/projects/${id}`, {
+        method: 'DELETE'
+      });
 
-    if (error) {
-      alert('Error deleting event');
-    } else {
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to delete event');
+      }
+
       setEvents(events.filter(e => e.id !== id));
+    } catch (err: any) {
+      console.error('Delete error:', err);
+      alert('Error deleting event: ' + err.message);
     }
   };
 
@@ -407,15 +426,17 @@ export default function Workspace() {
           >
             {isSubscribed ? 'Pro Plan Active' : 'Upgrade to Pro'}
           </button>
-          {agency && (
             <button 
               onClick={() => setView('agency_settings')}
-              className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-500"
+              className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-500 flex items-center gap-2"
               title={isCouple ? "Account Settings" : "Organization Settings"}
             >
+              <div className="hidden lg:flex flex-col items-end mr-1">
+                <span className="text-[9px] font-black uppercase tracking-widest text-[#C5A059] leading-none mb-0.5">Logged in as</span>
+                <span className="text-xs font-bold text-gray-700 leading-none">{user?.name}</span>
+              </div>
               <Settings className="w-5 h-5" />
             </button>
-          )}
           <button 
             onClick={handleLogout}
             className="p-2 hover:bg-red-50 text-red-500 rounded-xl transition-colors flex items-center gap-2 text-sm font-bold uppercase tracking-wider"
@@ -1098,8 +1119,9 @@ export default function Workspace() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
+                        className="space-y-8"
                       >
-                         <div className="mb-8 flex items-center justify-between">
+                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                            <div>
                              <h2 className="text-3xl font-serif">Setup RSVP Form</h2>
                              <p className="text-gray-500">Customize the questions you want to ask your guests.</p>
@@ -1107,16 +1129,66 @@ export default function Workspace() {
                            <button 
                              onClick={handleSave}
                              disabled={isSaving}
-                             className="flex items-center gap-2 px-8 py-3 bg-[#C5A059] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-xl disabled:opacity-50"
+                             className="flex items-center gap-2 px-8 py-3 bg-[#C5A059] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-xl disabled:opacity-50 w-fit"
                            >
                              <Save className="w-4 h-4" />
                              {isSaving ? 'Saving...' : 'Save Form'}
                            </button>
                          </div>
-                         <RSVPFieldEditor 
-                            fields={editingEvent.rsvp_fields || []} 
-                            onChange={(fields) => setEditingEvent({ ...editingEvent!, rsvp_fields: fields })}
-                         />
+
+                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                           {/* Editor Side */}
+                           <div>
+                            <RSVPFieldEditor 
+                               fields={editingEvent.rsvp_fields || []} 
+                               onChange={(fields) => setEditingEvent({ ...editingEvent!, rsvp_fields: fields })}
+                            />
+                           </div>
+
+                           {/* Preview Side */}
+                           <div className="space-y-4">
+                             <div className="flex items-center gap-2 px-2">
+                               <Sparkles className="w-4 h-4 text-[#C5A059]" />
+                               <h3 className="text-[10px] font-black uppercase tracking-widest text-[#C5A059]">Live Preview</h3>
+                             </div>
+                             
+                             <div className="bg-white rounded-[3rem] p-8 border border-[#C5A059]/10 shadow-xl sticky top-24">
+                                <div className="max-w-md mx-auto">
+                                  {/* Re-rendering RSVPForm with current state */}
+                                  {(() => {
+                                    const activeTemplate = templates.find(t => t.id === editingEvent?.theme_id) || templates[0];
+                                    if (!activeTemplate) return null;
+                                    
+                                    return (
+                                      <div className={`${activeTemplate.colors.background} ${activeTemplate.colors.text} p-8 rounded-3xl`}>
+                                        <div className="mb-8 text-center">
+                                          <h4 className={`text-2xl font-serif mb-2 ${activeTemplate.colors.headerText}`}>Will you join us?</h4>
+                                          <p className={`text-xs opacity-60 uppercase tracking-widest ${activeTemplate.colors.subtleText}`}>Please respond by the date below</p>
+                                        </div>
+
+                                        <div className="pointer-events-none opacity-80 scale-95">
+                                          {/* Use the actual component */}
+                                          {editingEvent && (
+                                            <RSVPForm 
+                                              projectId={editingEvent.id || 'preview'}
+                                              template={activeTemplate}
+                                              onSuccess={() => {}}
+                                              isPreview={true}
+                                              rsvpFields={editingEvent.rsvp_fields}
+                                            />
+                                          )}
+                                        </div>
+                                        
+                                        <div className="mt-8 pt-8 border-t border-current border-opacity-10 text-center">
+                                          <p className="text-[10px] font-bold uppercase tracking-widest opacity-30">Preview Mode Only</p>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                             </div>
+                           </div>
+                         </div>
                       </motion.div>
                     )}
 

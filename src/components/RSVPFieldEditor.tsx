@@ -102,86 +102,124 @@ export default function RSVPFieldEditor({ fields, onChange }: RSVPFieldEditorPro
 
         <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-4">Custom Questions</h4>
         
-        <Reorder.Group axis="y" values={currentFields} onReorder={onChange} className="space-y-3">
-          {Array.isArray(currentFields) && currentFields.filter(f => !DEFAULT_FIELDS.some(df => df.id === f.id)).map((field) => (
-            <Reorder.Item 
-              key={field.id} 
-              value={field}
-              className="bg-gray-50 border border-gray-100 p-4 rounded-2xl flex items-start gap-4 group"
-            >
-              <div className="mt-2 cursor-grab active:cursor-grabbing text-gray-300 group-hover:text-gray-400 transition-colors">
-                <GripVertical className="w-5 h-5" />
-              </div>
-              
-              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[8px] font-black uppercase tracking-widest text-gray-400">Label</label>
-                  <input
-                    type="text"
-                    value={field.label}
-                    onChange={(e) => handleUpdateField(field.id, { label: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 text-sm"
-                  />
+        <Reorder.Group axis="y" values={currentFields} onReorder={onChange} className="space-y-4">
+          {Array.isArray(currentFields) && currentFields.map((field) => {
+            const isStandard = DEFAULT_FIELDS.some(df => df.id === field.id);
+            return (
+              <Reorder.Item 
+                key={field.id} 
+                value={field}
+                className="bg-white border border-gray-100 p-6 rounded-[2rem] shadow-sm flex items-start gap-4 group hover:border-[#C5A059]/30 transition-all"
+              >
+                <div className="mt-2 cursor-grab active:cursor-grabbing text-gray-300 group-hover:text-[#C5A059] transition-colors p-2">
+                  <GripVertical className="w-5 h-5" />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[8px] font-black uppercase tracking-widest text-gray-400">Type</label>
-                  <select
-                    value={field.type}
-                    onChange={(e) => handleUpdateField(field.id, { type: e.target.value as any })}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 text-sm"
-                  >
-                    <option value="text">Short Text</option>
-                    <option value="textarea">Long Text</option>
-                    <option value="number">Number</option>
-                    <option value="select">Dropdown Choice</option>
-                    <option value="radio">Single Choice (Radio)</option>
-                    <option value="checkbox">Multi Choice (Checkbox)</option>
-                  </select>
-                </div>
-                {(field.type === 'select' || field.type === 'radio' || field.type === 'checkbox') && (
-                  <div className="md:col-span-2 space-y-1">
-                    <label className="text-[8px] font-black uppercase tracking-widest text-gray-400">Options (one per line)</label>
-                    <textarea
-                      value={field.options?.join('\n') || ''}
-                      onChange={(e) => handleUpdateField(field.id, { options: e.target.value.split('\n') })}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 text-sm min-h-[80px]"
-                      placeholder={"Option 1\nOption 2\nOption 3"}
+                
+                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black uppercase tracking-widest text-[#C5A059]">
+                      {isStandard ? 'Standard Label' : 'Custom Question'}
+                    </label>
+                    <input
+                      type="text"
+                      value={field.label}
+                      onChange={(e) => handleUpdateField(field.id, { label: e.target.value })}
+                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-transparent focus:border-[#C5A059] focus:bg-white outline-none transition-all text-[#2D2424] text-sm font-medium"
+                      placeholder="Enter question label..."
                     />
                   </div>
-                )}
-                <div className="md:col-span-2 flex items-center gap-6">
-                   <div className="flex items-center gap-2">
-                     <input 
-                        type="checkbox" 
-                        id={`req-${field.id}`}
-                        checked={field.required}
-                        onChange={(e) => handleUpdateField(field.id, { required: e.target.checked })}
-                        className="w-4 h-4 rounded border-gray-300 text-[#C5A059] focus:ring-[#C5A059]"
-                     />
-                     <label htmlFor={`req-${field.id}`} className="text-xs font-bold text-gray-600 cursor-pointer">Required</label>
-                   </div>
-                   <div className="flex items-center gap-2">
-                     <input 
-                        type="checkbox" 
-                        id={`att-${field.id}`}
-                        checked={field.showIfAttending}
-                        onChange={(e) => handleUpdateField(field.id, { showIfAttending: e.target.checked })}
-                        className="w-4 h-4 rounded border-gray-300 text-[#C5A059] focus:ring-[#C5A059]"
-                     />
-                     <label htmlFor={`att-${field.id}`} className="text-xs font-bold text-gray-600 cursor-pointer">Only if Attending</label>
-                   </div>
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black uppercase tracking-widest text-gray-400">Field Type</label>
+                    <select
+                      value={field.type}
+                      onChange={(e) => handleUpdateField(field.id, { type: e.target.value as any })}
+                      disabled={isStandard && field.id !== 'meal_preference'} // Keep meal preference choice-based
+                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-transparent focus:border-[#C5A059] focus:bg-white outline-none transition-all text-[#2D2424] text-sm disabled:opacity-50 cursor-pointer"
+                    >
+                      <option value="text">Short Text</option>
+                      <option value="textarea">Long Text</option>
+                      <option value="number">Number</option>
+                      <option value="select">Dropdown Choice</option>
+                      <option value="radio">Single Choice (Radio)</option>
+                      <option value="checkbox">Multi Choice (Checkbox)</option>
+                    </select>
+                  </div>
+                  {(field.type === 'select' || field.type === 'radio' || field.type === 'checkbox') && (
+                    <div className="md:col-span-2 space-y-4 bg-gray-50/50 p-6 rounded-2xl border border-dashed border-gray-100">
+                      <label className="text-[8px] font-black uppercase tracking-widest text-gray-400">Options</label>
+                      <div className="space-y-3">
+                        {(field.options || []).map((option, index) => (
+                          <div key={index} className="flex gap-3">
+                            <input
+                              type="text"
+                              value={option}
+                              onChange={(e) => {
+                                const newOptions = [...(field.options || [])];
+                                newOptions[index] = e.target.value;
+                                handleUpdateField(field.id, { options: newOptions });
+                              }}
+                              className="flex-1 px-4 py-2 rounded-xl bg-white border border-gray-100 focus:border-[#C5A059] outline-none transition-all text-sm"
+                              placeholder={`Option ${index + 1}`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newOptions = (field.options || []).filter((_, i) => i !== index);
+                                handleUpdateField(field.id, { options: newOptions });
+                              }}
+                              className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newOptions = [...(field.options || []), ''];
+                            handleUpdateField(field.id, { options: newOptions });
+                          }}
+                          className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#C5A059] hover:text-[#B38D45] transition-colors mt-2"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add Choice
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="md:col-span-2 flex flex-wrap items-center gap-8 py-2">
+                     <div className="flex items-center gap-3">
+                       <input 
+                          type="checkbox" 
+                          id={`req-${field.id}`}
+                          checked={field.required}
+                          onChange={(e) => handleUpdateField(field.id, { required: e.target.checked })}
+                          className="w-5 h-5 rounded-lg border-gray-200 text-[#C5A059] focus:ring-[#C5A059] transition-all cursor-pointer"
+                       />
+                       <label htmlFor={`req-${field.id}`} className="text-[10px] font-bold text-gray-500 uppercase tracking-wider cursor-pointer select-none">Required</label>
+                     </div>
+                     <div className="flex items-center gap-3">
+                       <input 
+                          type="checkbox" 
+                          id={`att-${field.id}`}
+                          checked={field.showIfAttending}
+                          onChange={(e) => handleUpdateField(field.id, { showIfAttending: e.target.checked })}
+                          className="w-5 h-5 rounded-lg border-gray-200 text-[#C5A059] focus:ring-[#C5A059] transition-all cursor-pointer"
+                       />
+                       <label htmlFor={`att-${field.id}`} className="text-[10px] font-bold text-gray-500 uppercase tracking-wider cursor-pointer select-none">Show only if Attending</label>
+                     </div>
+                  </div>
                 </div>
-              </div>
-
-              <button
-                onClick={() => handleRemoveField(field.id)}
-                className="mt-6 p-2 text-gray-300 hover:text-red-500 transition-colors"
-                title="Remove Question"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
-            </Reorder.Item>
-          ))}
+  
+                <button
+                  onClick={() => handleRemoveField(field.id)}
+                  className="mt-6 p-2 text-gray-200 hover:text-red-500 transition-colors"
+                  title="Remove Question"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </Reorder.Item>
+            );
+          })}
         </Reorder.Group>
 
         <div className="mt-6 flex justify-center">
