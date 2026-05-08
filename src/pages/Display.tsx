@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactDOM from 'react-dom';
 import { Heart, QrCode, Leaf, Star, Mail, Camera, Flower, Zap } from 'lucide-react';
 import { fetchMessages, Message } from '../lib/api';
 import { getSupabase } from '../lib/supabase';
@@ -422,46 +423,73 @@ export default function Display() {
 }
 
 function CustomLayout({ messages, template }: { messages: Message[], template: WeddingTemplate, key?: any }) {
-  // Try to find the position of messages-container in the custom HTML
-  const html = template.html || '<div id="messages-container"></div>';
-  // Use a more robust split that handles variations in spacing and attributes
-  const parts = html.split(/<div\s+id=["']messages-container["'][^>]*>[\s\S]*?<\/div>/i);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [messagesContainer, setMessagesContainer] = useState<Element | null>(null);
+
+  // Use a MutationObserver to find the messages container within the dangerouslySetInnerHTML content
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    // Reset container if HTML/Template changes to ensure fresh portal target
+    setMessagesContainer(null);
+
+    const findContainer = () => {
+      const el = containerRef.current?.querySelector('#messages-container');
+      if (el) {
+        setMessagesContainer(el);
+        return true;
+      }
+      return false;
+    };
+
+    if (!findContainer()) {
+      const observer = new MutationObserver(() => {
+        if (findContainer()) observer.disconnect();
+      });
+      observer.observe(containerRef.current, { childList: true, subtree: true });
+      return () => observer.disconnect();
+    }
+  }, [template.html, template.id]);
   
   return (
     <motion.div 
+      ref={containerRef}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="custom-layout-container"
+      className="custom-layout-container w-full h-full min-h-screen"
       style={{ '--total-messages': messages.length } as any}
     >
-      {parts[0] && <div dangerouslySetInnerHTML={{ __html: parts[0] }} />}
+      <div className="w-full h-full" dangerouslySetInnerHTML={{ __html: template.html || '<div id="messages-container"></div>' }} />
       
-      <div id="messages-container" className="relative w-full h-full">
-        <AnimatePresence mode="popLayout">
-          {messages.map((msg, index) => (
-            <CustomMessageCard key={msg.id} msg={msg} template={template} index={index} />
-          ))}
-        </AnimatePresence>
-      </div>
-
-      {parts[1] && <div dangerouslySetInnerHTML={{ __html: parts[1] }} />}
+      {messagesContainer && ReactDOM.createPortal(
+        <div key={template.html} className="contents">
+          <AnimatePresence mode="popLayout">
+            {messages.map((msg, index) => (
+              <CustomMessageCard key={msg.id} msg={msg} template={template} index={index} />
+            ))}
+          </AnimatePresence>
+        </div>,
+        messagesContainer
+      )}
     </motion.div>
   );
 }
 
 function CustomMessageCard({ msg, template, index }: { msg: Message, template: WeddingTemplate, index: number, key?: any }) {
   const cardHtml = template.card_html || '<div><h3>{{name}}</h3><p>{{message}}</p></div>';
+  const isCustom = template.variant === 'custom';
   
   const renderedHtml = cardHtml
     .replace(/\{\{name\}\}/g, msg.name || 'Guest')
     .replace(/\{\{message\}\}/g, msg.message)
+    .replace(/\{\{index\}\}/g, index.toString())
     .replace(/\{\{timestamp\}\}/g, new Date(msg.timestamp).toLocaleTimeString());
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, x: 100 }}
-      animate={{ opacity: 1, x: 0 }}
+      layout={!isCustom}
+      initial={isCustom ? { opacity: 0 } : { opacity: 0, x: 100 }}
+      animate={isCustom ? { opacity: 1 } : { opacity: 1, x: 0 }}
       exit={{ opacity: 0, scale: 0.9 }}
       className="custom-card-wrapper"
       style={{ 

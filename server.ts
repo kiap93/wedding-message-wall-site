@@ -990,6 +990,101 @@ function verifyPasswordNode(password: string, storedHash: string) {
     }
   });
 
+  // --- Template Routes (Staff Only) ---
+  apiRouter.post('/templates', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      
+      // Staff check
+      const isStaff = decoded.email === 'buildsiteasia@gmail.com' || decoded.email?.endsWith('@eventframe.io');
+      if (!isStaff) return res.status(403).json({ error: 'Staff access required' });
+
+      const templateData = req.body;
+      const { data, error } = await getSupabaseAdmin()
+        .from('templates')
+        .insert([templateData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Template creation error:', error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.status(201).json({ success: true, data });
+    } catch (error: any) {
+      res.status(401).json({ error: 'Invalid session', details: error.message });
+    }
+  });
+
+  apiRouter.put('/templates/:id', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      
+      const isStaff = decoded.email === 'buildsiteasia@gmail.com' || decoded.email?.endsWith('@eventframe.io');
+      if (!isStaff) return res.status(403).json({ error: 'Staff access required' });
+
+      const { id } = req.params;
+      const templateData = req.body;
+      const { id: _, ...updateData } = templateData;
+
+      const { data, error } = await getSupabaseAdmin()
+        .from('templates')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Template update error:', error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.json({ success: true, data });
+    } catch (error: any) {
+      res.status(401).json({ error: 'Invalid session', details: error.message });
+    }
+  });
+
+  apiRouter.delete('/templates/:id', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      
+      const isStaff = decoded.email === 'buildsiteasia@gmail.com' || decoded.email?.endsWith('@eventframe.io');
+      if (!isStaff) return res.status(403).json({ error: 'Staff access required' });
+
+      const { id } = req.params;
+      const { error } = await getSupabaseAdmin()
+        .from('templates')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Template deletion error:', error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(401).json({ error: 'Invalid session', details: error.message });
+    }
+  });
+
   // --- RSVP Routes ---
   apiRouter.post('/rsvps', async (req, res) => {
     try {

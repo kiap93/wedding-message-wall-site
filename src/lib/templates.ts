@@ -42,7 +42,7 @@ export async function fetchTemplates(): Promise<WeddingTemplate[]> {
 }
 
 export async function saveTemplate(template: Omit<WeddingTemplate, 'id'> & { id?: string }) {
-  const supabase = getSupabase();
+  const token = localStorage.getItem('wedding_session_token');
   const dbData = {
     name: template.name,
     description: template.description,
@@ -51,37 +51,43 @@ export async function saveTemplate(template: Omit<WeddingTemplate, 'id'> & { id?
     font_sans: template.fontSans,
     icon_type: template.iconType,
     animation_type: template.animationType,
-    colors: template.colors, // Supabase handles jsonb normally if passed as object
+    colors: template.colors, 
     html: template.html,
     css: template.css,
     card_html: template.card_html,
   };
 
-  if (template.id) {
-    const { data, error } = await supabase
-      .from('templates')
-      .update(dbData)
-      .eq('id', template.id)
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
-  } else {
-    const { data, error } = await supabase
-      .from('templates')
-      .insert([dbData])
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+  const endpoint = template.id ? `/api/templates/${template.id}` : '/api/templates';
+  const method = template.id ? 'PUT' : 'POST';
+
+  const response = await fetch(endpoint, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(dbData)
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to save template');
   }
+
+  return data.data;
 }
 
 export async function deleteTemplate(id: string) {
-  const supabase = getSupabase();
-  const { error } = await supabase
-    .from('templates')
-    .delete()
-    .eq('id', id);
-  if (error) throw error;
+  const token = localStorage.getItem('wedding_session_token');
+  const response = await fetch(`/api/templates/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Failed to delete template');
+  }
 }

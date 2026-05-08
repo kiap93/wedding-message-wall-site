@@ -30,16 +30,7 @@ export function getSupabase(): SupabaseClient {
       );
     }
     
-    supabaseInstance = createClient(url!, key!, {
-      global: {
-        headers: {
-          get Authorization() {
-            const token = localStorage.getItem('wedding_session_token');
-            return token ? `Bearer ${token}` : '';
-          }
-        } as any
-      }
-    });
+    supabaseInstance = createClient(url!, key!);
   }
   return supabaseInstance;
 }

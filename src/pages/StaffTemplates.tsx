@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Save, Trash2, Palette, ArrowLeft, Loader2, Sparkles, Code, Layout, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -16,6 +17,7 @@ export default function StaffTemplates() {
   const [editingTemplate, setEditingTemplate] = useState<Partial<WeddingTemplate> | null>(null);
   const [activeTab, setActiveTab] = useState<'settings' | 'html' | 'card'>('settings');
   const [showLivePreview, setShowLivePreview] = useState(false);
+  const [previewRevision, setPreviewRevision] = useState(0);
 
   // Security check: Only allow staff (for now, admin email or demo account)
   const isStaff = user?.email === 'buildsiteasia@gmail.com' || user?.email?.includes('@eventframe.io');
@@ -202,7 +204,10 @@ export default function StaffTemplates() {
                 <div className="flex justify-end mb-4">
                   <button
                     type="button"
-                    onClick={() => setShowLivePreview(true)}
+                    onClick={() => {
+                      setPreviewRevision(prev => prev + 1);
+                      setShowLivePreview(true);
+                    }}
                     className="flex items-center gap-2 px-6 py-2 bg-[#C5A059]/10 text-[#C5A059] rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#C5A059] hover:text-white transition-all border border-[#C5A059]/20"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
@@ -424,7 +429,7 @@ export default function StaffTemplates() {
 
               <div className="flex-1 overflow-hidden relative bg-gray-100">
                 <InternalTemplateView 
-                  key={`${editingTemplate.id}-${showLivePreview}-${(editingTemplate.css || '').length}-${(editingTemplate.html || '').length}`}
+                  key={`preview-${editingTemplate.id || 'new'}-${previewRevision}`}
                   template={editingTemplate as WeddingTemplate} 
                 />
               </div>
@@ -484,34 +489,60 @@ function InternalTemplateView({ template }: { template: WeddingTemplate, key?: a
 }
 
 function CustomSimulator({ template }: { template: WeddingTemplate }) {
-  const html = template.html || '<div id="messages-container"></div>';
-  // Use a more robust split that handles variations in spacing and attributes
-  const parts = html.split(/<div\s+id=["']messages-container["'][^>]*>[\s\S]*?<\/div>/i);
-  
-  return (
-    <div className="custom-layout-container w-full h-full min-h-screen">
-      {parts[0] && <div dangerouslySetInnerHTML={{ __html: parts[0] }} />}
-      
-      <div id="messages-container">
-        {MOCK_MESSAGES.map((msg, index) => {
-          const cardHtml = template.card_html || '<div><h3>{{name}}</h3><p>{{message}}</p></div>';
-          const renderedHtml = cardHtml
-            .replace(/\{\{name\}\}/g, msg.name)
-            .replace(/\{\{message\}\}/g, msg.message)
-            .replace(/\{\{timestamp\}\}/g, new Date(msg.timestamp).toLocaleTimeString());
-            
-          return (
-            <div 
-              key={msg.id} 
-              className="custom-card-wrapper"
-              style={{ '--index': index } as any}
-              dangerouslySetInnerHTML={{ __html: renderedHtml }} 
-            />
-          );
-        })}
-      </div>
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [messagesContainer, setMessagesContainer] = useState<Element | null>(null);
 
-      {parts[1] && <div dangerouslySetInnerHTML={{ __html: parts[1] }} />}
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    // Reset container if HTML changes
+    setMessagesContainer(null);
+
+    const findContainer = () => {
+      const el = containerRef.current?.querySelector('#messages-container');
+      if (el) {
+        setMessagesContainer(el);
+        return true;
+      }
+      return false;
+    };
+
+    // Immediate check
+    if (!findContainer()) {
+      const observer = new MutationObserver(() => {
+        if (findContainer()) observer.disconnect();
+      });
+      observer.observe(containerRef.current, { childList: true, subtree: true });
+      return () => observer.disconnect();
+    }
+  }, [template.html, template.id]);
+
+  return (
+    <div ref={containerRef} className="custom-layout-container w-full h-full min-h-screen">
+      <div className="w-full h-full" dangerouslySetInnerHTML={{ __html: template.html || '<div id="messages-container"></div>' }} />
+      
+      {messagesContainer && ReactDOM.createPortal(
+        <div key={template.html} className="contents">
+          {MOCK_MESSAGES.map((msg, index) => {
+            const cardHtml = template.card_html || '<div><h3>{{name}}</h3><p>{{message}}</p></div>';
+            const renderedHtml = cardHtml
+              .replace(/\{\{name\}\}/g, msg.name)
+              .replace(/\{\{message\}\}/g, msg.message)
+              .replace(/\{\{index\}\}/g, index.toString())
+              .replace(/\{\{timestamp\}\}/g, new Date(msg.timestamp).toLocaleTimeString());
+              
+            return (
+              <div 
+                key={msg.id} 
+                className="custom-card-wrapper"
+                style={{ '--index': index } as any}
+                dangerouslySetInnerHTML={{ __html: renderedHtml }} 
+              />
+            );
+          })}
+        </div>,
+        messagesContainer
+      )}
     </div>
   );
 }
