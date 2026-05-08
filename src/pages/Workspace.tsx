@@ -72,6 +72,7 @@ export default function Workspace() {
     load();
   }, []);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showRSVPPreview, setShowRSVPPreview] = useState(false);
 
   useEffect(() => {
     const initAdmin = async () => {
@@ -137,11 +138,13 @@ export default function Workspace() {
         const targetEvent = eventList.find(e => e.id === targetProjectId);
         if (targetEvent) {
           setEditingEvent(targetEvent);
+          setActiveEditorTab('aesthetic');
           setView('editor');
         }
-      } else if (role === 'couple' && eventList.length > 0 && view === 'list') {
+      } else if (role === 'couple' && eventList.length > 0 && view === 'list' && !editingEvent) {
         const firstEvent = eventList[0];
         setEditingEvent(firstEvent);
+        setActiveEditorTab('aesthetic');
         setView('editor');
       }
     }
@@ -229,30 +232,33 @@ export default function Workspace() {
       alert('Individual accounts are limited to one event. Upgrade to an Agency account to manage multiple events.');
       return;
     }
-    if (!isSubscribed && !isCouple) {
+    if (!isSubscribed && !isStaff) {
       alert('A pro subscription is required to create new events.');
       navigate('/subscription');
       return;
     }
     const newEvent: Partial<WeddingEvent> = {
-      name: `${agency.name}`,
+      name: '',
       slug: `wedding-${Math.random().toString(36).substring(2, 7)}`,
-      groom_name: agency.name.split(' & ')[0] || 'Partner A',
-      bride_name: agency.name.split(' & ')[1] || 'Partner B',
+      groom_name: '',
+      bride_name: '',
       wedding_date: new Date().toISOString().split('T')[0],
-      location: 'Your Beautiful Venue',
+      location: '',
       theme_id: 'minimal_luxury',
       agency_id: agency.id,
       access_password: Math.random().toString(36).substring(2, 8).toUpperCase(),
       auto_approve_messages: false,
-      image_url: ''
+      image_url: '',
+      rsvp_fields: []
     };
     setEditingEvent(newEvent);
+    setActiveEditorTab('aesthetic');
     setView('editor');
   };
 
   const handleEdit = (event: WeddingEvent) => {
     setEditingEvent({ ...event });
+    setActiveEditorTab('aesthetic');
     setView('editor');
   };
 
@@ -1144,68 +1150,30 @@ export default function Workspace() {
                              <h2 className="text-3xl font-serif">Setup RSVP Form</h2>
                              <p className="text-gray-500">Customize the questions you want to ask your guests.</p>
                            </div>
-                           <button 
-                             onClick={handleSave}
-                             disabled={isSaving}
-                             className="flex items-center gap-2 px-8 py-3 bg-[#C5A059] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-xl disabled:opacity-50 w-fit"
-                           >
-                             <Save className="w-4 h-4" />
-                             {isSaving ? 'Saving...' : 'Save Form'}
-                           </button>
+                           <div className="flex items-center gap-3">
+                             <button 
+                               onClick={() => setShowRSVPPreview(true)}
+                               className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-[#C5A059]/30 text-[#C5A059] rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#C5A059]/5 transition-all w-fit"
+                             >
+                               <Sparkles className="w-4 h-4" />
+                               Preview Form
+                             </button>
+                             <button 
+                               onClick={handleSave}
+                               disabled={isSaving}
+                               className="flex items-center gap-2 px-8 py-3 bg-[#C5A059] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-xl disabled:opacity-50 w-fit"
+                             >
+                               <Save className="w-4 h-4" />
+                               {isSaving ? 'Saving...' : 'Save Form'}
+                             </button>
+                           </div>
                          </div>
 
-                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                           {/* Editor Side */}
-                           <div>
+                         <div className="max-w-4xl">
                             <RSVPFieldEditor 
                                fields={editingEvent.rsvp_fields || []} 
                                onChange={(fields) => setEditingEvent({ ...editingEvent!, rsvp_fields: fields })}
                             />
-                           </div>
-
-                           {/* Preview Side */}
-                           <div className="space-y-4">
-                             <div className="flex items-center gap-2 px-2">
-                               <Sparkles className="w-4 h-4 text-[#C5A059]" />
-                               <h3 className="text-[10px] font-black uppercase tracking-widest text-[#C5A059]">Live Preview</h3>
-                             </div>
-                             
-                             <div className="bg-white rounded-[3rem] p-8 border border-[#C5A059]/10 shadow-xl sticky top-24">
-                                <div className="max-w-md mx-auto">
-                                  {/* Re-rendering RSVPForm with current state */}
-                                  {(() => {
-                                    const activeTemplate = templates.find(t => t.id === editingEvent?.theme_id) || templates[0];
-                                    if (!activeTemplate) return null;
-                                    
-                                    return (
-                                      <div className={`${activeTemplate.colors.background} ${activeTemplate.colors.text} p-8 rounded-3xl`}>
-                                        <div className="mb-8 text-center">
-                                          <h4 className={`text-2xl font-serif mb-2 ${activeTemplate.colors.headerText}`}>Will you join us?</h4>
-                                          <p className={`text-xs opacity-60 uppercase tracking-widest ${activeTemplate.colors.subtleText}`}>Please respond by the date below</p>
-                                        </div>
-
-                                        <div className="pointer-events-none opacity-80 scale-95">
-                                          {/* Use the actual component */}
-                                          {editingEvent && (
-                                            <RSVPForm 
-                                              projectId={editingEvent.id || 'preview'}
-                                              template={activeTemplate}
-                                              onSuccess={() => {}}
-                                              isPreview={true}
-                                              rsvpFields={editingEvent.rsvp_fields}
-                                            />
-                                          )}
-                                        </div>
-                                        
-                                        <div className="mt-8 pt-8 border-t border-current border-opacity-10 text-center">
-                                          <p className="text-[10px] font-bold uppercase tracking-widest opacity-30">Preview Mode Only</p>
-                                        </div>
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
-                             </div>
-                           </div>
                          </div>
                       </motion.div>
                     )}
@@ -1250,6 +1218,90 @@ export default function Workspace() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* RSVP Preview Modal */}
+      <AnimatePresence>
+        {showRSVPPreview && editingEvent && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowRSVPPreview(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-white rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col border border-white/20"
+            >
+              <div className="p-6 border-b border-[#C5A059]/10 flex items-center justify-between bg-white/50">
+                <div className="flex items-center gap-3 font-serif">
+                  <div className="p-2 bg-[#C5A059]/10 rounded-xl">
+                    <Sparkles className="w-5 h-5 text-[#C5A059]" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl">RSVP Preview</h3>
+                    <p className="text-[10px] font-bold font-sans uppercase tracking-[0.1em] text-gray-400">Guest Perspective</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowRSVPPreview(false)}
+                  className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-2xl transition-all"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
+                <div className="max-w-md mx-auto">
+                    {(() => {
+                      const activeTemplate = templates.find(t => t.id === editingEvent?.theme_id) || templates[0];
+                      if (!activeTemplate) return null;
+                      
+                      return (
+                        <div className={`${activeTemplate.colors.background} ${activeTemplate.colors.text} p-8 rounded-3xl shadow-xl border border-[#C5A059]/5`}>
+                          <div className="mb-8 text-center">
+                            <h4 className={`text-2xl font-serif mb-2 ${activeTemplate.colors.headerText}`}>Will you join us?</h4>
+                            <p className={`text-xs opacity-60 uppercase tracking-widest ${activeTemplate.colors.subtleText}`}>Please respond by the date below</p>
+                          </div>
+
+                          <div>
+                            {/* Use the actual component */}
+                            {editingEvent && (
+                              <RSVPForm 
+                                projectId={editingEvent.id || 'preview'}
+                                template={activeTemplate}
+                                onSuccess={() => {}}
+                                isPreview={true}
+                                rsvpFields={editingEvent.rsvp_fields}
+                              />
+                            )}
+                          </div>
+                          
+                          <div className="mt-8 pt-8 border-t border-current border-opacity-10 text-center">
+                            <p className="text-[10px] font-bold uppercase tracking-widest opacity-30">This is a preview</p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                </div>
+              </div>
+              
+              <div className="p-6 bg-white border-t border-[#C5A059]/10 text-center">
+                <button 
+                  onClick={() => setShowRSVPPreview(false)}
+                  className="px-8 py-3 bg-[#C5A059] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-lg"
+                >
+                  Close Preview
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Preview Modal */}
       <AnimatePresence>

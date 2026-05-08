@@ -82,11 +82,14 @@ export interface WeddingTemplate {
   colors: TemplateColors;
   fontSerif: string;
   fontSans: string;
-  variant: 'masonry' | 'hanging' | 'floating' | 'grid';
+  variant: 'masonry' | 'hanging' | 'floating' | 'grid' | 'custom';
   cardStyle?: string;
   animationType?: 'float' | 'slide' | 'pop' | 'fade';
   iconType?: 'heart' | 'leaf' | 'star' | 'mail' | 'camera' | 'flower' | 'palette';
   is_custom?: boolean;
+  html?: string;
+  css?: string;
+  card_html?: string;
 }
 
 export const DEFAULT_TEMPLATES: WeddingTemplate[] = [

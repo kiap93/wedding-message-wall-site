@@ -381,6 +381,8 @@ export default function Display() {
               <HangingLayout key="hanging" messages={messages} template={template} />
             ) : template.variant === 'floating' ? (
               <FloatingLayout key="floating" messages={messages} template={template} />
+            ) : template.variant === 'custom' ? (
+              <CustomLayout key="custom" messages={messages} template={template} />
             ) : (
               <MasonryLayout key="masonry" messages={messages} template={template} />
             )}
@@ -413,8 +415,55 @@ export default function Display() {
           background-image: url('https://www.transparenttextures.com/patterns/wood-pattern.png');
           background-repeat: repeat;
         }
+        ${template.css || ''}
       `}} />
     </div>
+  );
+}
+
+function CustomLayout({ messages, template }: { messages: Message[], template: WeddingTemplate, key?: React.Key }) {
+  // Try to find the position of messages-container in the custom HTML
+  const html = template.html || '<div id="messages-container"></div>';
+  const parts = html.split('<div id="messages-container"></div>');
+  
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="custom-layout-container"
+    >
+      {parts[0] && <div dangerouslySetInnerHTML={{ __html: parts[0] }} />}
+      
+      <div id="messages-container" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <AnimatePresence mode="popLayout">
+          {messages.map((msg) => (
+            <CustomMessageCard key={msg.id} msg={msg} template={template} />
+          ))}
+        </AnimatePresence>
+      </div>
+
+      {parts[1] && <div dangerouslySetInnerHTML={{ __html: parts[1] }} />}
+    </motion.div>
+  );
+}
+
+function CustomMessageCard({ msg, template }: { msg: Message, template: WeddingTemplate, key?: React.Key }) {
+  const cardHtml = template.card_html || '<div><h3>{{name}}</h3><p>{{message}}</p></div>';
+  
+  const renderedHtml = cardHtml
+    .replace(/\{\{name\}\}/g, msg.name || 'Guest')
+    .replace(/\{\{message\}\}/g, msg.message)
+    .replace(/\{\{timestamp\}\}/g, new Date(msg.timestamp).toLocaleTimeString());
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      className="custom-card-wrapper"
+      dangerouslySetInnerHTML={{ __html: renderedHtml }}
+    />
   );
 }
 

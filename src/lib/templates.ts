@@ -28,6 +28,9 @@ export async function fetchTemplates(): Promise<WeddingTemplate[]> {
       iconType: t.icon_type,
       animationType: t.animation_type,
       colors: typeof t.colors === 'string' ? JSON.parse(t.colors) : t.colors,
+      html: t.html,
+      css: t.css,
+      card_html: t.card_html,
       is_custom: true
     }));
 
@@ -49,6 +52,9 @@ export async function saveTemplate(template: Omit<WeddingTemplate, 'id'> & { id?
     icon_type: template.iconType,
     animation_type: template.animationType,
     colors: template.colors, // Supabase handles jsonb normally if passed as object
+    html: template.html,
+    css: template.css,
+    card_html: template.card_html,
   };
 
   if (template.id) {
