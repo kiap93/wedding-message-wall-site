@@ -119,8 +119,8 @@ export default function StaffTemplates() {
               },
               iconType: 'heart',
               html: '<div class="custom-display-wrapper">\n  <div id="messages-container"></div>\n</div>',
-              card_html: '<div class="p-6 bg-white rounded-3xl shadow-lg border border-gray-100">\n  <h3 class="text-xl font-serif text-gray-900 mb-2">{{name}}</h3>\n  <p class="text-gray-600 italic">{{message}}</p>\n</div>',
-              css: '.custom-display-wrapper {\n  position: relative;\n  width: 100%;\n  height: 100vh;\n  overflow: hidden;\n  background: #f9fafb;\n}\n\n#messages-container {\n  position: relative;\n  width: 100%;\n  height: 100%;\n}\n\n.custom-card-wrapper {\n  position: absolute;\n  right: -500px;\n  white-space: nowrap;\n  top: calc((var(--index) % 6) * 120px);\n  animation: danmuMove 15s linear infinite;\n  animation-delay: calc(var(--index) * -2s);\n}\n\n@keyframes danmuMove {\n  from { transform: translateX(0); }\n  to { transform: translateX(calc(-100vw - 700px)); }\n}'
+              card_html: '<div class="p-8 bg-white rounded-[2.5rem] shadow-2xl border border-gray-100 min-w-[350px] transform hover:scale-105 transition-transform duration-500">\n  <div class="flex items-center gap-4 mb-4">\n    <div class="w-12 h-12 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center">\n      <span class="text-xl">✨</span>\n    </div>\n    <h3 class="text-xl font-serif text-gray-900">{{name}}</h3>\n  </div>\n  <p class="text-gray-600 italic text-base leading-relaxed">"{{message}}"</p>\n</div>',
+              css: '.custom-display-wrapper {\n  position: relative;\n  width: 100%;\n  height: 100%;\n  overflow: hidden;\n  background: #f9fafb;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n#messages-container {\n  position: absolute;\n  top: 0;\n  left: 0;\n  width: 100%;\n  height: 100%;\n  pointer-events: none;\n}\n\n.custom-card-wrapper {\n  position: absolute;\n  left: 100%;\n  white-space: nowrap;\n  top: calc((var(--index) % 5) * 160px + 60px);\n  animation: danmuMove 25s linear infinite;\n  animation-delay: calc(var(--index) * -4s);\n  padding: 0 40px;\n  pointer-events: auto;\n}\n\n@keyframes danmuMove {\n  from { transform: translateX(0); }\n  to { transform: translateX(calc(-100vw - 1500px)); }\n}'
             })}
             className="flex items-center gap-2 px-8 py-4 bg-[#C5A059] text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-xl shadow-[#C5A059]/20"
           >
@@ -129,23 +129,23 @@ export default function StaffTemplates() {
           </button>
         </header>
 
-        <div className="flex flex-col lg:flex-row gap-12 min-h-[800px]">
-          {/* List Section - Collapsible or small when editing */}
-          <div className={`${editingTemplate ? 'lg:w-1/4' : 'w-full'} space-y-6 transition-all duration-500`}>
-            <h2 className="text-xl font-bold uppercase tracking-widest opacity-40 mb-6">Active Presets</h2>
-            <div className="grid grid-cols-1 gap-4 max-h-[700px] overflow-y-auto pr-2">
+        <div className="flex flex-col gap-12 min-h-[800px]">
+          {/* List Section - Full width when no editing, narrow sidebar when editing */}
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold uppercase tracking-widest opacity-40 mb-6">Aesthetic Library</h2>
+            <div className={`grid gap-4 transition-all duration-500 ${editingTemplate ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
               {templates.map(t => (
                 <div 
                   key={t.id} 
                   onClick={() => setEditingTemplate(t)}
-                  className={`group p-4 rounded-3xl border transition-all cursor-pointer ${editingTemplate?.id === t.id ? 'bg-[#C5A059] text-white border-[#C5A059]' : 'bg-white border-[#C5A059]/10 hover:shadow-md'}`}
+                  className={`group p-6 rounded-[2rem] border transition-all cursor-pointer ${editingTemplate?.id === t.id ? 'bg-[#C5A059] text-white border-[#C5A059] shadow-xl' : 'bg-white border-[#C5A059]/10 hover:shadow-lg'}`}
                 >
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${editingTemplate?.id === t.id ? 'bg-white/20' : t.colors.background + ' ' + t.colors.border + ' border'}`}>
-                      <Sparkles className={`w-5 h-5 ${editingTemplate?.id === t.id ? 'text-white' : t.colors.accent}`} />
+                  <div className="flex flex-col gap-4">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${editingTemplate?.id === t.id ? 'bg-white/20' : t.colors.background + ' ' + t.colors.border + ' border'}`}>
+                      <Sparkles className={`w-6 h-6 ${editingTemplate?.id === t.id ? 'text-white' : t.colors.accent}`} />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-sm truncate">{t.name}</h3>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-base truncate">{t.name}</h3>
                       <p className={`text-[10px] uppercase tracking-wider opacity-60 ${editingTemplate?.id === t.id ? 'text-white/80' : ''}`}>{t.variant}</p>
                     </div>
                   </div>
@@ -154,45 +154,57 @@ export default function StaffTemplates() {
             </div>
           </div>
 
-          {/* Editor & Preview Section */}
+          {/* Editor Section */}
           <AnimatePresence mode="wait">
-            {editingTemplate ? (
+            {editingTemplate && (
               <motion.div 
                 key={editingTemplate.id || 'new'}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-                className="flex-1 flex flex-col lg:flex-row gap-8"
+                initial={{ opacity: 0, scale: 0.98, y: 30 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.98, y: 30 }}
+                className="bg-white p-10 rounded-[3.5rem] border border-[#C5A059]/20 shadow-2xl overflow-hidden flex flex-col"
               >
-                {/* Editor Panel */}
-                <div className="flex-1 bg-white p-8 rounded-[2.5rem] border border-[#C5A059]/20 shadow-2xl overflow-hidden flex flex-col min-h-[800px]">
-                  <div className="flex gap-4 mb-6 bg-gray-50 p-2 rounded-2xl shrink-0">
+                <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-6">
+                  <div className="flex gap-4 bg-gray-50 p-2 rounded-2xl shrink-0 w-full md:w-auto">
                     <button 
                       onClick={() => setActiveTab('settings')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'settings' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                      className={`flex-1 md:flex-none md:w-32 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'settings' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
                     >
                       <Settings className="w-3.5 h-3.5" />
                       Settings
                     </button>
                     <button 
                       onClick={() => setActiveTab('html')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'html' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                      className={`flex-1 md:flex-none md:w-32 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'html' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
                     >
                       <Code className="w-3.5 h-3.5" />
-                      Global Design
+                      Structure
                     </button>
                     <button 
                       onClick={() => setActiveTab('card')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'card' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                      className={`flex-1 md:flex-none md:w-32 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'card' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
                     >
                       <Layout className="w-3.5 h-3.5" />
-                      Card Template
+                      Card
                     </button>
                   </div>
 
-                  <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0">
-                    <div className="flex-1 overflow-y-auto pr-2 mb-6">
-                      {activeTab === 'settings' && (
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setPreviewRevision(prev => prev + 1);
+                      setShowLivePreview(true);
+                    }}
+                    className="w-full md:w-auto flex items-center justify-center gap-3 px-8 py-4 bg-[#C5A059]/10 text-[#C5A059] rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#C5A059] hover:text-white transition-all border border-[#C5A059]/20 shadow-sm"
+                  >
+                    <Zap className="w-4 h-4" />
+                    Launch Live Simulation
+                  </button>
+                </div>
+
+                <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0">
+                  <div className="flex-1 overflow-y-auto pr-2 mb-10 min-h-[500px]">
+                    {activeTab === 'settings' && (
                         <div className="space-y-6">
                           <div className="grid grid-cols-2 gap-4">
                             <div className="col-span-2">
@@ -336,136 +348,216 @@ export default function StaffTemplates() {
                       </button>
                     </div>
                   </form>
-                </div>
-
-                {/* Preview Panel - Fixed Side-by-Side */}
-                <div className="flex-1 bg-white rounded-[2.5rem] border border-[#C5A059]/20 shadow-2xl overflow-hidden flex flex-col relative min-h-[800px]">
-                  <div className="p-6 border-b border-[#C5A059]/10 flex items-center justify-between bg-white shrink-0">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-[#C5A059]/10 rounded-xl">
-                        <Sparkles className="w-4 h-4 text-[#C5A059]" />
-                      </div>
-                      <h3 className="text-lg font-serif">Live Simulation</h3>
-                    </div>
-                    <button 
-                      onClick={() => setPreviewRevision(prev => prev + 1)}
-                      className="px-4 py-2 bg-[#C5A059] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all flex items-center gap-2 shadow-lg"
-                    >
-                      <Zap className="w-3.5 h-3.5" />
-                      Live Preview
-                    </button>
-                  </div>
-                  <div className="flex-1 relative bg-gray-50 overflow-hidden">
-                    <InternalTemplateView 
-                      key={`preview-${editingTemplate.id || 'new'}-${previewRevision}`}
-                      template={editingTemplate as WeddingTemplate} 
-                    />
-                  </div>
-                </div>
-              </motion.div>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center p-12 border-2 border-dashed border-[#C5A059]/20 rounded-[3rem] opacity-30">
-                <Palette className="w-16 h-16 mb-4" />
-                <p className="font-serif italic text-lg text-center">Select an existing preset to edit or create a new aesthetic plugin to begin building...</p>
-              </div>
+                </motion.div>
             )}
           </AnimatePresence>
         </div>
       </div>
 
+      {/* Live Preview Modal */}
+      <AnimatePresence>
+        {showLivePreview && editingTemplate && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowLivePreview(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            />
+            
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full h-[90vh] max-w-7xl bg-white rounded-[3rem] shadow-2xl overflow-hidden flex flex-col border border-white/20"
+            >
+              <div className="p-6 border-b border-[#C5A059]/10 flex items-center justify-between bg-white relative z-10">
+                <div className="flex items-center gap-3 font-serif">
+                  <div className="p-2 bg-[#C5A059]/10 rounded-xl">
+                    <Sparkles className="w-5 h-5 text-[#C5A059]" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl">Template Preview</h3>
+                    <p className="text-[10px] font-bold font-sans uppercase tracking-[0.1em] text-gray-400">Live Simulation • {editingTemplate.name}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => setPreviewRevision(prev => prev + 1)}
+                    className="px-4 py-2 bg-[#C5A059]/10 text-[#C5A059] rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-[#C5A059] hover:text-white transition-all"
+                  >
+                    Refresh
+                  </button>
+                  <button 
+                    onClick={() => setShowLivePreview(false)}
+                    className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-2xl transition-all"
+                  >
+                    <Plus className="w-6 h-6 rotate-45" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-hidden relative bg-gray-100">
+                <InternalTemplateView 
+                  key={`preview-${editingTemplate.id || 'new'}-${previewRevision}`}
+                  template={editingTemplate as WeddingTemplate} 
+                />
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 const MOCK_MESSAGES = [
-  { id: '1', name: 'John & Sarah', message: 'Wishing you a lifetime of love and happiness! Such a beautiful wedding.', timestamp: new Date().toISOString() },
-  { id: '2', name: 'Michael Brown', message: 'Congratulations! The ceremony was absolutely stunning.', timestamp: new Date().toISOString() },
-  { id: '3', name: 'Emma Wilson', message: 'So happy for you both! Cheers to many years of joy.', timestamp: new Date().toISOString() },
-  { id: '4', name: 'David Smith', message: 'Amazing party! Thank you for letting us be part of your special day.', timestamp: new Date().toISOString() },
-  { id: '5', name: 'Lisa & Tom', message: 'Best wishes for your new journey together!', timestamp: new Date().toISOString() },
-  { id: '6', name: 'Grandma Betty', message: 'Beautiful couple. God bless you both.', timestamp: new Date().toISOString() },
+  { id: '1', name: 'John & Sarah', message: 'Wishing you a lifetime of love and happiness!', timestamp: new Date().toISOString() },
+  { id: '2', name: 'Michael Brown', message: 'Congratulations! The ceremony was stunning.', timestamp: new Date().toISOString() },
+  { id: '3', name: 'Emma Wilson', message: 'So happy for you both! Cheers to many years.', timestamp: new Date().toISOString() },
 ];
 
-function InternalTemplateView({ template }: { template: WeddingTemplate, key?: any }) {
+const MOCK_NAMES = ['Alex Johnson', 'Maria Garcia', 'James Wilson'];
+const MOCK_TEXTS = [
+  'Such a magical atmosphere tonight! ❤️',
+  'Best wedding food I have ever had.',
+  'Can we talk about how beautiful the bride looks? ✨',
+];
+
+function renderCard(cardHtml: string, msg: any, index: number) {
+  return (cardHtml || '<div><h3>{{name}}</h3><p>{{message}}</p></div>')
+    .replace(/\{\{name\}\}/g, msg.name)
+    .replace(/\{\{message\}\}/g, msg.message)
+    .replace(/\{\{index\}\}/g, index.toString())
+    .replace(/\{\{timestamp\}\}/g, new Date(msg.timestamp).toLocaleTimeString());
+}
+
+function InternalTemplateView({ template }: { template: WeddingTemplate, key?: React.Key }) {
+  const [liveMessages] = useState([...MOCK_MESSAGES]);
   const isCustom = template.variant === 'custom';
   
   return (
-    <div className={`w-full h-full overflow-y-auto ${template.colors?.background || 'bg-white'}`}>
+    <div className={`w-full h-full overflow-hidden flex flex-col ${template.colors?.background || 'bg-white'}`}>
       <style dangerouslySetInnerHTML={{ __html: template.css || '' }} />
       
-      {isCustom ? (
-        <CustomSimulator template={template} />
-      ) : (
-        <div className="p-12">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {MOCK_MESSAGES.map(msg => (
-              <div key={msg.id} className={`${template.colors?.card} p-8 rounded-3xl border ${template.colors?.border} shadow-sm`}>
-                <h3 className={`text-xl ${template.colors?.headerText} ${template.fontSerif} mb-2`}>{msg.name}</h3>
-                <p className={`${template.colors?.text} ${template.fontSans}`}>{msg.message}</p>
-                <p className={`mt-4 text-[10px] ${template.colors?.subtleText} uppercase tracking-widest`}>
-                  {new Date(msg.timestamp).toLocaleTimeString()}
-                </p>
-              </div>
-            ))}
+      <div className="flex-1 relative overflow-hidden">
+        {isCustom ? (
+          <CustomSimulator template={template} messages={liveMessages} />
+        ) : (
+          <div className="p-12 h-full overflow-y-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {liveMessages.map((msg, index) => (
+                template.card_html ? (
+                  <div 
+                    key={msg.id} 
+                    className="contents"
+                    dangerouslySetInnerHTML={{ __html: renderCard(template.card_html, msg, index) }} 
+                  />
+                ) : (
+                  <div key={msg.id} className={`${template.colors?.card} p-8 rounded-3xl border ${template.colors?.border} shadow-sm`}>
+                    <h3 className={`text-xl ${template.colors?.headerText} ${template.fontSerif} mb-2`}>{msg.name}</h3>
+                    <p className={`${template.colors?.text} ${template.fontSans}`}>{msg.message}</p>
+                    <p className={`mt-4 text-[10px] ${template.colors?.subtleText} uppercase tracking-widest`}>
+                      {new Date(msg.timestamp).toLocaleTimeString()}
+                    </p>
+                  </div>
+                )
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
 
-function CustomSimulator({ template }: { template: WeddingTemplate }) {
+function CustomSimulator({ template, messages }: { template: WeddingTemplate, messages: any[] }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [messagesContainer, setMessagesContainer] = useState<Element | null>(null);
+  const [status, setStatus] = useState<'searching' | 'ready' | 'missing'>('searching');
+  const [portalCount, setPortalCount] = useState(0);
 
   useEffect(() => {
-    if (!containerRef.current) return;
-    
-    // Reset container if HTML changes
+    // Reset container when html changes to force re-acquisition
     setMessagesContainer(null);
-
-    const findContainer = () => {
-      const el = containerRef.current?.querySelector('#messages-container');
+    setStatus('searching');
+    setPortalCount(0);
+    
+    const findAndSetContainer = () => {
+      if (!containerRef.current) return false;
+      const el = containerRef.current.querySelector('#messages-container');
       if (el) {
         setMessagesContainer(el);
+        setStatus('ready');
         return true;
       }
       return false;
     };
 
     // Immediate check
-    if (!findContainer()) {
-      const observer = new MutationObserver(() => {
-        if (findContainer()) observer.disconnect();
-      });
-      observer.observe(containerRef.current, { childList: true, subtree: true });
-      return () => observer.disconnect();
+    findAndSetContainer();
+
+    // Poll a few times as dangerouslySetInnerHTML might be async/throttled by browser
+    let attempts = 0;
+    const interval = setInterval(() => {
+      if (findAndSetContainer()) {
+        clearInterval(interval);
+      } else if (attempts > 40) {
+        setStatus('missing');
+        clearInterval(interval);
+      }
+      attempts++;
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [template.html]);
+
+  useEffect(() => {
+    if (messagesContainer) {
+      setPortalCount(messages.length);
     }
-  }, [template.html, template.id]);
+  }, [messages.length, messagesContainer]);
 
   return (
-    <div ref={containerRef} className="custom-layout-container w-full h-full min-h-screen">
-      <div className="w-full h-full" dangerouslySetInnerHTML={{ __html: template.html || '<div id="messages-container"></div>' }} />
+    <div ref={containerRef} className="custom-layout-container w-full h-full relative">
+      {/* Simulation Info (Staff Only UI) */}
+      <div className="absolute top-4 left-4 z-50 flex items-center gap-2">
+        <div className={`px-4 py-2 rounded-2xl text-[10px] font-mono font-black shadow-2xl flex items-center gap-3 border border-white/20 backdrop-blur-md ${
+          status === 'ready' ? 'bg-green-500/90 text-white' : 
+          status === 'searching' ? 'bg-amber-500/90 text-white animate-pulse' : 
+          'bg-red-500/90 text-white'
+        }`}>
+          <div className={`w-2 h-2 rounded-full ${status === 'ready' ? 'bg-white animate-pulse' : 'bg-white'}`} />
+          {status === 'ready' ? `ENGINE: ACTIVE • PORTAL: ${portalCount} CARDS` : status === 'searching' ? 'ENGINE: SEARCHING FOR #messages-container...' : 'ENGINE: TERMINATED (id="messages-container" NOT FOUND)'}
+        </div>
+      </div>
+
+      {status === 'missing' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-red-50/90 z-20 p-12 text-center">
+          <div className="max-w-md">
+            <Code className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h4 className="text-xl font-bold text-red-900 mb-2">Missing #messages-container</h4>
+            <p className="text-sm text-red-700">Your "Structure" HTML must include an element with <code className="bg-red-100 px-1 rounded">id="messages-container"</code> for the cards to render.</p>
+          </div>
+        </div>
+      )}
+
+      <div 
+        className="w-full h-full" 
+        dangerouslySetInnerHTML={{ __html: template.html || '<div id="messages-container"></div>' }} 
+      />
       
       {messagesContainer && ReactDOM.createPortal(
-        <div key={template.html} className="contents">
-          {MOCK_MESSAGES.map((msg, index) => {
-            const cardHtml = template.card_html || '<div><h3>{{name}}</h3><p>{{message}}</p></div>';
-            const renderedHtml = cardHtml
-              .replace(/\{\{name\}\}/g, msg.name)
-              .replace(/\{\{message\}\}/g, msg.message)
-              .replace(/\{\{index\}\}/g, index.toString())
-              .replace(/\{\{timestamp\}\}/g, new Date(msg.timestamp).toLocaleTimeString());
-              
-            return (
-              <div 
-                key={msg.id} 
-                className="custom-card-wrapper"
-                style={{ '--index': index } as any}
-                dangerouslySetInnerHTML={{ __html: renderedHtml }} 
-              />
-            );
-          })}
+        <div className="contents">
+          {messages.map((msg, index) => (
+            <div 
+              key={msg.id} 
+              className="custom-card-wrapper"
+              style={{ '--index': index } as any}
+              dangerouslySetInnerHTML={{ __html: renderCard(template.card_html || '', msg, index) }} 
+            />
+          ))}
         </div>,
         messagesContainer
       )}
