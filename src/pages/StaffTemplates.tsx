@@ -40,13 +40,22 @@ export default function StaffTemplates() {
     if (!editingTemplate || !editingTemplate.name) return;
     
     setIsSaving(true);
+    console.log('Attempting save as:', user?.email, 'isStaff:', isStaff);
     try {
       await saveTemplate(editingTemplate as any);
       await loadTemplates();
       setEditingTemplate(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save template:', err);
-      alert('Failed to save template. Check if the table "templates" exists in Supabase.');
+      // More descriptive error
+      const msg = err.message || 'Unknown error';
+      if (msg.includes('row-level security')) {
+        alert('Security Policy Blocked: You may need to run the SQL script I provided in the chat to allow your email to manage templates.');
+      } else if (msg.includes('column "font_sans"')) {
+        alert('Database Outdated: The "font_sans" column is missing. Please run the provided SQL script to update your table schema.');
+      } else {
+        alert(`Failed to save template: ${msg}`);
+      }
     } finally {
       setIsSaving(false);
     }
