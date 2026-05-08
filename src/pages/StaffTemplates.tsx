@@ -15,6 +15,7 @@ export default function StaffTemplates() {
   const [isSaving, setIsSaving] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Partial<WeddingTemplate> | null>(null);
   const [activeTab, setActiveTab] = useState<'settings' | 'html' | 'card'>('settings');
+  const [showLivePreview, setShowLivePreview] = useState(false);
 
   // Security check: Only allow staff (for now, admin email or demo account)
   const isStaff = user?.email === 'buildsiteasia@gmail.com' || user?.email?.includes('@eventframe.io');
@@ -186,6 +187,17 @@ export default function StaffTemplates() {
                   >
                     <Layout className="w-3.5 h-3.5" />
                     Card Template
+                  </button>
+                </div>
+
+                <div className="flex justify-end mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowLivePreview(true)}
+                    className="flex items-center gap-2 px-6 py-2 bg-[#C5A059]/10 text-[#C5A059] rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#C5A059] hover:text-white transition-all border border-[#C5A059]/20"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Live Preview
                   </button>
                 </div>
 
@@ -364,6 +376,129 @@ export default function StaffTemplates() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Live Preview Modal */}
+      <AnimatePresence>
+        {showLivePreview && editingTemplate && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowLivePreview(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            />
+            
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full h-[90vh] max-w-7xl bg-white rounded-[3rem] shadow-2xl overflow-hidden flex flex-col border border-white/20"
+            >
+              <div className="p-6 border-b border-[#C5A059]/10 flex items-center justify-between bg-white relative z-10">
+                <div className="flex items-center gap-3 font-serif">
+                  <div className="p-2 bg-[#C5A059]/10 rounded-xl">
+                    <Sparkles className="w-5 h-5 text-[#C5A059]" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl">Template Preview</h3>
+                    <p className="text-[10px] font-bold font-sans uppercase tracking-[0.1em] text-gray-400">Live Simulation • {editingTemplate.name}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowLivePreview(false)}
+                  className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-2xl transition-all"
+                >
+                  <Plus className="w-6 h-6 rotate-45" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-hidden relative bg-gray-100">
+                <InternalTemplateView template={editingTemplate as WeddingTemplate} />
+              </div>
+              
+              <div className="p-4 bg-white border-t border-[#C5A059]/10 text-center relative z-10">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#C5A059] mb-4">Preview Mode Only • Interactions Disabled</p>
+                <button 
+                  onClick={() => setShowLivePreview(false)}
+                  className="px-12 py-3 bg-[#2D2424] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg"
+                >
+                  Return to Code
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+const MOCK_MESSAGES = [
+  { id: '1', name: 'John & Sarah', message: 'Wishing you a lifetime of love and happiness! Such a beautiful wedding.', timestamp: new Date().toISOString() },
+  { id: '2', name: 'Michael Brown', message: 'Congratulations! The ceremony was absolutely stunning.', timestamp: new Date().toISOString() },
+  { id: '3', name: 'Emma Wilson', message: 'So happy for you both! Cheers to many years of joy.', timestamp: new Date().toISOString() },
+  { id: '4', name: 'David Smith', message: 'Amazing party! Thank you for letting us be part of your special day.', timestamp: new Date().toISOString() },
+  { id: '5', name: 'Lisa & Tom', message: 'Best wishes for your new journey together!', timestamp: new Date().toISOString() },
+  { id: '6', name: 'Grandma Betty', message: 'Beautiful couple. God bless you both.', timestamp: new Date().toISOString() },
+];
+
+function InternalTemplateView({ template }: { template: WeddingTemplate }) {
+  const isCustom = template.variant === 'custom';
+  
+  return (
+    <div className={`w-full h-full overflow-y-auto ${template.colors?.background || 'bg-white'}`}>
+      <style dangerouslySetInnerHTML={{ __html: template.css || '' }} />
+      
+      {isCustom ? (
+        <CustomSimulator template={template} />
+      ) : (
+        <div className="p-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {MOCK_MESSAGES.map(msg => (
+              <div key={msg.id} className={`${template.colors?.card} p-8 rounded-3xl border ${template.colors?.border} shadow-sm`}>
+                <h3 className={`text-xl ${template.colors?.headerText} ${template.fontSerif} mb-2`}>{msg.name}</h3>
+                <p className={`${template.colors?.text} ${template.fontSans}`}>{msg.message}</p>
+                <p className={`mt-4 text-[10px] ${template.colors?.subtleText} uppercase tracking-widest`}>
+                  {new Date(msg.timestamp).toLocaleTimeString()}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CustomSimulator({ template }: { template: WeddingTemplate }) {
+  const html = template.html || '<div id="messages-container"></div>';
+  const parts = html.split('<div id="messages-container"></div>');
+  
+  return (
+    <div className="custom-layout-container w-full h-full min-h-screen">
+      {parts[0] && <div dangerouslySetInnerHTML={{ __html: parts[0] }} />}
+      
+      <div id="messages-container">
+        {MOCK_MESSAGES.map((msg, index) => {
+          const cardHtml = template.card_html || '<div><h3>{{name}}</h3><p>{{message}}</p></div>';
+          const renderedHtml = cardHtml
+            .replace(/\{\{name\}\}/g, msg.name)
+            .replace(/\{\{message\}\}/g, msg.message)
+            .replace(/\{\{timestamp\}\}/g, new Date(msg.timestamp).toLocaleTimeString());
+            
+          return (
+            <div 
+              key={msg.id} 
+              className="custom-card-wrapper"
+              style={{ '--index': index } as any}
+              dangerouslySetInnerHTML={{ __html: renderedHtml }} 
+            />
+          );
+        })}
+      </div>
+
+      {parts[1] && <div dangerouslySetInnerHTML={{ __html: parts[1] }} />}
     </div>
   );
 }
