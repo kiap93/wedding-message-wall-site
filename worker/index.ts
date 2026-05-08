@@ -32,7 +32,7 @@ app.use('*', async (c, next) => {
   if (origin) {
     c.res.headers.set('Access-Control-Allow-Origin', origin);
     c.res.headers.set('Access-Control-Allow-Credentials', 'true');
-    c.res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    c.res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   }
   
@@ -654,7 +654,10 @@ app.post('/api/auth/reset-password', async (c) => {
 });
 
 // 5.5 Projects API
-app.put('/api/projects/:id', async (c) => {
+app.put('/api/projects/:id', async (c) => updateProject(c));
+app.patch('/api/projects/:id', async (c) => updateProject(c));
+
+async function updateProject(c: any) {
   const tokenHeader = c.req.header('Authorization');
   const cookieToken = getCookie(c, 'wedding_session');
   let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
@@ -716,7 +719,7 @@ app.put('/api/projects/:id', async (c) => {
     console.error('Worker project update internal error:', e.message);
     return c.json({ error: 'Internal server error', details: e.message }, 500);
   }
-});
+}
 
 app.delete('/api/projects/:id', async (c) => {
   const tokenHeader = c.req.header('Authorization');
@@ -823,6 +826,106 @@ app.post('/api/projects', async (c) => {
   } catch (e: any) {
     console.error('Worker project creation internal error:', e.message);
     return c.json({ error: 'Internal server error', details: e.message }, 500);
+  }
+});
+
+// --- Template Routes (Staff Only) ---
+app.post('/api/templates', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+
+  try {
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
+    const isStaff = payload.email === 'buildsiteasia@gmail.com' || payload.email?.endsWith('@eventframe.io');
+    if (!isStaff) return c.json({ error: 'Staff access required' }, 403);
+
+    const templateData = await c.req.json();
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data, error } = await supabase
+      .from('templates')
+      .insert([templateData])
+      .select()
+      .single();
+
+    if (error) return c.json({ error: error.message }, 500);
+    return c.json({ success: true, data }, 201);
+  } catch (e: any) {
+    return c.json({ error: 'Invalid session', details: e.message }, 401);
+  }
+});
+
+app.put('/api/templates/:id', async (c) => updateTemplate(c));
+app.patch('/api/templates/:id', async (c) => updateTemplate(c));
+
+async function updateTemplate(c: any) {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+
+  try {
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
+    const isStaff = payload.email === 'buildsiteasia@gmail.com' || payload.email?.endsWith('@eventframe.io');
+    if (!isStaff) return c.json({ error: 'Staff access required' }, 403);
+
+    const { id } = c.req.param();
+    const templateData = await c.req.json();
+    const { id: _, ...updateData } = templateData;
+
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data, error } = await supabase
+      .from('templates')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) return c.json({ error: error.message }, 500);
+    return c.json({ success: true, data });
+  } catch (e: any) {
+    return c.json({ error: 'Invalid session', details: e.message }, 401);
+  }
+}
+
+app.delete('/api/templates/:id', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+
+  try {
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
+    const isStaff = payload.email === 'buildsiteasia@gmail.com' || payload.email?.endsWith('@eventframe.io');
+    if (!isStaff) return c.json({ error: 'Staff access required' }, 403);
+
+    const { id } = c.req.param();
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const { error } = await supabase
+      .from('templates')
+      .delete()
+      .eq('id', id);
+
+    if (error) return c.json({ error: error.message }, 500);
+    return c.json({ success: true });
+  } catch (e: any) {
+    return c.json({ error: 'Invalid session', details: e.message }, 401);
   }
 });
 

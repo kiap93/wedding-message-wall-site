@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Save, Trash2, Palette, ArrowLeft, Loader2, Sparkles, Code, Layout, Settings } from 'lucide-react';
+import { Plus, Save, Trash2, Palette, ArrowLeft, Loader2, Sparkles, Code, Layout, Settings, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { fetchTemplates, saveTemplate, deleteTemplate } from '../lib/templates';
@@ -105,348 +105,274 @@ export default function StaffTemplates() {
             onClick={() => setEditingTemplate({
               name: '',
               description: '',
-              variant: 'masonry',
+              variant: 'custom',
               fontSerif: 'font-serif',
               fontSans: 'font-sans',
               colors: {
-                background: 'bg-white',
-                card: 'bg-gray-50',
+                background: 'bg-[#F9FAFB]',
+                card: 'bg-white',
                 text: 'text-black',
-                accent: 'text-blue-500',
+                accent: 'text-[#C5A059]',
                 border: 'border-gray-200',
-                headerText: 'text-black',
+                headerText: 'text-gray-900',
                 subtleText: 'text-gray-500'
               },
               iconType: 'heart',
               html: '<div class="custom-display-wrapper">\n  <div id="messages-container"></div>\n</div>',
               card_html: '<div class="p-6 bg-white rounded-3xl shadow-lg border border-gray-100">\n  <h3 class="text-xl font-serif text-gray-900 mb-2">{{name}}</h3>\n  <p class="text-gray-600 italic">{{message}}</p>\n</div>',
-              css: '.custom-display-wrapper { padding: 40px; }\n#messages-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 32px; }'
+              css: '.custom-display-wrapper {\n  position: relative;\n  width: 100%;\n  height: 100vh;\n  overflow: hidden;\n  background: #f9fafb;\n}\n\n#messages-container {\n  position: relative;\n  width: 100%;\n  height: 100%;\n}\n\n.custom-card-wrapper {\n  position: absolute;\n  right: -500px;\n  white-space: nowrap;\n  top: calc((var(--index) % 6) * 120px);\n  animation: danmuMove 15s linear infinite;\n  animation-delay: calc(var(--index) * -2s);\n}\n\n@keyframes danmuMove {\n  from { transform: translateX(0); }\n  to { transform: translateX(calc(-100vw - 700px)); }\n}'
             })}
             className="flex items-center gap-2 px-8 py-4 bg-[#C5A059] text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-xl shadow-[#C5A059]/20"
           >
             <Plus className="w-4 h-4" />
-            Develop New Aesthetic
+            Deploy Aesthetic Plugin
           </button>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-          {/* List Section */}
-          <div className="space-y-6">
+        <div className="flex flex-col lg:flex-row gap-12 min-h-[800px]">
+          {/* List Section - Collapsible or small when editing */}
+          <div className={`${editingTemplate ? 'lg:w-1/4' : 'w-full'} space-y-6 transition-all duration-500`}>
             <h2 className="text-xl font-bold uppercase tracking-widest opacity-40 mb-6">Active Presets</h2>
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 gap-4 max-h-[700px] overflow-y-auto pr-2">
               {templates.map(t => (
-                <div key={t.id} className="group bg-white p-6 rounded-3xl border border-[#C5A059]/10 shadow-sm hover:shadow-md transition-all flex items-center justify-between">
+                <div 
+                  key={t.id} 
+                  onClick={() => setEditingTemplate(t)}
+                  className={`group p-4 rounded-3xl border transition-all cursor-pointer ${editingTemplate?.id === t.id ? 'bg-[#C5A059] text-white border-[#C5A059]' : 'bg-white border-[#C5A059]/10 hover:shadow-md'}`}
+                >
                   <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${t.colors.background} ${t.colors.border} border`}>
-                      <Sparkles className={`w-6 h-6 ${t.colors.accent}`} />
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${editingTemplate?.id === t.id ? 'bg-white/20' : t.colors.background + ' ' + t.colors.border + ' border'}`}>
+                      <Sparkles className={`w-5 h-5 ${editingTemplate?.id === t.id ? 'text-white' : t.colors.accent}`} />
                     </div>
-                    <div>
-                      <h3 className="font-bold text-lg">{t.name}</h3>
-                      <p className="text-xs opacity-50">{t.is_custom ? 'Custom Plugin' : 'Core Preset'} • {t.variant}</p>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-bold text-sm truncate">{t.name}</h3>
+                      <p className={`text-[10px] uppercase tracking-wider opacity-60 ${editingTemplate?.id === t.id ? 'text-white/80' : ''}`}>{t.variant}</p>
                     </div>
-                  </div>
-                  <div className="flex gap-2">
-                    {t.is_custom && (
-                      <>
-                        <button 
-                          onClick={() => setEditingTemplate(t)}
-                          className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-black transition-colors"
-                        >
-                          Edit
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(t.id)}
-                          className="p-2 hover:bg-red-50 rounded-lg text-red-300 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Editor Section */}
+          {/* Editor & Preview Section */}
           <AnimatePresence mode="wait">
             {editingTemplate ? (
               <motion.div 
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                className="bg-white p-8 rounded-[2.5rem] border border-[#C5A059]/20 shadow-2xl sticky top-8"
+                key={editingTemplate.id || 'new'}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className="flex-1 flex flex-col lg:flex-row gap-8"
               >
-                <div className="flex gap-4 mb-8 bg-gray-50 p-2 rounded-2xl">
-                  <button 
-                    onClick={() => setActiveTab('settings')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'settings' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-                  >
-                    <Settings className="w-3.5 h-3.5" />
-                    Settings
-                  </button>
-                  <button 
-                    onClick={() => setActiveTab('html')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'html' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-                  >
-                    <Code className="w-3.5 h-3.5" />
-                    Global Design
-                  </button>
-                  <button 
-                    onClick={() => setActiveTab('card')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'card' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-                  >
-                    <Layout className="w-3.5 h-3.5" />
-                    Card Template
-                  </button>
-                </div>
-
-                <div className="flex justify-end mb-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPreviewRevision(prev => prev + 1);
-                      setShowLivePreview(true);
-                    }}
-                    className="flex items-center gap-2 px-6 py-2 bg-[#C5A059]/10 text-[#C5A059] rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#C5A059] hover:text-white transition-all border border-[#C5A059]/20"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Live Preview
-                  </button>
-                </div>
-
-                <form onSubmit={handleSave} className="space-y-6">
-                  {activeTab === 'settings' && (
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="col-span-2">
-                          <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Preset Name</label>
-                          <input 
-                            type="text"
-                            required
-                            value={editingTemplate.name || ''}
-                            onChange={e => setEditingTemplate({...editingTemplate, name: e.target.value})}
-                            className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-[#C5A059] transition-all"
-                            placeholder="e.g. Neo-Gothic Minimal"
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Internal Description</label>
-                          <textarea 
-                            value={editingTemplate.description || ''}
-                            onChange={e => setEditingTemplate({...editingTemplate, description: e.target.value})}
-                            className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-[#C5A059] transition-all resize-none"
-                            rows={2}
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Layout Engine</label>
-                          <select 
-                            value={editingTemplate.variant}
-                            onChange={e => setEditingTemplate({...editingTemplate, variant: e.target.value as any})}
-                            className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-[#C5A059] transition-all"
-                          >
-                            <option value="masonry">Masonry Grid</option>
-                            <option value="hanging">Hanging Polaroid</option>
-                            <option value="floating">Floating Bubbles</option>
-                            <option value="grid">Standard Grid</option>
-                            <option value="custom">Custom HTML Engine</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Icon Set</label>
-                          <select 
-                            value={editingTemplate.iconType}
-                            onChange={e => setEditingTemplate({...editingTemplate, iconType: e.target.value as any})}
-                            className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-[#C5A059] transition-all"
-                          >
-                            <option value="heart">Hearts</option>
-                            <option value="leaf">Botanical</option>
-                            <option value="star">Celestial</option>
-                            <option value="camera">Photographic</option>
-                            <option value="mail">Postal</option>
-                            <option value="palette">Artistic</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#C5A059]">Color Palette (Tailwind Classes)</h4>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-[10px] opacity-40 mb-1">Background Class</label>
-                            <input 
-                              type="text"
-                              value={editingTemplate.colors?.background}
-                              onChange={e => setEditingTemplate({
-                                ...editingTemplate, 
-                                colors: { ...editingTemplate.colors!, background: e.target.value } 
-                              })}
-                              className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl text-xs"
-                              placeholder="bg-[#FFFFFF]"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] opacity-40 mb-1">Accent Text Class</label>
-                            <input 
-                              type="text"
-                              value={editingTemplate.colors?.accent}
-                              onChange={e => setEditingTemplate({
-                                ...editingTemplate, 
-                                colors: { ...editingTemplate.colors!, accent: e.target.value } 
-                              })}
-                              className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl text-xs"
-                              placeholder="text-blue-500"
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <label className="block text-[10px] opacity-40 mb-1">Card Background Class</label>
-                            <input 
-                              type="text"
-                              value={editingTemplate.colors?.card}
-                              onChange={e => setEditingTemplate({
-                                ...editingTemplate, 
-                                colors: { ...editingTemplate.colors!, card: e.target.value } 
-                              })}
-                              className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl text-xs"
-                              placeholder="bg-white/80 backdrop-blur"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'html' && (
-                    <div className="space-y-6">
-                      <div className="h-[300px] border border-gray-100 rounded-2xl overflow-hidden flex flex-col">
-                        <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-gray-50 p-3">Global CSS</label>
-                        <textarea
-                          className="flex-1 p-4 bg-gray-50 font-mono text-xs border-none focus:ring-2 focus:ring-[#C5A059] transition-all resize-none"
-                          value={editingTemplate.css || ''}
-                          onChange={(e) => setEditingTemplate({...editingTemplate, css: e.target.value})}
-                          placeholder="/* Custom CSS */"
-                        />
-                      </div>
-                      <div className="h-[400px] border border-gray-100 rounded-2xl overflow-hidden flex flex-col">
-                        <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-gray-50 p-3">Global HTML Structure (Container)</label>
-                        <div className="p-3 bg-blue-50 text-[9px] text-blue-600 border-b border-blue-100">
-                          Use <code>&lt;div id="messages-container"&gt;&lt;/div&gt;</code> to place the message grid.
-                        </div>
-                        <textarea
-                          className="flex-1 p-4 bg-gray-50 font-mono text-xs border-none focus:ring-2 focus:ring-[#C5A059] transition-all resize-none"
-                          value={editingTemplate.html || ''}
-                          onChange={(e) => setEditingTemplate({...editingTemplate, html: e.target.value})}
-                          placeholder="<div class='custom-display'>\n  <div id='messages-container'></div>\n</div>"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'card' && (
-                    <div className="space-y-6">
-                      <div className="h-[500px] border border-gray-100 rounded-2xl overflow-hidden flex flex-col">
-                        <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-gray-50 p-3">Card Template (HTML)</label>
-                        <div className="p-3 bg-blue-50 text-[9px] text-blue-600 border-b border-blue-100">
-                          Variables: <code>{`{{name}}`}</code>, <code>{`{{message}}`}</code>, <code>{`{{timestamp}}`}</code>
-                        </div>
-                        <textarea
-                          className="flex-1 p-4 bg-gray-50 font-mono text-xs border-none focus:ring-2 focus:ring-[#C5A059] transition-all resize-none"
-                          value={editingTemplate.card_html || ''}
-                          onChange={(e) => setEditingTemplate({...editingTemplate, card_html: e.target.value})}
-                          placeholder="<div class='custom-card'>\n  <h3>{{name}}</h3>\n  <p>{{message}}</p>\n</div>"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex gap-4 pt-6">
+                {/* Editor Panel */}
+                <div className="flex-1 bg-white p-8 rounded-[2.5rem] border border-[#C5A059]/20 shadow-2xl overflow-hidden flex flex-col min-h-[800px]">
+                  <div className="flex gap-4 mb-6 bg-gray-50 p-2 rounded-2xl shrink-0">
                     <button 
-                      type="button"
-                      onClick={() => setEditingTemplate(null)}
-                      className="flex-1 py-4 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-black transition-all"
+                      onClick={() => setActiveTab('settings')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'settings' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
                     >
-                      Cancel
+                      <Settings className="w-3.5 h-3.5" />
+                      Settings
                     </button>
                     <button 
-                      type="submit"
-                      disabled={isSaving}
-                      className="flex-[2] py-4 bg-[#2D2424] text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-black transition-all flex items-center justify-center gap-2"
+                      onClick={() => setActiveTab('html')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'html' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
                     >
-                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                      Deploy Aesthetic Plugin
+                      <Code className="w-3.5 h-3.5" />
+                      Global Design
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('card')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'card' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                    >
+                      <Layout className="w-3.5 h-3.5" />
+                      Card Template
                     </button>
                   </div>
-                </form>
+
+                  <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0">
+                    <div className="flex-1 overflow-y-auto pr-2 mb-6">
+                      {activeTab === 'settings' && (
+                        <div className="space-y-6">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="col-span-2">
+                              <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Preset Name</label>
+                              <input 
+                                type="text"
+                                required
+                                value={editingTemplate.name || ''}
+                                onChange={e => setEditingTemplate({...editingTemplate, name: e.target.value})}
+                                className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-[#C5A059] transition-all"
+                                placeholder="e.g. Neo-Gothic Minimal"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Internal Description</label>
+                              <textarea 
+                                value={editingTemplate.description || ''}
+                                onChange={e => setEditingTemplate({...editingTemplate, description: e.target.value})}
+                                className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-[#C5A059] transition-all resize-none"
+                                rows={2}
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Layout Engine</label>
+                              <select 
+                                value={editingTemplate.variant}
+                                onChange={e => setEditingTemplate({...editingTemplate, variant: e.target.value as any})}
+                                className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-[#C5A059] transition-all"
+                              >
+                                <option value="masonry">Masonry Grid</option>
+                                <option value="hanging">Hanging Polaroid</option>
+                                <option value="floating">Floating Bubbles</option>
+                                <option value="grid">Standard Grid</option>
+                                <option value="custom">Custom HTML Engine</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Icon Set</label>
+                              <select 
+                                value={editingTemplate.iconType}
+                                onChange={e => setEditingTemplate({...editingTemplate, iconType: e.target.value as any})}
+                                className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-[#C5A059] transition-all"
+                              >
+                                <option value="heart">Hearts</option>
+                                <option value="leaf">Botanical</option>
+                                <option value="star">Celestial</option>
+                                <option value="camera">Photographic</option>
+                                <option value="mail">Postal</option>
+                                <option value="palette">Artistic</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#C5A059]">Color Palette (Tailwind Classes)</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-[10px] opacity-40 mb-1">Background Class</label>
+                                <input 
+                                  type="text"
+                                  value={editingTemplate.colors?.background}
+                                  onChange={e => setEditingTemplate({
+                                    ...editingTemplate, 
+                                    colors: { ...editingTemplate.colors!, background: e.target.value } 
+                                  })}
+                                  className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl text-xs"
+                                  placeholder="bg-[#FFFFFF]"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] opacity-40 mb-1">Accent Text Class</label>
+                                <input 
+                                  type="text"
+                                  value={editingTemplate.colors?.accent}
+                                  onChange={e => setEditingTemplate({
+                                    ...editingTemplate, 
+                                    colors: { ...editingTemplate.colors!, accent: e.target.value } 
+                                  })}
+                                  className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl text-xs"
+                                  placeholder="text-blue-500"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {activeTab === 'html' && (
+                        <div className="space-y-6 h-full flex flex-col">
+                          <div className="flex-1 flex flex-col min-h-[300px]">
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Global CSS</label>
+                            <textarea
+                              className="flex-1 p-4 bg-gray-50 font-mono text-xs border border-gray-100 rounded-2xl focus:ring-2 focus:ring-[#C5A059] transition-all resize-none"
+                              value={editingTemplate.css || ''}
+                              onChange={(e) => setEditingTemplate({...editingTemplate, css: e.target.value})}
+                              placeholder="/* Custom CSS */"
+                            />
+                          </div>
+                          <div className="flex-1 flex flex-col min-h-[300px]">
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Global HTML Container</label>
+                            <textarea
+                              className="flex-1 p-4 bg-gray-50 font-mono text-xs border border-gray-100 rounded-2xl focus:ring-2 focus:ring-[#C5A059] transition-all resize-none"
+                              value={editingTemplate.html || ''}
+                              onChange={(e) => setEditingTemplate({...editingTemplate, html: e.target.value})}
+                              placeholder="<div id='messages-container'></div>"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {activeTab === 'card' && (
+                        <div className="h-full flex flex-col">
+                          <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Card Template (HTML)</label>
+                          <textarea
+                            className="flex-1 p-4 bg-gray-50 font-mono text-xs border border-gray-100 rounded-2xl focus:ring-2 focus:ring-[#C5A059] transition-all resize-none min-h-[400px]"
+                            value={editingTemplate.card_html || ''}
+                            onChange={(e) => setEditingTemplate({...editingTemplate, card_html: e.target.value})}
+                            placeholder="<div>{{name}}: {{message}}</div>"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-4 pt-6 border-t border-gray-50 shrink-0">
+                      <button 
+                        type="button"
+                        onClick={() => setEditingTemplate(null)}
+                        className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-black transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        type="submit"
+                        disabled={isSaving}
+                        className="flex-1 py-4 bg-[#2D2424] text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-black transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#2D2424]/20"
+                      >
+                        {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        Deploy Aesthetic Plugin
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Preview Panel - Fixed Side-by-Side */}
+                <div className="flex-1 bg-white rounded-[2.5rem] border border-[#C5A059]/20 shadow-2xl overflow-hidden flex flex-col relative min-h-[800px]">
+                  <div className="p-6 border-b border-[#C5A059]/10 flex items-center justify-between bg-white shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-[#C5A059]/10 rounded-xl">
+                        <Sparkles className="w-4 h-4 text-[#C5A059]" />
+                      </div>
+                      <h3 className="text-lg font-serif">Live Simulation</h3>
+                    </div>
+                    <button 
+                      onClick={() => setPreviewRevision(prev => prev + 1)}
+                      className="px-4 py-2 bg-[#C5A059] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all flex items-center gap-2 shadow-lg"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      Live Preview
+                    </button>
+                  </div>
+                  <div className="flex-1 relative bg-gray-50 overflow-hidden">
+                    <InternalTemplateView 
+                      key={`preview-${editingTemplate.id || 'new'}-${previewRevision}`}
+                      template={editingTemplate as WeddingTemplate} 
+                    />
+                  </div>
+                </div>
               </motion.div>
             ) : (
-              <div className="hidden lg:flex flex-col items-center justify-center p-12 border-2 border-dashed border-[#C5A059]/20 rounded-[3rem] opacity-30">
+              <div className="flex-1 flex flex-col items-center justify-center p-12 border-2 border-dashed border-[#C5A059]/20 rounded-[3rem] opacity-30">
                 <Palette className="w-16 h-16 mb-4" />
-                <p className="font-serif italic text-lg">Select a plugin to optimize or deploy a new aesthetic...</p>
+                <p className="font-serif italic text-lg text-center">Select an existing preset to edit or create a new aesthetic plugin to begin building...</p>
               </div>
             )}
           </AnimatePresence>
         </div>
       </div>
 
-      {/* Live Preview Modal */}
-      <AnimatePresence>
-        {showLivePreview && editingTemplate && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowLivePreview(false)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-md"
-            />
-            
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full h-[90vh] max-w-7xl bg-white rounded-[3rem] shadow-2xl overflow-hidden flex flex-col border border-white/20"
-            >
-              <div className="p-6 border-b border-[#C5A059]/10 flex items-center justify-between bg-white relative z-10">
-                <div className="flex items-center gap-3 font-serif">
-                  <div className="p-2 bg-[#C5A059]/10 rounded-xl">
-                    <Sparkles className="w-5 h-5 text-[#C5A059]" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl">Template Preview</h3>
-                    <p className="text-[10px] font-bold font-sans uppercase tracking-[0.1em] text-gray-400">Live Simulation • {editingTemplate.name}</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setShowLivePreview(false)}
-                  className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-2xl transition-all"
-                >
-                  <Plus className="w-6 h-6 rotate-45" />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-hidden relative bg-gray-100">
-                <InternalTemplateView 
-                  key={`preview-${editingTemplate.id || 'new'}-${previewRevision}`}
-                  template={editingTemplate as WeddingTemplate} 
-                />
-              </div>
-              
-              <div className="p-4 bg-white border-t border-[#C5A059]/10 text-center relative z-10">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#C5A059] mb-4">Preview Mode Only • Interactions Disabled</p>
-                <button 
-                  onClick={() => setShowLivePreview(false)}
-                  className="px-12 py-3 bg-[#2D2424] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg"
-                >
-                  Return to Code
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

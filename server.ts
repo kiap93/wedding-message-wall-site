@@ -134,7 +134,7 @@ async function startServer() {
   app.use(cors({
     origin: true,
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
   }));
 
@@ -1022,7 +1022,7 @@ function verifyPasswordNode(password: string, storedHash: string) {
     }
   });
 
-  apiRouter.put('/templates/:id', async (req, res) => {
+  apiRouter.patch('/templates/:id', async (req, res) => {
     const authHeader = req.headers.authorization;
     const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
     
@@ -1038,6 +1038,8 @@ function verifyPasswordNode(password: string, storedHash: string) {
       const templateData = req.body;
       const { id: _, ...updateData } = templateData;
 
+      console.log(`[TEMPLATES] PATCH ${id} by ${decoded.email}`);
+
       const { data, error } = await getSupabaseAdmin()
         .from('templates')
         .update(updateData)
@@ -1050,6 +1052,37 @@ function verifyPasswordNode(password: string, storedHash: string) {
         return res.status(500).json({ error: error.message });
       }
 
+      res.json({ success: true, data });
+    } catch (error: any) {
+      res.status(401).json({ error: 'Invalid session', details: error.message });
+    }
+  });
+
+  apiRouter.put('/templates/:id', async (req, res) => {
+    // Also support PUT via redirection to PATCH logic or just duplicate for safety
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      const isStaff = decoded.email === 'buildsiteasia@gmail.com' || decoded.email?.endsWith('@eventframe.io');
+      if (!isStaff) return res.status(403).json({ error: 'Staff access required' });
+
+      const { id } = req.params;
+      const { id: _, ...updateData } = req.body;
+
+      console.log(`[TEMPLATES] PUT ${id} by ${decoded.email}`);
+
+      const { data, error } = await getSupabaseAdmin()
+        .from('templates')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) return res.status(500).json({ error: error.message });
       res.json({ success: true, data });
     } catch (error: any) {
       res.status(401).json({ error: 'Invalid session', details: error.message });
