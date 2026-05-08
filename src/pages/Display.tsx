@@ -207,7 +207,20 @@ export default function Display() {
     const loadInitialMessages = async () => {
       try {
         const data = await fetchMessages(targetId);
-        const processed = isPreview ? data.slice(0, 5) : data;
+        let processed = isPreview ? data.slice(0, 5) : data;
+        
+        // Inject mock data for previews if needed
+        if (isPreviewParam && processed.length < 5) {
+          const mockData = [
+            { id: 'm1', name: 'Sophia & James', message: 'Wishing you both a lifetime of love and happiness!', timestamp: Date.now(), status: 'approved' },
+            { id: 'm2', name: 'Grandma Betty', message: 'So proud of you both. A beautiful day for a beautiful couple.', timestamp: Date.now() - 1000, status: 'approved' },
+            { id: 'm3', name: 'The Miller Family', message: 'Cheers to the new Mr. & Mrs.! Let the celebration begin!', timestamp: Date.now() - 2000, status: 'approved' },
+            { id: 'm4', name: 'Best Man Chris', message: 'Heres to the happy couple! Best wedding ever!', timestamp: Date.now() - 3000, status: 'approved' },
+            { id: 'm5', name: 'Aunt Sarah', message: 'May your journey together be filled with joy and adventure.', timestamp: Date.now() - 4000, status: 'approved' }
+          ];
+          processed = [...processed, ...mockData.slice(0, 5 - processed.length)] as Message[];
+        }
+        
         setMessages(processed);
       } catch (err) {
         console.error('Initial fetch error:', err);

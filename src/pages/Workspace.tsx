@@ -1113,27 +1113,27 @@ export default function Workspace() {
                               Classic Event Layouts
                               <div className="h-px bg-[#C5A059]/20 flex-1" />
                             </h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div className="flex overflow-x-auto gap-6 pb-6 snap-x snap-mandatory custom-scrollbar">
                               {templates.filter(t => !t.is_custom).map((t) => (
                                 <button 
                                   key={t.id}
                                   onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
-                                  className={`relative overflow-hidden rounded-3xl border-2 transition-all group text-left
+                                  className={`relative min-w-[280px] snap-start overflow-hidden rounded-3xl border-2 transition-all group text-left
                                     ${editingEvent?.theme_id === t.id ? 'border-[#C5A059] shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
                                   `}
                                 >
-                                  <div className={`${t.colors.background} ${t.colors.text} p-8 rounded-[calc(1.5rem-4px)] min-h-[220px] flex flex-col justify-between relative`}>
+                                  <div className={`${t.colors.background} ${t.colors.text} p-6 rounded-[calc(1.5rem-4px)] min-h-[180px] flex flex-col justify-between relative`}>
                                     <div>
-                                      <div className={`w-10 h-10 rounded-xl ${t.colors.accent} bg-opacity-10 mb-6 flex items-center justify-center`}>
-                                        <Heart className="w-5 h-5 fill-current opacity-30" />
+                                      <div className={`w-8 h-8 rounded-lg ${t.colors.accent} bg-opacity-10 mb-4 flex items-center justify-center`}>
+                                        <Heart className="w-4 h-4 fill-current opacity-30" />
                                       </div>
-                                      <h4 className={`text-2xl font-bold ${t.colors.headerText} mb-2`}>{t.name}</h4>
-                                      <p className="text-xs opacity-60 leading-relaxed max-w-[200px]">{t.description}</p>
+                                      <h4 className={`text-xl font-bold ${t.colors.headerText} mb-1 truncate`}>{t.name}</h4>
+                                      <p className="text-[10px] opacity-60 leading-relaxed max-w-[200px] line-clamp-2">{t.description}</p>
                                     </div>
                                     
-                                    <div className="flex gap-2 mt-6">
-                                      <div className={`w-4 h-4 rounded-full ${t.colors.accent.split(' ')[0].replace('text-', 'bg-') || 'bg-[#C5A059]'}`} />
-                                      <div className={`w-4 h-4 rounded-full ${t.colors.border.split(' ')[0].replace('border-', 'bg-') || 'bg-gray-200'} opacity-50`} />
+                                    <div className="flex gap-2 mt-4">
+                                      <div className={`w-3 h-3 rounded-full ${t.colors.accent.split(' ')[0].replace('text-', 'bg-') || 'bg-[#C5A059]'}`} />
+                                      <div className={`w-3 h-3 rounded-full ${t.colors.border.split(' ')[0].replace('border-', 'bg-') || 'bg-gray-200'} opacity-50`} />
                                     </div>
                                   </div>
                                 </button>
@@ -1149,16 +1149,16 @@ export default function Workspace() {
                                 AI Crafted Experience Plugins
                                 <div className="h-px bg-[#C5A059]/20 flex-1" />
                               </h3>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                              <div className="flex overflow-x-auto gap-6 pb-6 snap-x snap-mandatory custom-scrollbar">
                                 {templates.filter(t => t.is_custom).map((t) => (
                                   <button 
                                     key={t.id}
                                     onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
-                                    className={`relative overflow-hidden rounded-3xl border-2 transition-all group text-left
+                                    className={`relative min-w-[280px] snap-start overflow-hidden rounded-3xl border-2 transition-all group text-left
                                       ${editingEvent?.theme_id === t.id ? 'border-indigo-400 shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
                                     `}
                                   >
-                                    <div className={`${t.colors.background} ${t.colors.text} p-8 rounded-[calc(1.5rem-4px)] min-h-[220px] flex flex-col justify-between relative bg-gradient-to-br from-white to-indigo-50/30`}>
+                                    <div className={`${t.colors.background} ${t.colors.text} p-6 rounded-[calc(1.5rem-4px)] min-h-[180px] flex flex-col justify-between relative bg-gradient-to-br from-white to-indigo-50/30`}>
                                       <div className="absolute top-0 right-0 p-4">
                                         <div className="bg-indigo-500 text-white text-[8px] font-black px-2 py-1 rounded-full flex items-center gap-1 shadow-lg shadow-indigo-200">
                                           <Sparkles className="w-2.5 h-2.5" />
@@ -1167,17 +1167,17 @@ export default function Workspace() {
                                       </div>
                                       
                                       <div>
-                                        <div className={`w-10 h-10 rounded-xl bg-indigo-500 text-white mb-6 flex items-center justify-center shadow-lg shadow-indigo-100`}>
-                                          <Palette className="w-5 h-5" />
+                                        <div className={`w-8 h-8 rounded-lg bg-indigo-500 text-white mb-4 flex items-center justify-center shadow-lg shadow-indigo-100`}>
+                                          <Palette className="w-4 h-4" />
                                         </div>
-                                        <h4 className={`text-2xl font-bold text-indigo-900 mb-2 truncate pr-16`}>{t.name}</h4>
-                                        <p className="text-xs text-indigo-400 font-bold uppercase tracking-widest mb-1">Custom Plugin</p>
-                                        <p className="text-xs opacity-60 leading-relaxed max-w-[200px]">{t.description || 'AI-generated interactive experience'}</p>
+                                        <h4 className={`text-xl font-bold text-indigo-900 mb-1 truncate pr-12`}>{t.name}</h4>
+                                        <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mb-1">Custom Plugin</p>
+                                        <p className="text-[10px] opacity-60 leading-relaxed max-w-[200px] line-clamp-2">{t.description || 'AI-generated interactive experience'}</p>
                                       </div>
                                       
-                                      <div className="flex gap-2 mt-6">
-                                        <div className="w-4 h-4 rounded-full bg-indigo-500" />
-                                        <div className="w-4 h-4 rounded-full bg-indigo-200" />
+                                      <div className="flex gap-2 mt-4">
+                                        <div className="w-3 h-3 rounded-full bg-indigo-500" />
+                                        <div className="w-3 h-3 rounded-full bg-indigo-200" />
                                       </div>
                                     </div>
                                   </button>
