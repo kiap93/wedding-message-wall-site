@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import ReactDOM from 'react-dom';
+import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Save, Trash2, Palette, ArrowLeft, Loader2, Sparkles, Code, Layout, Settings, Zap } from 'lucide-react';
+import { Plus, Save, Trash2, Palette, ArrowLeft, Loader2, Sparkles, Code, Layout, Settings, Zap, Wand2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { GoogleGenAI, Type } from "@google/genai";
 import Editor from '@monaco-editor/react';
 import { fetchTemplates, saveTemplate, deleteTemplate } from '../lib/templates';
 import { WeddingTemplate, TemplateColors } from '../types';
@@ -18,6 +18,9 @@ export default function StaffTemplates() {
   const [activeTab, setActiveTab] = useState<'settings' | 'html' | 'card'>('settings');
   const [showLivePreview, setShowLivePreview] = useState(false);
   const [previewRevision, setPreviewRevision] = useState(0);
+  const [showAIModal, setShowAIModal] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Security check: Only allow staff (for now, admin email or demo account)
   const isStaff = user?.email === 'buildsiteasia@gmail.com' || user?.email?.includes('@eventframe.io');
@@ -73,6 +76,64 @@ export default function StaffTemplates() {
     }
   };
 
+  const generateWithAI = async () => {
+    if (!aiPrompt.trim()) return;
+    setIsGenerating(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY as string) });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Create a professional wedding display design based on this prompt: "${aiPrompt}". 
+        The design should be modern, responsive, and elegant.
+        
+        Requirements:
+        1. Global HTML: Base structure with <div id="messages-container"></div>.
+        2. Global CSS: 
+           - Style #messages-container as relatively positioned with 100% width/height.
+           - Style .custom-card-wrapper as absolute with a specific top/left and an animation.
+           - IMPORTANT: Every .custom-card-wrapper MUST have white-space: nowrap and will-change: transform.
+           - Ensure animations like drifting (danmu) use transform: translateX() for performance.
+           - Use --index variable for staggering animation-delay.
+        3. Card HTML: Elegant template using {{name}}, {{message}}, and {{index}}.
+        
+        Visibility is critical. Ensure cards have padding, background, and shadow to be clearly visible against the background.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              html: { type: Type.STRING, description: "The global HTML container structure" },
+              css: { type: Type.STRING, description: "The global CSS for the layout and animations" },
+              card_html: { type: Type.STRING, description: "The HTML for a single message card" },
+              name: { type: Type.STRING, description: "A catchy name for this AI-generated preset" }
+            },
+            required: ["html", "css", "card_html", "name"]
+          }
+        }
+      });
+
+      const data = JSON.parse(response.text);
+      if (editingTemplate) {
+        setEditingTemplate({
+          ...editingTemplate,
+          name: data.name,
+          html: data.html,
+          css: data.css,
+          card_html: data.card_html,
+          variant: 'custom'
+        });
+      }
+      setShowAIModal(false);
+      setAiPrompt('');
+      setActiveTab('html');
+    } catch (error) {
+      console.error('AI Generation failed:', error);
+      alert('AI Generation failed. Please check your API key or prompt.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FDFCF0]">
@@ -120,7 +181,7 @@ export default function StaffTemplates() {
               iconType: 'heart',
               html: '<div class="custom-display-wrapper">\n  <div id="messages-container"></div>\n</div>',
               card_html: '<div class="p-8 bg-white rounded-[2.5rem] shadow-2xl border border-gray-100 min-w-[350px] transform hover:scale-105 transition-transform duration-500">\n  <div class="flex items-center gap-4 mb-4">\n    <div class="w-12 h-12 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center">\n      <span class="text-xl">✨</span>\n    </div>\n    <h3 class="text-xl font-serif text-gray-900">{{name}}</h3>\n  </div>\n  <p class="text-gray-600 italic text-base leading-relaxed">"{{message}}"</p>\n</div>',
-              css: '.custom-display-wrapper {\n  position: relative;\n  width: 100%;\n  height: 100%;\n  overflow: hidden;\n  background: #f9fafb;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}\n\n#messages-container {\n  position: absolute;\n  top: 0;\n  left: 0;\n  width: 100%;\n  height: 100%;\n  pointer-events: none;\n}\n\n.custom-card-wrapper {\n  position: absolute;\n  left: 100%;\n  white-space: nowrap;\n  top: calc((var(--index) % 5) * 160px + 60px);\n  animation: danmuMove 25s linear infinite;\n  animation-delay: calc(var(--index) * -4s);\n  padding: 0 40px;\n  pointer-events: auto;\n}\n\n@keyframes danmuMove {\n  from { transform: translateX(0); }\n  to { transform: translateX(calc(-100vw - 1500px)); }\n}'
+              css: '.custom-display-wrapper {\n  position: relative;\n  width: 100%;\n  height: 100%;\n  overflow: hidden;\n  background: linear-gradient(to bottom, #fdfbf7, #fff);\n}\n\n#messages-container {\n  position: relative;\n  width: 100%;\n  height: 100%;\n  overflow: hidden;\n}\n\n.custom-card-wrapper {\n  position: absolute;\n  /* Each of the 3 cards gets its own distinct row (33% height each) */\n  top: calc(var(--index) * 30% + 5%);\n  left: 0%;\n  animation: danmuMove 20s linear infinite;\n  /* Wide stagger: 0s, 6s, 12s etc */\n  animation-delay: calc(var(--index) * -6s);\n  padding: 0 40px;\n  white-space: nowrap;\n  z-index: 10;\n  will-change: transform;\n}\n\n@keyframes danmuMove {\n  from { transform: translateX(100vw); }\n  to { transform: translateX(-150%); }\n}'
             })}
             className="flex items-center gap-2 px-8 py-4 bg-[#C5A059] text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-xl shadow-[#C5A059]/20"
           >
@@ -166,6 +227,14 @@ export default function StaffTemplates() {
               >
                 <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-6">
                   <div className="flex gap-4 bg-gray-50 p-2 rounded-2xl shrink-0 w-full md:w-auto">
+                    <button 
+                      type="button"
+                      onClick={() => setShowAIModal(true)}
+                      className="flex-1 md:flex-none md:w-32 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all bg-indigo-500 text-white shadow-lg shadow-indigo-200 hover:scale-105 active:scale-95"
+                    >
+                      <Wand2 className="w-3.5 h-3.5" />
+                      AI Design
+                    </button>
                     <button 
                       onClick={() => setActiveTab('settings')}
                       className={`flex-1 md:flex-none md:w-32 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'settings' ? 'bg-white text-[#C5A059] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
@@ -408,6 +477,79 @@ export default function StaffTemplates() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* AI Assistant Modal */}
+      <AnimatePresence>
+        {showAIModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isGenerating && setShowAIModal(false)}
+              className="absolute inset-0 bg-[#2D2424]/80 backdrop-blur-sm"
+            />
+            
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden p-8 border border-indigo-100"
+            >
+              <div className="flex items-center gap-4 mb-8">
+                <div className="w-12 h-12 bg-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200">
+                  <Sparkles className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-serif text-[#2D2424]">AI Design Assistant</h3>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#C5A059]">Gemini 3 Flash Powered</p>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Describe your vision</label>
+                  <textarea 
+                    autoFocus
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder="e.g. Create a dreamy celestial theme with deep navy background, golden floating cards that glow, and elegant serif fonts..."
+                    className="w-full px-6 py-5 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all min-h-[160px] resize-none"
+                    disabled={isGenerating}
+                  />
+                </div>
+
+                <div className="flex gap-4">
+                  <button 
+                    onClick={() => setShowAIModal(false)}
+                    disabled={isGenerating}
+                    className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-black transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={generateWithAI}
+                    disabled={isGenerating || !aiPrompt.trim()}
+                    className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-xl shadow-indigo-200 disabled:opacity-50 disabled:scale-100"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Generating Design...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="w-4 h-4" />
+                        Generate Experience
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -426,7 +568,8 @@ const MOCK_TEXTS = [
 ];
 
 function renderCard(cardHtml: string, msg: any, index: number) {
-  return (cardHtml || '<div><h3>{{name}}</h3><p>{{message}}</p></div>')
+  const template = cardHtml || '<div class="p-6 bg-white rounded-3xl shadow-lg"><h3>{{name}}</h3><p>{{message}}</p></div>';
+  return template
     .replace(/\{\{name\}\}/g, msg.name)
     .replace(/\{\{message\}\}/g, msg.message)
     .replace(/\{\{index\}\}/g, index.toString())
@@ -437,13 +580,44 @@ function InternalTemplateView({ template }: { template: WeddingTemplate, key?: R
   const [liveMessages] = useState([...MOCK_MESSAGES]);
   const isCustom = template.variant === 'custom';
   
+  // Combine structure and cards into one single HTML string for the simulation
+  const finalHtml = useMemo(() => {
+    if (!isCustom) return '';
+    
+    const cardsHtml = liveMessages.map((msg, index) => {
+      const cardInner = renderCard(template.card_html || '', msg, index);
+      return `<div class="custom-card-wrapper" style="--index: ${index}">${cardInner}</div>`;
+    }).join('');
+    
+    let baseHtml = template.html || '';
+    
+    // Inject cards into #messages-container if it exists, otherwise append a container
+    if (baseHtml.includes('id="messages-container"')) {
+      return baseHtml.replace(/(id="messages-container"[^>]*>)/, `$1${cardsHtml}`);
+    } else {
+      return `${baseHtml}<div id="messages-container">${cardsHtml}</div>`;
+    }
+  }, [template.html, template.card_html, liveMessages, isCustom]);
+  
   return (
     <div className={`w-full h-full overflow-hidden flex flex-col ${template.colors?.background || 'bg-white'}`}>
-      <style dangerouslySetInnerHTML={{ __html: template.css || '' }} />
+      <style dangerouslySetInnerHTML={{ __html: `
+        ${template.css || ''}
+        .custom-card-wrapper {
+          display: block !important;
+          min-height: 10px;
+        }
+      ` }} />
       
       <div className="flex-1 relative overflow-hidden">
         {isCustom ? (
-          <CustomSimulator template={template} messages={liveMessages} />
+          <div className="w-full h-full relative">
+            <div 
+              id="template-root"
+              className="w-full h-full" 
+              dangerouslySetInnerHTML={{ __html: finalHtml }} 
+            />
+          </div>
         ) : (
           <div className="p-12 h-full overflow-y-auto">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -472,95 +646,4 @@ function InternalTemplateView({ template }: { template: WeddingTemplate, key?: R
   );
 }
 
-function CustomSimulator({ template, messages }: { template: WeddingTemplate, messages: any[] }) {
-  const containerRef = React.useRef<HTMLDivElement>(null);
-  const [messagesContainer, setMessagesContainer] = useState<Element | null>(null);
-  const [status, setStatus] = useState<'searching' | 'ready' | 'missing'>('searching');
-  const [portalCount, setPortalCount] = useState(0);
-
-  useEffect(() => {
-    // Reset container when html changes to force re-acquisition
-    setMessagesContainer(null);
-    setStatus('searching');
-    setPortalCount(0);
-    
-    const findAndSetContainer = () => {
-      if (!containerRef.current) return false;
-      const el = containerRef.current.querySelector('#messages-container');
-      if (el) {
-        setMessagesContainer(el);
-        setStatus('ready');
-        return true;
-      }
-      return false;
-    };
-
-    // Immediate check
-    findAndSetContainer();
-
-    // Poll a few times as dangerouslySetInnerHTML might be async/throttled by browser
-    let attempts = 0;
-    const interval = setInterval(() => {
-      if (findAndSetContainer()) {
-        clearInterval(interval);
-      } else if (attempts > 40) {
-        setStatus('missing');
-        clearInterval(interval);
-      }
-      attempts++;
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [template.html]);
-
-  useEffect(() => {
-    if (messagesContainer) {
-      setPortalCount(messages.length);
-    }
-  }, [messages.length, messagesContainer]);
-
-  return (
-    <div ref={containerRef} className="custom-layout-container w-full h-full relative">
-      {/* Simulation Info (Staff Only UI) */}
-      <div className="absolute top-4 left-4 z-50 flex items-center gap-2">
-        <div className={`px-4 py-2 rounded-2xl text-[10px] font-mono font-black shadow-2xl flex items-center gap-3 border border-white/20 backdrop-blur-md ${
-          status === 'ready' ? 'bg-green-500/90 text-white' : 
-          status === 'searching' ? 'bg-amber-500/90 text-white animate-pulse' : 
-          'bg-red-500/90 text-white'
-        }`}>
-          <div className={`w-2 h-2 rounded-full ${status === 'ready' ? 'bg-white animate-pulse' : 'bg-white'}`} />
-          {status === 'ready' ? `ENGINE: ACTIVE • PORTAL: ${portalCount} CARDS` : status === 'searching' ? 'ENGINE: SEARCHING FOR #messages-container...' : 'ENGINE: TERMINATED (id="messages-container" NOT FOUND)'}
-        </div>
-      </div>
-
-      {status === 'missing' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-red-50/90 z-20 p-12 text-center">
-          <div className="max-w-md">
-            <Code className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h4 className="text-xl font-bold text-red-900 mb-2">Missing #messages-container</h4>
-            <p className="text-sm text-red-700">Your "Structure" HTML must include an element with <code className="bg-red-100 px-1 rounded">id="messages-container"</code> for the cards to render.</p>
-          </div>
-        </div>
-      )}
-
-      <div 
-        className="w-full h-full" 
-        dangerouslySetInnerHTML={{ __html: template.html || '<div id="messages-container"></div>' }} 
-      />
-      
-      {messagesContainer && ReactDOM.createPortal(
-        <div className="contents">
-          {messages.map((msg, index) => (
-            <div 
-              key={msg.id} 
-              className="custom-card-wrapper"
-              style={{ '--index': index } as any}
-              dangerouslySetInnerHTML={{ __html: renderCard(template.card_html || '', msg, index) }} 
-            />
-          ))}
-        </div>,
-        messagesContainer
-      )}
-    </div>
-  );
-}
+// CustomSimulator removed - combined logic into InternalTemplateView
