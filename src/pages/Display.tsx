@@ -421,7 +421,7 @@ export default function Display() {
   );
 }
 
-function CustomLayout({ messages, template }: { messages: Message[], template: WeddingTemplate, key?: React.Key }) {
+function CustomLayout({ messages, template }: { messages: Message[], template: WeddingTemplate, key?: any }) {
   // Try to find the position of messages-container in the custom HTML
   const html = template.html || '<div id="messages-container"></div>';
   const parts = html.split('<div id="messages-container"></div>');
@@ -431,13 +431,14 @@ function CustomLayout({ messages, template }: { messages: Message[], template: W
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="custom-layout-container"
+      style={{ '--total-messages': messages.length } as any}
     >
       {parts[0] && <div dangerouslySetInnerHTML={{ __html: parts[0] }} />}
       
-      <div id="messages-container" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <div id="messages-container" className="relative w-full h-full">
         <AnimatePresence mode="popLayout">
-          {messages.map((msg) => (
-            <CustomMessageCard key={msg.id} msg={msg} template={template} />
+          {messages.map((msg, index) => (
+            <CustomMessageCard key={msg.id} msg={msg} template={template} index={index} />
           ))}
         </AnimatePresence>
       </div>
@@ -447,7 +448,7 @@ function CustomLayout({ messages, template }: { messages: Message[], template: W
   );
 }
 
-function CustomMessageCard({ msg, template }: { msg: Message, template: WeddingTemplate, key?: React.Key }) {
+function CustomMessageCard({ msg, template, index }: { msg: Message, template: WeddingTemplate, index: number, key?: any }) {
   const cardHtml = template.card_html || '<div><h3>{{name}}</h3><p>{{message}}</p></div>';
   
   const renderedHtml = cardHtml
@@ -458,10 +459,13 @@ function CustomMessageCard({ msg, template }: { msg: Message, template: WeddingT
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, x: 100 }}
+      animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, scale: 0.9 }}
       className="custom-card-wrapper"
+      style={{ 
+        '--index': index,
+      } as any}
       dangerouslySetInnerHTML={{ __html: renderedHtml }}
     />
   );

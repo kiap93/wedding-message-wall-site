@@ -295,29 +295,25 @@ export default function StaffTemplates() {
 
                   {activeTab === 'html' && (
                     <div className="space-y-6">
-                      <div className="h-[300px] border border-gray-100 rounded-2xl overflow-hidden">
+                      <div className="h-[300px] border border-gray-100 rounded-2xl overflow-hidden flex flex-col">
                         <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-gray-50 p-3">Global CSS</label>
-                        <Editor
-                          height="250px"
-                          defaultLanguage="css"
-                          value={editingTemplate.css || '/* Custom CSS */'}
-                          onChange={(val) => setEditingTemplate({...editingTemplate, css: val})}
-                          theme="vs-light"
-                          options={{ minimap: { enabled: false } }}
+                        <textarea
+                          className="flex-1 p-4 bg-gray-50 font-mono text-xs border-none focus:ring-2 focus:ring-[#C5A059] transition-all resize-none"
+                          value={editingTemplate.css || ''}
+                          onChange={(e) => setEditingTemplate({...editingTemplate, css: e.target.value})}
+                          placeholder="/* Custom CSS */"
                         />
                       </div>
-                      <div className="h-[400px] border border-gray-100 rounded-2xl overflow-hidden">
+                      <div className="h-[400px] border border-gray-100 rounded-2xl overflow-hidden flex flex-col">
                         <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-gray-50 p-3">Global HTML Structure (Container)</label>
                         <div className="p-3 bg-blue-50 text-[9px] text-blue-600 border-b border-blue-100">
                           Use <code>&lt;div id="messages-container"&gt;&lt;/div&gt;</code> to place the message grid.
                         </div>
-                        <Editor
-                          height="320px"
-                          defaultLanguage="html"
-                          value={editingTemplate.html || '<div class="custom-display-wrapper">\n  <div id="messages-container"></div>\n</div>'}
-                          onChange={(val) => setEditingTemplate({...editingTemplate, html: val})}
-                          theme="vs-light"
-                          options={{ minimap: { enabled: false } }}
+                        <textarea
+                          className="flex-1 p-4 bg-gray-50 font-mono text-xs border-none focus:ring-2 focus:ring-[#C5A059] transition-all resize-none"
+                          value={editingTemplate.html || ''}
+                          onChange={(e) => setEditingTemplate({...editingTemplate, html: e.target.value})}
+                          placeholder="<div class='custom-display'>\n  <div id='messages-container'></div>\n</div>"
                         />
                       </div>
                     </div>
@@ -325,18 +321,16 @@ export default function StaffTemplates() {
 
                   {activeTab === 'card' && (
                     <div className="space-y-6">
-                      <div className="h-[500px] border border-gray-100 rounded-2xl overflow-hidden">
+                      <div className="h-[500px] border border-gray-100 rounded-2xl overflow-hidden flex flex-col">
                         <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-gray-50 p-3">Card Template (HTML)</label>
                         <div className="p-3 bg-blue-50 text-[9px] text-blue-600 border-b border-blue-100">
                           Variables: <code>{`{{name}}`}</code>, <code>{`{{message}}`}</code>, <code>{`{{timestamp}}`}</code>
                         </div>
-                        <Editor
-                          height="440px"
-                          defaultLanguage="html"
-                          value={editingTemplate.card_html || '<div class="custom-card">\n  <h3>{{name}}</h3>\n  <p>{{message}}</p>\n</div>'}
-                          onChange={(val) => setEditingTemplate({...editingTemplate, card_html: val})}
-                          theme="vs-light"
-                          options={{ minimap: { enabled: false } }}
+                        <textarea
+                          className="flex-1 p-4 bg-gray-50 font-mono text-xs border-none focus:ring-2 focus:ring-[#C5A059] transition-all resize-none"
+                          value={editingTemplate.card_html || ''}
+                          onChange={(e) => setEditingTemplate({...editingTemplate, card_html: e.target.value})}
+                          placeholder="<div class='custom-card'>\n  <h3>{{name}}</h3>\n  <p>{{message}}</p>\n</div>"
                         />
                       </div>
                     </div>
