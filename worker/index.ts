@@ -718,6 +718,192 @@ app.put('/api/projects/:id', async (c) => {
   }
 });
 
+app.delete('/api/projects/:id', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+
+  try {
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
+    const project_id = c.req.param('id');
+
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return c.json({ error: 'Supabase configuration missing' }, 500);
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // Verify agency
+    const { data: agency } = await supabase
+      .from('agencies')
+      .select('id')
+      .eq('user_id', payload.id || payload.sub)
+      .single();
+
+    if (!agency) return c.json({ error: 'Agency not found' }, 403);
+
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', project_id)
+      .eq('agency_id', agency.id);
+
+    if (error) {
+      console.error('Worker project deletion error:', error);
+      return c.json({ error: error.message }, 500);
+    }
+
+    return c.json({ success: true });
+  } catch (e: any) {
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+app.post('/api/projects', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+
+  try {
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
+    const projectData = await c.req.json();
+
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return c.json({ error: 'Supabase configuration missing' }, 500);
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // Verify agency
+    const { data: agency } = await supabase
+      .from('agencies')
+      .select('id')
+      .eq('user_id', payload.id || payload.sub)
+      .single();
+
+    if (!agency) return c.json({ error: 'Agency not found' }, 403);
+
+    const newProject = {
+      ...projectData,
+      agency_id: agency.id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    if (newProject.rsvp_fields && typeof newProject.rsvp_fields === 'object') {
+      newProject.rsvp_fields = JSON.stringify(newProject.rsvp_fields);
+    }
+
+    const { data, error } = await supabase
+      .from('projects')
+      .insert([newProject])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Worker project creation error:', error);
+      return c.json({ error: error.message }, 500);
+    }
+
+    return c.json({ success: true, data }, 201);
+  } catch (e: any) {
+    console.error('Worker project creation internal error:', e.message);
+    return c.json({ error: 'Internal server error', details: e.message }, 500);
+  }
+});
+
+app.post('/api/onboard', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+
+  try {
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
+    const { role, name, groomName, brideName, slug } = await c.req.json();
+    const userId = payload.id || payload.sub;
+
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // 1. Check if slug exists
+    const { data: existing } = await supabase
+      .from('agencies')
+      .select('id')
+      .eq('slug', slug)
+      .maybeSingle();
+      
+    if (existing) {
+      return c.json({ error: 'This subdomain is already taken' }, 400);
+    }
+
+    // 2. Create agency
+    const { data: agency, error: agencyError } = await supabase
+      .from('agencies')
+      .insert([{
+        name: role === 'couple' ? `${groomName} & ${brideName}` : name,
+        slug,
+        user_id: userId,
+        user_role: role,
+        created_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+    
+    if (agencyError) throw agencyError;
+
+    let createdProjectId = null;
+
+    // 3. If couple, create initial project ONLY (no sample data)
+    if (role === 'couple' && agency) {
+      const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .insert([{
+          agency_id: agency.id,
+          name: `${groomName} & ${brideName}'s Wedding`,
+          groom_name: groomName,
+          bride_name: brideName,
+          slug: slug,
+          theme_id: 'garden',
+          wedding_date: new Date(Date.now() + 15552000000).toISOString().split('T')[0],
+          location: 'To Be Announced',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+      
+      if (projectError) throw projectError;
+      if (project) {
+        createdProjectId = project.id;
+      }
+    }
+
+    return c.json({ success: true, agency, createdProjectId }, 201);
+  } catch (error: any) {
+    console.error('Worker onboarding error:', error);
+    return c.json({ error: error.message || 'Internal server error during onboarding' }, 500);
+  }
+});
+
 app.post('/api/rsvps', async (c) => {
   try {
     const rsvpData = await c.req.json();

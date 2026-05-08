@@ -980,17 +980,6 @@ function verifyPasswordNode(password: string, storedHash: string) {
         if (projectError) throw projectError;
         if (project) {
           createdProjectId = project.id;
-          
-          // Sample messages
-          await supabase.from('messages').insert([
-            { project_id: project.id, name: 'Aunt Martha', message: 'So happy for you both! ❤️', status: 'approved', timestamp: Date.now() - 86400000 },
-            { project_id: project.id, name: 'The Wilsons', message: 'Wishing you a lifetime of love and happiness.', status: 'approved', timestamp: Date.now() - 43200000 }
-          ]);
-
-          // Sample RSVPs
-          await supabase.from('rsvps').insert([
-            { project_id: project.id, name: 'Sample Guest', email: 'guest@example.com', attending: true, guest_count: 2, created_at: new Date().toISOString() }
-          ]);
         }
       }
 

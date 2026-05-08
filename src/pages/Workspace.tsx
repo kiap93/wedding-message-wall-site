@@ -280,8 +280,14 @@ export default function Workspace() {
         });
 
         if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || 'Failed to save event');
+          let errorMessage = 'Failed to save event';
+          try {
+            const errData = await response.json();
+            errorMessage = errData.error || errorMessage;
+          } catch (e) {
+            errorMessage = `Error ${response.status}: ${response.statusText || 'Unknown error'}`;
+          }
+          throw new Error(errorMessage);
         }
 
         if (agency) await fetchEvents(agency.id, agency.user_role);
@@ -300,8 +306,14 @@ export default function Workspace() {
         });
 
         if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || 'Failed to create event');
+          let errorMessage = 'Failed to create event';
+          try {
+            const errData = await response.json();
+            errorMessage = errData.error || errorMessage;
+          } catch (e) {
+            errorMessage = `Error ${response.status}: ${response.statusText || 'Unknown error'}`;
+          }
+          throw new Error(errorMessage);
         }
 
         if (agency) await fetchEvents(agency.id, agency.user_role);
@@ -323,8 +335,14 @@ export default function Workspace() {
       });
 
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Failed to delete event');
+        let errorMessage = 'Failed to delete event';
+        try {
+          const errData = await response.json();
+          errorMessage = errData.error || errorMessage;
+        } catch (e) {
+          errorMessage = `Error ${response.status}: ${response.statusText || 'Unknown error'}`;
+        }
+        throw new Error(errorMessage);
       }
 
       setEvents(events.filter(e => e.id !== id));
