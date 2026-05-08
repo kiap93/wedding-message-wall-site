@@ -424,7 +424,8 @@ export default function Display() {
 function CustomLayout({ messages, template }: { messages: Message[], template: WeddingTemplate, key?: any }) {
   // Try to find the position of messages-container in the custom HTML
   const html = template.html || '<div id="messages-container"></div>';
-  const parts = html.split('<div id="messages-container"></div>');
+  // Use a more robust split that handles variations in spacing and attributes
+  const parts = html.split(/<div\s+id=["']messages-container["'][^>]*>[\s\S]*?<\/div>/i);
   
   return (
     <motion.div 

@@ -29,7 +29,17 @@ export function getSupabase(): SupabaseClient {
         `Supabase configuration is missing or invalid (URL provided: "${url}"). Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY correctly in the Secrets panel.`
       );
     }
-    supabaseInstance = createClient(url!, key!);
+    
+    supabaseInstance = createClient(url!, key!, {
+      global: {
+        headers: {
+          get Authorization() {
+            const token = localStorage.getItem('wedding_session_token');
+            return token ? `Bearer ${token}` : '';
+          }
+        } as any
+      }
+    });
   }
   return supabaseInstance;
 }

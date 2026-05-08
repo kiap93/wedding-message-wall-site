@@ -423,7 +423,10 @@ export default function StaffTemplates() {
               </div>
 
               <div className="flex-1 overflow-hidden relative bg-gray-100">
-                <InternalTemplateView template={editingTemplate as WeddingTemplate} />
+                <InternalTemplateView 
+                  key={`${editingTemplate.id}-${showLivePreview}-${(editingTemplate.css || '').length}-${(editingTemplate.html || '').length}`}
+                  template={editingTemplate as WeddingTemplate} 
+                />
               </div>
               
               <div className="p-4 bg-white border-t border-[#C5A059]/10 text-center relative z-10">
@@ -452,7 +455,7 @@ const MOCK_MESSAGES = [
   { id: '6', name: 'Grandma Betty', message: 'Beautiful couple. God bless you both.', timestamp: new Date().toISOString() },
 ];
 
-function InternalTemplateView({ template }: { template: WeddingTemplate }) {
+function InternalTemplateView({ template }: { template: WeddingTemplate, key?: any }) {
   const isCustom = template.variant === 'custom';
   
   return (
@@ -482,7 +485,8 @@ function InternalTemplateView({ template }: { template: WeddingTemplate }) {
 
 function CustomSimulator({ template }: { template: WeddingTemplate }) {
   const html = template.html || '<div id="messages-container"></div>';
-  const parts = html.split('<div id="messages-container"></div>');
+  // Use a more robust split that handles variations in spacing and attributes
+  const parts = html.split(/<div\s+id=["']messages-container["'][^>]*>[\s\S]*?<\/div>/i);
   
   return (
     <div className="custom-layout-container w-full h-full min-h-screen">
