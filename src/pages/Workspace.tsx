@@ -1105,34 +1105,86 @@ export default function Workspace() {
                           </div>
                         </div>
                         
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                          {templates.map((t) => (
-                            <button 
-                              key={t.id}
-                              onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
-                              className={`relative overflow-hidden rounded-3xl border-2 transition-all group text-left
-                                ${editingEvent?.theme_id === t.id ? 'border-[#C5A059] shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
-                              `}
-                            >
-                              <div className={`${t.colors.background} ${t.colors.text} p-8 rounded-[calc(1.5rem-4px)] min-h-[240px] flex flex-col justify-between`}>
-                                <div>
-                                  <div className={`w-10 h-10 rounded-xl ${t.colors.accent} bg-opacity-10 mb-6 flex items-center justify-center`}>
-                                    {t.is_custom ? <Palette className="w-5 h-5 fill-current opacity-30" /> : <Heart className="w-5 h-5 fill-current opacity-30" />}
+                        <div className="space-y-12">
+                          {/* Standard Templates */}
+                          <div>
+                            <h3 className="text-xs font-black uppercase tracking-[0.3em] text-[#C5A059] mb-6 flex items-center gap-3">
+                              <div className="h-px bg-[#C5A059]/20 flex-1" />
+                              Classic Event Layouts
+                              <div className="h-px bg-[#C5A059]/20 flex-1" />
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                              {templates.filter(t => !t.is_custom).map((t) => (
+                                <button 
+                                  key={t.id}
+                                  onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
+                                  className={`relative overflow-hidden rounded-3xl border-2 transition-all group text-left
+                                    ${editingEvent?.theme_id === t.id ? 'border-[#C5A059] shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
+                                  `}
+                                >
+                                  <div className={`${t.colors.background} ${t.colors.text} p-8 rounded-[calc(1.5rem-4px)] min-h-[220px] flex flex-col justify-between relative`}>
+                                    <div>
+                                      <div className={`w-10 h-10 rounded-xl ${t.colors.accent} bg-opacity-10 mb-6 flex items-center justify-center`}>
+                                        <Heart className="w-5 h-5 fill-current opacity-30" />
+                                      </div>
+                                      <h4 className={`text-2xl font-bold ${t.colors.headerText} mb-2`}>{t.name}</h4>
+                                      <p className="text-xs opacity-60 leading-relaxed max-w-[200px]">{t.description}</p>
+                                    </div>
+                                    
+                                    <div className="flex gap-2 mt-6">
+                                      <div className={`w-4 h-4 rounded-full ${t.colors.accent.split(' ')[0].replace('text-', 'bg-') || 'bg-[#C5A059]'}`} />
+                                      <div className={`w-4 h-4 rounded-full ${t.colors.border.split(' ')[0].replace('border-', 'bg-') || 'bg-gray-200'} opacity-50`} />
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <h4 className={`text-2xl font-bold ${t.colors.headerText}`}>{t.name}</h4>
-                                    {t.is_custom && <Sparkles className="w-4 h-4 text-[#C5A059]" />}
-                                  </div>
-                                  <p className="text-sm opacity-60 leading-relaxed max-w-[200px]">{t.description}</p>
-                                </div>
-                                
-                                <div className="flex gap-2 mt-6">
-                                  <div className={`w-4 h-4 rounded-full ${t.colors.accent.split(' ')[0].replace('text-', 'bg-') || 'bg-[#C5A059]'}`} />
-                                  <div className={`w-4 h-4 rounded-full ${t.colors.border.split(' ')[0].replace('border-', 'bg-') || 'bg-gray-200'} opacity-50`} />
-                                </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Custom / AI Plugins */}
+                          {templates.filter(t => t.is_custom).length > 0 && (
+                            <div>
+                               <h3 className="text-xs font-black uppercase tracking-[0.3em] text-[#C5A059] mb-6 flex items-center gap-3">
+                                <div className="h-px bg-[#C5A059]/20 flex-1" />
+                                AI Crafted Experience Plugins
+                                <div className="h-px bg-[#C5A059]/20 flex-1" />
+                              </h3>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                {templates.filter(t => t.is_custom).map((t) => (
+                                  <button 
+                                    key={t.id}
+                                    onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
+                                    className={`relative overflow-hidden rounded-3xl border-2 transition-all group text-left
+                                      ${editingEvent?.theme_id === t.id ? 'border-indigo-400 shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
+                                    `}
+                                  >
+                                    <div className={`${t.colors.background} ${t.colors.text} p-8 rounded-[calc(1.5rem-4px)] min-h-[220px] flex flex-col justify-between relative bg-gradient-to-br from-white to-indigo-50/30`}>
+                                      <div className="absolute top-0 right-0 p-4">
+                                        <div className="bg-indigo-500 text-white text-[8px] font-black px-2 py-1 rounded-full flex items-center gap-1 shadow-lg shadow-indigo-200">
+                                          <Sparkles className="w-2.5 h-2.5" />
+                                          PREMIUM
+                                        </div>
+                                      </div>
+                                      
+                                      <div>
+                                        <div className={`w-10 h-10 rounded-xl bg-indigo-500 text-white mb-6 flex items-center justify-center shadow-lg shadow-indigo-100`}>
+                                          <Palette className="w-5 h-5" />
+                                        </div>
+                                        <h4 className={`text-2xl font-bold text-indigo-900 mb-2 truncate pr-16`}>{t.name}</h4>
+                                        <p className="text-xs text-indigo-400 font-bold uppercase tracking-widest mb-1">Custom Plugin</p>
+                                        <p className="text-xs opacity-60 leading-relaxed max-w-[200px]">{t.description || 'AI-generated interactive experience'}</p>
+                                      </div>
+                                      
+                                      <div className="flex gap-2 mt-6">
+                                        <div className="w-4 h-4 rounded-full bg-indigo-500" />
+                                        <div className="w-4 h-4 rounded-full bg-indigo-200" />
+                                      </div>
+                                    </div>
+                                  </button>
+                                ))}
                               </div>
-                            </button>
-                          ))}
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     )}

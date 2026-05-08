@@ -494,6 +494,8 @@ function CustomMessageCard({ msg, template, index }: { msg: Message, template: W
       className="custom-card-wrapper"
       style={{ 
         '--index': index,
+        '--row': Math.floor(index / 5),
+        '--col': index % 5
       } as any}
       dangerouslySetInnerHTML={{ __html: renderedHtml }}
     />
