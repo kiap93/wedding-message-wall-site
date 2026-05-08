@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { WeddingTemplate } from '../types';
-import { Heart, Camera, Mail, Star, Leaf, Flower, Palette, User, Loader2 } from 'lucide-react';
+import { Heart, Camera, Mail, Star, Leaf, Flower, Palette, User, Loader2, Sparkles } from 'lucide-react';
 import { fetchTemplates } from '../lib/templates';
 
 export default function TemplateSelector() {

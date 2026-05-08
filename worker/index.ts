@@ -829,7 +829,29 @@ app.post('/api/projects', async (c) => {
   }
 });
 
-// --- Template Routes (Staff Only) ---
+// --- Template Routes (Staff Only for Mutations) ---
+app.get('/api/templates', async (c) => {
+  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  try {
+    const { data, error } = await supabase
+      .from('templates')
+      .select('*')
+      .order('name');
+
+    if (error) {
+      console.error('Worker template fetch error:', error);
+      return c.json({ error: error.message }, 500);
+    }
+
+    return c.json({ success: true, data });
+  } catch (err: any) {
+    return c.json({ error: 'Internal server error', details: err.message }, 500);
+  }
+});
+
 app.post('/api/templates', async (c) => {
   const tokenHeader = c.req.header('Authorization');
   const cookieToken = getCookie(c, 'wedding_session');
