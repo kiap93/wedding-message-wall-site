@@ -994,7 +994,7 @@ function verifyPasswordNode(password: string, storedHash: string) {
   // --- Template Routes (Staff Only for Mutations) ---
   // --- Template Routes ---
   apiRouter.post('/ai/generate-template', async (req, res) => {
-    const { prompt } = req.body;
+    const { prompt, existingContext } = req.body;
     if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
     
     const apiKey = process.env.GEMINI_API_KEY;
@@ -1005,10 +1005,22 @@ function verifyPasswordNode(password: string, storedHash: string) {
     try {
       const ai = new GoogleGenAI({ apiKey });
       
-      const result = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Create a professional wedding display design based on this prompt: "${prompt}". 
-        The design should be modern, responsive, and a complete full-page experience.
+      let systemPrompt = `Create a professional wedding display design base on this user intent: "${prompt}". 
+        The design should be modern, responsive, and a complete full-page experience.`;
+
+      if (existingContext) {
+        systemPrompt = `Refine the existing wedding display design based on this instruction: "${prompt}". 
+        
+        EXISTING CODE TO MODIFY:
+        - HTML: ${existingContext.html}
+        - CSS: ${existingContext.css}
+        - Card HTML: ${existingContext.card_html}
+        
+        Please maintain the general structure while applying the requested changes. 
+        If the user asks for a total rebuild, you may rewrite it significantly, but otherwise aim for consistency.`;
+      }
+
+      systemPrompt += `
         
         Requirements:
         1. Global HTML: Should be a complete layout. 
@@ -1023,7 +1035,11 @@ function verifyPasswordNode(password: string, storedHash: string) {
            - Avoid using modulo (%) inside calc() as it is not broadly supported in all CSS engines; instead, use the provided --row and --col variables.
         3. Card HTML: A template for single messages using {{name}} and {{message}}.
         
-        Ensure the typography for the Groom & Bride names feels special. The entire page should feel like a single cohesive theme.`,
+        Ensure the typography for the Groom & Bride names feels special. The entire page should feel like a single cohesive theme.`;
+      
+      const result = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: systemPrompt,
         config: {
           responseMimeType: "application/json",
           responseSchema: {

@@ -85,7 +85,14 @@ export default function StaffTemplates() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('wedding_session')}`
         },
-        body: JSON.stringify({ prompt: aiPrompt })
+        body: JSON.stringify({ 
+          prompt: aiPrompt,
+          existingContext: editingTemplate ? {
+            html: editingTemplate.html,
+            css: editingTemplate.css,
+            card_html: editingTemplate.card_html
+          } : null
+        })
       });
 
       if (!response.ok) {

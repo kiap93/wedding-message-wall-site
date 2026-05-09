@@ -833,7 +833,7 @@ app.post('/api/projects', async (c) => {
 
 // --- Template Routes (Staff Only for Mutations) ---
 app.post('/api/ai/generate-template', async (c) => {
-  const { prompt } = await c.req.json();
+  const { prompt, existingContext } = await c.req.json();
   if (!prompt) return c.json({ error: 'Prompt is required' }, 400);
   
   const apiKey = c.env.GEMINI_API_KEY;
@@ -842,25 +842,41 @@ app.post('/api/ai/generate-template', async (c) => {
   try {
     const ai = new GoogleGenAI({ apiKey });
     
+    let systemPrompt = `Create a professional wedding display design base on this user intent: "${prompt}". 
+      The design should be modern, responsive, and a complete full-page experience.`;
+
+    if (existingContext) {
+      systemPrompt = `Refine the existing wedding display design based on this instruction: "${prompt}". 
+      
+      EXISTING CODE TO MODIFY:
+      - HTML: ${existingContext.html}
+      - CSS: ${existingContext.css}
+      - Card HTML: ${existingContext.card_html}
+      
+      Please maintain the general structure while applying the requested changes. 
+      If the user asks for a total rebuild, you may rewrite it significantly, but otherwise aim for consistency.`;
+    }
+
+    systemPrompt += `
+      
+      Requirements:
+      1. Global HTML: Should be a complete layout. 
+         - Use {{bride}}, {{groom}}, and {{date}} placeholders to display wedding details prominently.
+         - Must contain <div id="messages-container"></div> where interactive message cards will float or drift.
+      2. Global CSS: 
+         - Style the entire page environment (backgrounds, overlays, typography).
+         - Style #messages-container as relative with 100% width/height.
+         - Style .custom-card-wrapper as absolute with animations.
+         - NO OVERLAP: Use lanes with "top: calc(var(--row) * 18% + 5%)" and stagger with "animation-delay: calc(var(--index) * -7.5s)".
+         - RESPONSIVE: Use fluid units (clamp, vh, vw, %).
+         - Avoid using modulo (%) inside calc() as it is not broadly supported in all CSS engines; instead, use the provided --row and --col variables.
+      3. Card HTML: A template for single messages using {{name}} and {{message}}.
+      
+      Ensure the typography for the Groom & Bride names feels special. The entire page should feel like a single cohesive theme.`;
+    
     const result = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Create a professional wedding display design based on this prompt: "${prompt}". 
-        The design should be modern, responsive, and a complete full-page experience.
-        
-        Requirements:
-        1. Global HTML: Should be a complete layout. 
-           - Use {{bride}}, {{groom}}, and {{date}} placeholders to display wedding details prominently.
-           - Must contain <div id="messages-container"></div> where interactive message cards will float or drift.
-        2. Global CSS: 
-           - Style the entire page environment (backgrounds, overlays, typography).
-           - Style #messages-container as relative with 100% width/height.
-           - Style .custom-card-wrapper as absolute with animations.
-           - NO OVERLAP: Use lanes with "top: calc(var(--row) * 18% + 5%)" and stagger with "animation-delay: calc(var(--index) * -7.5s)".
-           - RESPONSIVE: Use fluid units (clamp, vh, vw, %).
-           - Avoid using modulo (%) inside calc() as it is not broadly supported in all CSS engines; instead, use the provided --row and --col variables.
-        3. Card HTML: A template for single messages using {{name}} and {{message}}.
-        
-        Ensure the typography for the Groom & Bride names feels special. The entire page should feel like a single cohesive theme.`,
+      contents: systemPrompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
