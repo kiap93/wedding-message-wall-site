@@ -84,20 +84,21 @@ export default function StaffTemplates() {
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Create a professional wedding display design based on this prompt: "${aiPrompt}". 
-        The design should be modern, responsive, and elegant.
+        The design should be modern, responsive, and a complete full-page experience.
         
         Requirements:
-        1. Global HTML: Base structure with <div id="messages-container"></div>.
+        1. Global HTML: Should be a complete layout. 
+           - Use {{bride}}, {{groom}}, and {{date}} placeholders to display wedding details prominently (e.g., in a beautiful hero section or header).
+           - Must contain <div id="messages-container"></div> where interactive message cards will float or drift.
         2. Global CSS: 
+           - Style the entire page environment (backgrounds, overlays, typography).
            - Style #messages-container as relative with 100% width/height.
-           - Style .custom-card-wrapper as absolute.
-           - NO OVERLAP RULE: Use vertical lanes for non-overlapping cards. Use "top: calc(var(--row) * 18% + 5%)" to place cards in distinct lanes.
-           - STAGGER RULE: Use "animation-delay: calc(var(--index) * -7.5s)" or similar to ensure cards in the same lane are spaced horizontally.
-           - RESPONSIVE: Use responsive units (%, vh, vw, or clamp()).
-           - PERFORMANCE: Use pure CSS transform: translateX() for animations. Avoid using modulo (%) inside calc() as it is not broadly supported in all CSS engines; instead, use the provided --row and --col variables.
-        3. Card HTML: Elegant template using {{name}}, {{message}}, and {{index}}.
+           - Style .custom-card-wrapper as absolute with animations.
+           - NO OVERLAP: Use lanes with "top: calc(var(--row) * 18% + 5%)" and stagger with "animation-delay: calc(var(--index) * -7.5s)".
+           - RESPONSIVE: Use fluid units (clamp, vh, vw, %).
+        3. Card HTML: A template for single messages using {{name}} and {{message}}.
         
-        The design must be completely non-overlapping. Use sophisticated Tailwind-inspired styling.`,
+        Ensure the typography for the Groom & Bride names feels special (using serif fonts or elegant ornaments). The entire page should feel like a single cohesive theme.`,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -595,6 +596,12 @@ function InternalTemplateView({ template }: { template: WeddingTemplate, key?: R
     
     let baseHtml = template.html || '';
     
+    // Replace dynamic placeholders for the event preview
+    baseHtml = baseHtml
+      .replace(/\{\{bride\}\}/g, 'Sarah')
+      .replace(/\{\{groom\}\}/g, 'Michael')
+      .replace(/\{\{date\}\}/g, 'Oct 24, 2026');
+
     // Inject cards into #messages-container if it exists, otherwise append a container
     if (baseHtml.includes('id="messages-container"')) {
       return baseHtml.replace(/(id="messages-container"[^>]*>)/, `$1${cardsHtml}`);

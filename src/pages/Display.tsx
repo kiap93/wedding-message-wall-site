@@ -396,7 +396,7 @@ export default function Display() {
             ) : template.variant === 'floating' ? (
               <FloatingLayout key="floating" messages={messages} template={template} />
             ) : template.variant === 'custom' ? (
-              <CustomLayout key="custom" messages={messages} template={template} />
+              <CustomLayout key="custom" messages={messages} template={template} project={project} />
             ) : (
               <MasonryLayout key="masonry" messages={messages} template={template} />
             )}
@@ -448,7 +448,7 @@ function renderCard(cardHtml: string, msg: any, index: number) {
     .replace(/\{\{timestamp\}\}/g, new Date(msg.timestamp).toLocaleTimeString());
 }
 
-function CustomLayout({ messages, template }: { messages: Message[], template: WeddingTemplate, key?: any }) {
+function CustomLayout({ messages, template, project }: { messages: Message[], template: WeddingTemplate, project: WeddingEvent | null, key?: any }) {
   const isCustom = template.variant === 'custom';
   
   const finalHtml = React.useMemo(() => {
@@ -463,12 +463,20 @@ function CustomLayout({ messages, template }: { messages: Message[], template: W
     
     let baseHtml = template.html || '<div id="messages-container"></div>';
     
+    // Replace dynamic placeholders for the event
+    if (project) {
+      baseHtml = baseHtml
+        .replace(/\{\{bride\}\}/g, project.bride_name || 'Bride')
+        .replace(/\{\{groom\}\}/g, project.groom_name || 'Groom')
+        .replace(/\{\{date\}\}/g, project.wedding_date ? new Date(project.wedding_date).toLocaleDateString() : 'TBD');
+    }
+
     if (baseHtml.includes('id="messages-container"')) {
       return baseHtml.replace(/(id="messages-container"[^>]*>)/, `$1${cardsHtml}`);
     } else {
       return `${baseHtml}<div id="messages-container">${cardsHtml}</div>`;
     }
-  }, [template.html, template.card_html, messages, isCustom]);
+  }, [template.html, template.card_html, messages, isCustom, project]);
 
   return (
     <motion.div 
