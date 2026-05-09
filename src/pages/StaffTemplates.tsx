@@ -2,7 +2,6 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Save, Trash2, Palette, ArrowLeft, Loader2, Sparkles, Code, Layout, Settings, Zap, Wand2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { GoogleGenAI, Type } from "@google/genai";
 import Editor from '@monaco-editor/react';
 import { fetchTemplates, saveTemplate, deleteTemplate } from '../lib/templates';
 import { WeddingTemplate, TemplateColors } from '../types';
@@ -80,41 +79,22 @@ export default function StaffTemplates() {
     if (!aiPrompt.trim()) return;
     setIsGenerating(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY as string) });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Create a professional wedding display design based on this prompt: "${aiPrompt}". 
-        The design should be modern, responsive, and a complete full-page experience.
-        
-        Requirements:
-        1. Global HTML: Should be a complete layout. 
-           - Use {{bride}}, {{groom}}, and {{date}} placeholders to display wedding details prominently (e.g., in a beautiful hero section or header).
-           - Must contain <div id="messages-container"></div> where interactive message cards will float or drift.
-        2. Global CSS: 
-           - Style the entire page environment (backgrounds, overlays, typography).
-           - Style #messages-container as relative with 100% width/height.
-           - Style .custom-card-wrapper as absolute with animations.
-           - NO OVERLAP: Use lanes with "top: calc(var(--row) * 18% + 5%)" and stagger with "animation-delay: calc(var(--index) * -7.5s)".
-           - RESPONSIVE: Use fluid units (clamp, vh, vw, %).
-        3. Card HTML: A template for single messages using {{name}} and {{message}}.
-        
-        Ensure the typography for the Groom & Bride names feels special (using serif fonts or elegant ornaments). The entire page should feel like a single cohesive theme.`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              html: { type: Type.STRING, description: "The global HTML container structure" },
-              css: { type: Type.STRING, description: "The global CSS for the layout and animations" },
-              card_html: { type: Type.STRING, description: "The HTML for a single message card" },
-              name: { type: Type.STRING, description: "A catchy name for this AI-generated preset" }
-            },
-            required: ["html", "css", "card_html", "name"]
-          }
-        }
+      const response = await fetch('/api/ai/generate-template', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('wedding_session')}`
+        },
+        body: JSON.stringify({ prompt: aiPrompt })
       });
 
-      const data = JSON.parse(response.text);
+      if (!response.ok) {
+        const errorData = await response.json() as any;
+        throw new Error(errorData.error || 'AI Generation failed');
+      }
+
+      const data = await response.json() as any;
+      
       if (editingTemplate) {
         setEditingTemplate({
           ...editingTemplate,
@@ -128,9 +108,9 @@ export default function StaffTemplates() {
       setShowAIModal(false);
       setAiPrompt('');
       setActiveTab('html');
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI Generation failed:', error);
-      alert('AI Generation failed. Please check your API key or prompt.');
+      alert(`AI Generation failed: ${error.message}`);
     } finally {
       setIsGenerating(false);
     }

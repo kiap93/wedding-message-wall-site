@@ -11,6 +11,7 @@ import { createClient } from '@supabase/supabase-js';
 import cors from 'cors';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
+import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
@@ -991,6 +992,60 @@ function verifyPasswordNode(password: string, storedHash: string) {
   });
 
   // --- Template Routes (Staff Only for Mutations) ---
+  // --- Template Routes ---
+  apiRouter.post('/ai/generate-template', async (req, res) => {
+    const { prompt } = req.body;
+    if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
+    
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'GEMINI_API_KEY is not configured in server environment.' });
+    }
+
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const result = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Create a professional wedding display design based on this prompt: "${prompt}". 
+        The design should be modern, responsive, and a complete full-page experience.
+        
+        Requirements:
+        1. Global HTML: Should be a complete layout. 
+           - Use {{bride}}, {{groom}}, and {{date}} placeholders to display wedding details prominently.
+           - Must contain <div id="messages-container"></div> where interactive message cards will float or drift.
+        2. Global CSS: 
+           - Style the entire page environment (backgrounds, overlays, typography).
+           - Style #messages-container as relative with 100% width/height.
+           - Style .custom-card-wrapper as absolute with animations.
+           - NO OVERLAP: Use lanes with "top: calc(var(--row) * 18% + 5%)" and stagger with "animation-delay: calc(var(--index) * -7.5s)".
+           - RESPONSIVE: Use fluid units (clamp, vh, vw, %).
+           - Avoid using modulo (%) inside calc() as it is not broadly supported in all CSS engines; instead, use the provided --row and --col variables.
+        3. Card HTML: A template for single messages using {{name}} and {{message}}.
+        
+        Ensure the typography for the Groom & Bride names feels special. The entire page should feel like a single cohesive theme.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "object",
+            properties: {
+              html: { type: "string" },
+              css: { type: "string" },
+              card_html: { type: "string" },
+              name: { type: "string" }
+            },
+            required: ["html", "css", "card_html", "name"]
+          }
+        }
+      });
+
+      res.json(JSON.parse(result.text));
+    } catch (err: any) {
+      console.error('AI Generation server error:', err);
+      res.status(500).json({ error: 'AI Generation failed', details: err.message });
+    }
+  });
+
   apiRouter.get('/templates', async (req, res) => {
     try {
       const { data, error } = await getSupabaseAdmin()
