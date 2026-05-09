@@ -194,10 +194,21 @@ export default function StaffTemplates() {
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${editingTemplate?.id === t.id ? 'bg-white/20' : t.colors.background + ' ' + t.colors.border + ' border'}`}>
                       <Sparkles className={`w-6 h-6 ${editingTemplate?.id === t.id ? 'text-white' : t.colors.accent}`} />
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <h3 className="font-bold text-base truncate">{t.name}</h3>
                       <p className={`text-[10px] uppercase tracking-wider opacity-60 ${editingTemplate?.id === t.id ? 'text-white/80' : ''}`}>{t.variant}</p>
                     </div>
+                    {t.is_custom && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(t.id);
+                        }}
+                        className={`p-2 rounded-xl transition-all ${editingTemplate?.id === t.id ? 'bg-white/20 hover:bg-white/40 text-white' : 'hover:bg-red-50 text-red-400 opacity-0 group-hover:opacity-100'}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -389,6 +400,20 @@ export default function StaffTemplates() {
                     </div>
 
                     <div className="flex gap-4 pt-6 border-t border-gray-50 shrink-0">
+                      {editingTemplate.id && (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            handleDelete(editingTemplate.id!);
+                            setEditingTemplate(null);
+                          }}
+                          className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-red-400 hover:text-red-600 transition-all flex items-center gap-2"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete
+                        </button>
+                      )}
+                      <div className="flex-1" />
                       <button 
                         type="button"
                         onClick={() => setEditingTemplate(null)}
@@ -399,7 +424,7 @@ export default function StaffTemplates() {
                       <button 
                         type="submit"
                         disabled={isSaving}
-                        className="flex-1 py-4 bg-[#2D2424] text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-black transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#2D2424]/20"
+                        className="px-12 py-4 bg-[#2D2424] text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-black transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#2D2424]/20"
                       >
                         {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                         Deploy Aesthetic Plugin

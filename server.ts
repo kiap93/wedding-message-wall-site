@@ -176,7 +176,8 @@ async function startServer() {
   // --- Auth Routes ---
   apiRouter.get('/auth/google', (req, res) => {
     res.setHeader('X-Wedding-API', 'hit');
-    console.log('Hitting /api/auth/google');
+    const { origin } = req.query;
+    console.log('Hitting /api/auth/google, origin query:', origin);
     
     if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID === 'your-google-client-id' || GOOGLE_CLIENT_ID === '123') {
       console.error(`Invalid GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"`);
@@ -185,6 +186,11 @@ async function startServer() {
         details: 'Please set a valid GOOGLE_CLIENT_ID in your Settings menu. Current value: ' + GOOGLE_CLIENT_ID 
       });
     }
+
+    // Capture the origin to redirect back to the correct area
+    // Use query param > Origin header > default APP_URL
+    const reqOrigin = (origin as string) || req.headers['origin'] || req.headers['referer'] || APP_URL;
+    const state = Buffer.from(JSON.stringify({ origin: reqOrigin })).toString('base64');
 
     // Dynamically use the host from the request to ensure redirect_uri matches
     let currentRedirectUri = `${APP_URL}/api/auth/callback`;
@@ -198,20 +204,32 @@ async function startServer() {
       currentRedirectUri = `${protocol}://${host}/api/auth/callback`;
     }
     
-    console.log(`OAuth Request: host="${host}", protocol="${req.headers['x-forwarded-proto']}", using redirect_uri="${currentRedirectUri}"`);
+    console.log(`OAuth Request: host="${host}", origin="${reqOrigin}", using redirect_uri="${currentRedirectUri}"`);
 
     const authorizeUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: ['https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/userinfo.email'],
       prompt: 'consent',
-      redirect_uri: currentRedirectUri
+      redirect_uri: currentRedirectUri,
+      state: state
     });
     res.json({ url: authorizeUrl, redirect_uri: currentRedirectUri });
   });
 
   apiRouter.get('/auth/callback', async (req, res) => {
-    const { code } = req.query;
-    if (!code) return res.redirect('/login?error=no_code');
+    const { code, state } = req.query;
+    
+    let targetOrigin = APP_URL;
+    if (state) {
+      try {
+        const decoded = JSON.parse(Buffer.from(state as string, 'base64').toString());
+        if (decoded.origin) targetOrigin = decoded.origin;
+      } catch (e) {
+        console.error('Failed to decode state:', e);
+      }
+    }
+
+    if (!code) return res.redirect(`${targetOrigin}/login?error=no_code`);
 
     try {
       let currentRedirectUri = `${APP_URL}/api/auth/callback`;
@@ -252,6 +270,8 @@ async function startServer() {
       });
 
       // Use JS replace to ensure history cleanup and popup support
+      const redirectUrl = targetOrigin.endsWith('/') ? `${targetOrigin}workspace?token=${token}` : `${targetOrigin}/workspace?token=${token}`;
+
       res.send(`
         <!DOCTYPE html>
         <html>
@@ -260,6 +280,7 @@ async function startServer() {
             <script>
               (function() {
                 const token = "${token}";
+                const redirectUrl = "${redirectUrl}";
                 console.log('Authentication successful, sending message to parent...');
                 
                 function finish() {
@@ -291,9 +312,7 @@ async function startServer() {
                       window.close(); 
                     } catch(e) { 
                       console.log('Could not close window, user may need to close manually or redirected');
-                      if (!window.opener) {
-                        window.location.replace("/workspace");
-                      }
+                      window.location.replace(redirectUrl);
                     }
                   }, 1200);
                 }

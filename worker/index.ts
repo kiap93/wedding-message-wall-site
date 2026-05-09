@@ -51,6 +51,7 @@ app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
 app.get('/api/auth/google', async (c) => {
   const GOOGLE_CLIENT_ID = c.env.GOOGLE_CLIENT_ID;
   const APP_URL = c.env.APP_URL;
+  const originQuery = c.req.query('origin');
   
   // Dynamically detect redirect_uri for AI Studio compatibility
   const host = c.req.header('host') || '';
@@ -62,8 +63,8 @@ app.get('/api/auth/google', async (c) => {
     currentRedirectUri = `${protocol}://${host}/api/auth/callback`;
   }
 
-  // Capture the origin to redirect back to the correct subdomain
-  const origin = c.req.header('Origin') || c.env.FRONTEND_URL || `${protocol}://${host}`;
+  // Capture the origin to redirect back to the correct area
+  const origin = originQuery || c.req.header('Origin') || c.req.header('Referer') || c.env.FRONTEND_URL || `${protocol}://${host}`;
   const state = btoa(JSON.stringify({ origin }));
 
   const params = new URLSearchParams({
@@ -177,7 +178,7 @@ app.get('/api/auth/callback', async (c) => {
     setCookie(c, 'wedding_session', token, cookieOptions);
 
     // Use JS replace to ensure history cleanup and popup support
-    const redirectUrl = `${targetOrigin}/workspace?token=${token}`;
+    const redirectUrl = targetOrigin.endsWith('/') ? `${targetOrigin}workspace?token=${token}` : `${targetOrigin}/workspace?token=${token}`;
     return c.html(`
       <!DOCTYPE html>
       <html>
@@ -185,14 +186,18 @@ app.get('/api/auth/callback', async (c) => {
           <title>Verified</title>
           <script>
             try {
+              const token = "${token}";
+              const redirectUrl = "${redirectUrl}";
+              
               if (window.opener && window.opener !== window) {
-                window.opener.postMessage({ type: 'AUTH_SUCCESS', token: "${token}" }, "*");
+                window.opener.postMessage({ type: 'AUTH_SUCCESS', token: token }, "*");
                 // Give enough time for message to send before closing
                 setTimeout(() => { 
                   try { window.close(); } catch(e) {}
+                  window.location.replace(redirectUrl);
                 }, 1500);
               } else {
-                window.location.replace("${redirectUrl}");
+                window.location.replace(redirectUrl);
               }
             } catch (err) {
               window.location.replace("${redirectUrl}");

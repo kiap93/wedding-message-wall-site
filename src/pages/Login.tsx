@@ -43,7 +43,34 @@ export default function Login() {
     setShowSetupHelper(false);
     localStorage.removeItem('wedding_session_token');
     
-    // 1. Open popup immediately to bypass popup blockers
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    // Pass current origin to help server redirect back correctly
+    const currentOrigin = window.location.origin;
+    
+    if (isMobile) {
+      // On mobile, use direct redirect for better reliability
+      fetch(`${API_BASE}/api/auth/google?origin=${encodeURIComponent(currentOrigin)}`, {
+        headers: { 'Accept': 'application/json' }
+      })
+        .then(async response => {
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.message || data.error || 'Failed to initialize Google login');
+          if (data.url) {
+            window.location.href = data.url;
+          } else {
+            throw new Error('No URL returned from server');
+          }
+        })
+        .catch(err => {
+          console.error('Mobile login prep error:', err);
+          setError(err instanceof Error ? err.message : 'An error occurred during sign in');
+          setLoading(false);
+        });
+      return;
+    }
+
+    // 1. Open popup immediately to bypass popup blockers for desktop
     const width = 500;
     const height = 600;
     const left = window.screenX + (window.outerWidth - width) / 2;
