@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, Send, CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower, Zap } from 'lucide-react';
-import { postMessage } from '../lib/api';
-import confetti from 'canvas-confetti';
+import { Heart, CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower, Users, Zap } from 'lucide-react';
+import RSVPForm from '../components/RSVPForm';
 import { WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 import { getSupabase } from '../lib/supabase';
@@ -11,19 +10,14 @@ import { getAgencyById } from '../lib/agency';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { fetchTemplates } from '../lib/templates';
 
-export default function Guest() {
+export default function RSVPPage() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
   const { projectId, slug } = useParams();
   const [project, setProject] = useState<WeddingEvent | null>(null);
   const [agency, setAgency] = useState<Agency | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [name, setName] = useState('');
-  const [message, setMessage] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
   const [showQR, setShowQR] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [rsvpCount, setRsvpCount] = useState(0);
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
   
@@ -54,10 +48,8 @@ export default function Guest() {
   useEffect(() => {
     if (isLoadingWorkspace) return;
     const urlProjectId = projectId || searchParams.get('id') || searchParams.get('projectId');
-    
     const normalizedProjectId = (urlProjectId && urlProjectId !== 'undefined') ? urlProjectId : undefined;
 
-    // If on a subdomain and no project ID/slug specified, load the first project of the workspace
     if (!normalizedProjectId && !slug && workspace) {
       loadProjectByWorkspace(workspace.id);
     } else if (normalizedProjectId || slug) {
@@ -83,22 +75,12 @@ export default function Guest() {
           try {
             projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
           } catch(e) {
-            console.error('Failed to parse RSVP fields:', e);
             projectData.rsvp_fields = [];
           }
         }
         setProject(projectData);
-        if (!agency) {
-          setAgency(workspace);
-        }
+        if (!agency) setAgency(workspace);
         
-        // Fetch stats
-        const { count: msgCount } = await supabase
-          .from('messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('project_id', projectData.id);
-        setMessages(new Array(msgCount || 0).fill({}));
-
         const { count: rsvpCountVal } = await supabase
           .from('rsvps')
           .select('*', { count: 'exact', head: true })
@@ -112,13 +94,10 @@ export default function Guest() {
     }
   };
 
-  const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
-  const isCoupleLogic = agency?.user_role === 'couple';
-  const isPreview = isCoupleLogic && !isSubscribed && !isPreviewParam;
-
   const loadProject = async (id?: string, slugName?: string) => {
     if (id === 'demo' || slugName === 'demo') {
-      const demoAgency: Agency = {
+       // Demo logic similar to Guest.tsx
+       const demoAgency: Agency = {
         id: 'demo-agency',
         name: 'EventFrame Demo',
         slug: 'demo',
@@ -147,8 +126,7 @@ export default function Guest() {
       };
       setAgency(demoAgency);
       setProject(demoProject);
-      setMessages([{id: 1}, {id: 2}, {id: 3}]); // Mock count
-      setRsvpCount(2); // Mock count
+      setRsvpCount(2); 
       setIsLoading(false);
       return;
     }
@@ -161,36 +139,17 @@ export default function Guest() {
         const { data } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
         projectData = data;
       } else if (slugName) {
-         // 1. Try to find project by slug (with agency context if on subdomain)
          let query = supabase.from('projects').select('*').eq('slug', slugName);
-         if (workspace) {
-           query = query.eq('agency_id', workspace.id);
-         }
-
+         if (workspace) query = query.eq('agency_id', workspace.id);
          let { data } = await query.maybeSingle();
          projectData = data;
 
-         // 2. If not found and NOT on subdomain, try treating slugName as an Agency slug
          if (!projectData && !workspace) {
-           const { data: agencyData } = await supabase
-             .from('agencies')
-             .select('*')
-             .eq('slug', slugName)
-             .maybeSingle();
-
+           const { data: agencyData } = await supabase.from('agencies').select('*').eq('slug', slugName).maybeSingle();
            if (agencyData) {
              setAgency(agencyData);
-             // Fetch the first event for this agency
-             const { data: events } = await supabase
-               .from('projects')
-               .select('*')
-               .eq('agency_id', agencyData.id)
-               .order('created_at', { ascending: true })
-               .limit(1);
-
-             if (events && events.length > 0) {
-               projectData = events[0];
-             }
+             const { data: events } = await supabase.from('projects').select('*').eq('agency_id', agencyData.id).order('created_at', { ascending: true }).limit(1);
+             if (events && events.length > 0) projectData = events[0];
            }
          }
       }
@@ -200,7 +159,6 @@ export default function Guest() {
           try {
             projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
           } catch(e) {
-            console.error('Failed to parse RSVP fields:', e);
             projectData.rsvp_fields = [];
           }
         }
@@ -209,13 +167,6 @@ export default function Guest() {
           const agencyData = await getAgencyById(projectData.agency_id);
           setAgency(agencyData);
         }
-
-        // Fetch stats
-        const { count: msgCount } = await supabase
-          .from('messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('project_id', projectData.id);
-        setMessages(new Array(msgCount || 0).fill({}));
 
         const { count: rsvpCountVal } = await supabase
           .from('rsvps')
@@ -229,6 +180,10 @@ export default function Guest() {
       setIsLoading(false);
     }
   };
+
+  const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
+  const isCoupleLogic = agency?.user_role === 'couple';
+  const isPreview = isCoupleLogic && !isSubscribed && !isPreviewParam;
 
   const Icon = template.iconType === 'leaf' ? Leaf :
                template.iconType === 'star' ? Star :
@@ -244,55 +199,6 @@ export default function Guest() {
     );
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message.trim()) return;
-
-    if (!project?.id) {
-      setError("Event not found. Please refresh the page.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-
-    if (isPreview && messages.length >= 5) {
-      setError("This event is in preview mode and has reached the limit of 5 messages. Please contact the host.");
-      setIsSubmitting(false);
-      return;
-    }
-
-    try {
-      await postMessage(name, message, project.id, !!project?.auto_approve_messages);
-      setMessages([...messages, { id: Date.now() }]); // Optimistic count update
-      confetti({
-        particleCount: 150,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: template.id === 'digital' ? ['#00FF41', '#FFFFFF'] : template.id === 'starry' ? ['#38BDF8', '#FFFFFF'] : ['#D4AF37', '#FFB7C5', '#FFFFFF']
-      });
-      setShowSuccess(true);
-      setName('');
-      setMessage('');
-      setTimeout(() => setShowSuccess(false), 5000);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const getButtonBg = () => {
-    switch(template.id) {
-      case 'digital': return 'bg-[#00FF41] text-black hover:bg-[#00DD31]';
-      case 'starry': return 'bg-[#38BDF8] text-white hover:bg-[#0EA5E9] shadow-[#38BDF8]/20';
-      case 'garden': return 'bg-[#829D82] text-white hover:bg-[#6B856B] shadow-[#829D82]/20';
-      case 'romantic': return 'bg-[#FF8585] text-white hover:bg-[#FF6B6B] shadow-[#FF8585]/20';
-      case 'postal': return 'bg-[#8D6E63] text-white hover:bg-[#6D4C41] shadow-[#8D6E63]/20';
-      default: return 'bg-[#C5A059] text-white hover:bg-[#B38D45] shadow-[#C5A059]/20';
-    }
-  };
-
   return (
     <div className={`min-h-screen flex flex-col items-center p-4 sm:p-6 ${template.colors.background} transition-colors duration-700 relative overflow-x-hidden ${template.fontSans} ${template.colors.text}`}>
       {isPreview && (
@@ -300,7 +206,7 @@ export default function Guest() {
           <div className="flex items-center gap-3">
            <Zap className="w-3.5 h-3.5 text-[#C5A059]" />
            <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-             Preview Mode: {messages.length}/5 Messages • {rsvpCount}/5 RSVPs
+             Preview Mode: {rsvpCount}/5 RSVPs
            </span>
           </div>
           <button 
@@ -337,56 +243,25 @@ export default function Guest() {
               transition={{ type: "spring", stiffness: 260, damping: 20 }}
               className={`inline-block p-3 sm:p-4 rounded-full ${template.colors.accent} bg-opacity-10 mb-4 sm:mb-6`}
             >
-              <Icon className={`w-8 h-8 sm:w-10 sm:h-10 fill-current bg-opacity-20`} />
+              <Users className={`w-8 h-8 sm:w-10 sm:h-10 fill-current bg-opacity-20`} />
             </motion.div>
             <h1 className={`text-3xl sm:text-5xl ${template.fontSerif} ${template.colors.headerText} mb-2 sm:mb-4 tracking-tight`}>
               {groom} & {bride}
             </h1>
-            <p className={`text-sm sm:text-base ${template.colors.subtleText} tracking-wide font-medium`}>Leave a message for the happy couple</p>
+            <p className={`text-sm sm:text-base ${template.colors.subtleText} tracking-wide font-medium uppercase tracking-widest`}>Wedding RSVP</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-8">
-            <div className="space-y-3">
-                  <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>Your Name</label>
-                  <input
-                    type="text"
-                    placeholder="How shall we call you?"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium ${template.colors.text} placeholder:opacity-50`}
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>Your Wishes</label>
-                  <textarea
-                    required
-                    maxLength={150}
-                    placeholder="Share your heartfelt wishes..."
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    rows={5}
-                    className={`w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium ${template.colors.text} placeholder:opacity-50 resize-none`}
-                  />
-                  <div className="text-right">
-                    <span className={`text-[10px] font-bold ${template.colors.subtleText}`}>{message.length}/150</span>
-                  </div>
-                </div>
-
-                {error && (
-                  <p className="text-red-500 text-sm text-center font-bold bg-red-500/10 py-3 rounded-xl border border-red-500/20">{error}</p>
-                )}
-
-                <button
-                  disabled={isSubmitting}
-                  className={`w-full py-5 rounded-2xl font-bold tracking-[0.1em] text-lg uppercase transition-all flex items-center justify-center gap-3 group shadow-xl
-                    ${isSubmitting ? 'bg-gray-500/20 text-gray-400 cursor-not-allowed shadow-none' : getButtonBg()}`}
-                >
-                  {isSubmitting ? 'Sending...' : 'Send Wishes'}
-                  <Send className={`w-5 h-5 transition-transform ${isSubmitting ? '' : 'group-hover:translate-x-1 group-hover:-translate-y-1'}`} />
-                </button>
-              </form>
+          <RSVPForm 
+            projectId={project?.id || ''} 
+            template={template}
+            isPreview={isPreview}
+            currentCount={rsvpCount}
+            rsvpFields={project?.rsvp_fields}
+            onSuccess={() => {
+              setRsvpCount(prev => prev + 1);
+              setShowSuccess(true);
+            }}
+          />
 
           <AnimatePresence>
             {showSuccess && (
@@ -404,8 +279,14 @@ export default function Guest() {
                   >
                     <CheckCircle2 className={`w-20 h-20 ${template.colors.accent} mx-auto mb-6`} />
                   </motion.div>
-                  <h3 className={`text-4xl ${template.fontSerif} ${template.colors.headerText} mb-2`}>With Gratitude</h3>
-                  <p className={`${template.colors.subtleText} font-medium tracking-wide`}>Your warmth has been noted.</p>
+                  <h3 className={`text-4xl ${template.fontSerif} ${template.colors.headerText} mb-2`}>Thank You</h3>
+                  <p className={`${template.colors.subtleText} font-medium tracking-wide`}>Your response has been received.</p>
+                  <button 
+                    onClick={() => setShowSuccess(false)}
+                    className="mt-8 text-xs font-bold uppercase tracking-widest opacity-60 hover:opacity-100"
+                  >
+                    Close
+                  </button>
                 </div>
               </motion.div>
             )}
@@ -417,7 +298,6 @@ export default function Guest() {
         Our Story • {new Date().getFullYear()}
       </div>
 
-      {/* QR Code Toggle */}
       <div className="fixed bottom-8 right-8 z-[100]">
         <button
           onClick={() => setShowQR(!showQR)}
@@ -439,8 +319,8 @@ export default function Guest() {
               <div className="bg-white p-4 rounded-2xl mb-4 inline-block">
                 <QRCodeSVG value={currentUrl} size={160} />
               </div>
-              <p className={`text-sm font-bold ${template.colors.text} mb-1`}>Invite a Guest</p>
-              <p className={`text-[10px] ${template.colors.subtleText} uppercase tracking-widest`}>Scan to join the wall</p>
+              <p className={`text-sm font-bold ${template.colors.text} mb-1`}>RSVP QR Code</p>
+              <p className={`text-[10px] ${template.colors.subtleText} uppercase tracking-widest`}>Scan to RSVP</p>
             </motion.div>
           )}
         </AnimatePresence>

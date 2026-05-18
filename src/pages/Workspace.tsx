@@ -62,7 +62,7 @@ export default function Workspace() {
   const [editingEvent, setEditingEvent] = useState<Partial<WeddingEvent> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
-  const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'form' | 'moderation'>('aesthetic');
+  const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'form' | 'moderation' | 'invitation'>('aesthetic');
 
   useEffect(() => {
     async function load() {
@@ -358,7 +358,7 @@ export default function Workspace() {
     }
   };
 
-  const getEventUrl = (event: WeddingEvent, type: 'display' | 'guest' | 'couple_login') => {
+  const getEventUrl = (event: WeddingEvent, type: 'display' | 'guest' | 'rsvp' | 'couple_login') => {
     const currentHost = window.location.host;
     const hostParts = currentHost.split('.');
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -375,6 +375,7 @@ export default function Workspace() {
       const base = `https://${baseDomain}/${agency?.slug}`;
       if (type === 'display') return base;
       if (type === 'guest') return `${base}/guest`;
+      if (type === 'rsvp') return `${base}/rsvp`;
       return `https://${baseDomain}/couple/login?agency=${agency?.slug}`;
     }
 
@@ -382,6 +383,7 @@ export default function Workspace() {
     const base = agency?.domain ? `https://${agency.domain}` : `https://${agency?.slug}.${baseDomain}`;
     if (type === 'display') return `${base}/${event.slug}/display`;
     if (type === 'guest') return `${base}/${event.slug}/guest`;
+    if (type === 'rsvp') return `${base}/${event.slug}/rsvp`;
     return `${base}/couple/login?slug=${event.slug}`;
   };
 
@@ -410,8 +412,8 @@ export default function Workspace() {
   return (
     <div className="min-h-screen bg-[#FDFCF0] font-sans text-[#2D2424]">
       {/* Top Navigation */}
-      <nav className="bg-white border-b border-[#C5A059]/20 px-8 py-4 flex items-center justify-between sticky top-0 z-50 shadow-sm">
-        <div className="flex items-center gap-3">
+      <nav className="bg-white border-b border-[#C5A059]/20 px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-50 shadow-sm">
+        <div className="flex items-center gap-2 md:gap-3">
           {agency?.logo_url ? (
             <img src={agency.logo_url} alt={agency.name} className="h-10 w-auto object-contain" />
           ) : (
@@ -424,13 +426,13 @@ export default function Workspace() {
               {isCouple ? 'My Wedding Hub' : (agency?.name || 'Wedding Hub')}
             </h1>
             {agency && (
-              <span className="text-[10px] font-bold text-[#C5A059] uppercase tracking-[0.2em]">
+              <span className="text-[10px] font-bold text-[#C5A059] uppercase tracking-[0.2em] hidden xs:block">
                 {isCouple ? `eventframe.io/${agency.slug}` : `${agency.slug}.eventframe.io`}
               </span>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4">
           {isStaff && (
             <button 
               onClick={() => navigate('/templates/manage')}
@@ -440,16 +442,17 @@ export default function Workspace() {
               <Palette className="w-5 h-5" />
             </button>
           )}
-          <button 
-            onClick={() => navigate('/subscription')}
-            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
-              isSubscribed 
-                ? 'bg-green-50 border-green-100 text-green-600' 
-                : 'bg-[#C5A059]/10 border-[#C5A059]/20 text-[#C5A059] hover:bg-[#C5A059]/20 shadow-sm'
-            }`}
-          >
-            {isSubscribed ? 'Pro Plan Active' : 'Upgrade to Pro'}
-          </button>
+            <button 
+              onClick={() => navigate('/subscription')}
+              className={`px-3 md:px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                isSubscribed 
+                  ? 'bg-green-50 border-green-100 text-green-600' 
+                  : 'bg-[#C5A059]/10 border-[#C5A059]/20 text-[#C5A059] hover:bg-[#C5A059]/20 shadow-sm'
+              }`}
+            >
+              <span className="hidden sm:inline">{isSubscribed ? 'Pro Plan Active' : 'Upgrade to Pro'}</span>
+              <span className="sm:hidden">{isSubscribed ? 'Pro' : 'Upgrade'}</span>
+            </button>
             <button 
               onClick={() => setView('agency_settings')}
               className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-500 flex items-center gap-2"
@@ -463,10 +466,10 @@ export default function Workspace() {
             </button>
           <button 
             onClick={handleLogout}
-            className="p-2 hover:bg-red-50 text-red-500 rounded-xl transition-colors flex items-center gap-2 text-sm font-bold uppercase tracking-wider"
+            className="p-2 hover:bg-red-50 text-red-500 rounded-xl transition-colors flex items-center gap-1 md:gap-2 text-xs md:text-sm font-bold uppercase tracking-wider shrink-0"
           >
-            <LogOut className="w-4 h-4" />
-            <span className="hidden md:inline">Logout</span>
+            <LogOut className="w-4 h-4 md:w-5 h-5" />
+            <span className="hidden sm:inline">Logout</span>
           </button>
         </div>
       </nav>
@@ -585,7 +588,7 @@ export default function Workspace() {
                       <button 
                         onClick={() => setView('list')}
                         className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                          view === 'list' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+                          (view as string) === 'list' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
                         }`}
                       >
                         List
@@ -593,7 +596,7 @@ export default function Workspace() {
                       <button 
                         onClick={() => setView('calendar')}
                         className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                          view === 'calendar' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+                          (view as string) === 'calendar' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
                         }`}
                       >
                         Calendar
@@ -705,10 +708,24 @@ export default function Workspace() {
                         </button>
                         <button 
                           onClick={() => window.open(getEventUrl(event, 'guest'), '_blank')}
-                          className="flex-1 bg-[#C5A059] text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#B38D45] transition-colors"
+                          className="flex-1 bg-[#C5A059]/10 text-[#C5A059] py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#C5A059]/20 transition-colors"
                         >
-                          <Heart className="w-3 h-3" />
+                          <MessageSquare className="w-3 h-3" />
                           Guest
+                        </button>
+                        <button 
+                          onClick={() => window.open(getEventUrl(event, 'rsvp'), '_blank')}
+                          className="flex-1 bg-[#C5A059]/10 text-[#C5A059] py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#C5A059]/20 transition-colors"
+                        >
+                          <Users className="w-3 h-3" />
+                          RSVP
+                        </button>
+                        <button 
+                          onClick={() => navigate(`/editor/${event.id}`)}
+                          className="flex-1 bg-white border border-[#C5A059]/30 text-[#C5A059] py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#C5A059]/5 transition-colors"
+                        >
+                          <Layout className="w-3 h-3" />
+                          Design
                         </button>
                         {!isCouple && (
                           <button 
@@ -747,7 +764,7 @@ export default function Workspace() {
                     <button 
                       onClick={() => setView('list')}
                       className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                        view === 'list' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+                        (view as string) === 'list' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
                       }`}
                     >
                       List
@@ -755,7 +772,7 @@ export default function Workspace() {
                     <button 
                       onClick={() => setView('calendar')}
                       className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                        view === 'calendar' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
+                        (view as string) === 'calendar' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
                       }`}
                     >
                       Calendar
@@ -1072,6 +1089,17 @@ export default function Workspace() {
                        Moderation
                     </div>
                   </button>
+                  <button 
+                    onClick={() => setActiveEditorTab('invitation')}
+                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+                      activeEditorTab === 'invitation' ? 'bg-[#2D2424] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                       <Sparkles className="w-4 h-4" />
+                       Invitations
+                    </div>
+                  </button>
                 </div>
 
                 <div className="min-h-[600px]">
@@ -1260,6 +1288,33 @@ export default function Workspace() {
                            <p className="text-gray-500">Moderate messages before they appear on the live display.</p>
                          </div>
                          <MessageModerator projectId={editingEvent.id} />
+                      </motion.div>
+                    )}
+                    {activeEditorTab === 'invitation' && editingEvent?.id && (
+                      <motion.div
+                        key="invitation"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="space-y-8"
+                      >
+                         <div className="bg-white p-12 rounded-[3rem] border border-[#C5A059]/10 shadow-sm overflow-hidden relative">
+                            <div className="absolute top-0 right-0 p-8 opacity-5">
+                               <Layout className="w-40 h-40 text-[#C5A059]" />
+                            </div>
+                            <div className="relative z-10 max-w-xl">
+                               <h2 className="text-4xl font-serif mb-4 leading-tight">Canva-style Invitation Designer</h2>
+                               <p className="text-gray-500 text-lg mb-8 leading-relaxed">
+                                 Design a unique e-invitation with our drag-and-drop editor. Add romantic typography and photos for your guests.
+                               </p>
+                               <button 
+                                 onClick={() => navigate(`/editor/${editingEvent.id}`)}
+                                 className="px-10 py-5 bg-[#2D2424] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl flex items-center gap-3"
+                               >
+                                 Open Designer <ArrowRight className="w-5 h-5" />
+                               </button>
+                            </div>
+                         </div>
                       </motion.div>
                     )}
                   </AnimatePresence>

@@ -196,8 +196,10 @@ export default function Display() {
   const groom = project?.groom_name || searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
   const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
 
-  // Derive guest URL
-  const guestUrl = window.location.origin + (slug ? `/${slug}/guest` : project?.slug ? `/${project.slug}/guest` : '/guest' + window.location.search);
+  // Derive URLs
+  const baseUrl = window.location.origin + (slug ? `/${slug}` : project?.slug ? `/${project.slug}` : '');
+  const guestUrl = baseUrl + '/guest' + window.location.search;
+  const rsvpUrl = baseUrl + '/rsvp' + window.location.search;
 
   useEffect(() => {
     const targetId = project?.id || projectId;

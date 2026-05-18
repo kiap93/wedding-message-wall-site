@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 import Guest from './pages/Guest';
+import RSVPPage from './pages/RSVP';
 import Display from './pages/Display';
 import TemplateSelector from './pages/TemplateSelector';
 import Workspace from './pages/Workspace';
@@ -12,6 +13,7 @@ import CoupleLogin from './pages/CoupleLogin';
 import CoupleDashboard from './pages/CoupleDashboard';
 import StaffTemplates from './pages/StaffTemplates';
 import ResetPassword from './pages/ResetPassword';
+import InvitationEditor from './pages/InvitationEditor';
 
 import { API_BASE } from './lib/config';
 import { authenticatedFetch, setAuthToken } from './lib/auth';
@@ -156,6 +158,7 @@ export default function App() {
             <Route path="/templates/manage" element={<AuthGuard><StaffTemplates /></AuthGuard>} />
             <Route path="/templates" element={<TemplateSelector />} />
             <Route path="/workspace" element={<AuthGuard><Workspace /></AuthGuard>} />
+            <Route path="/editor/:projectId" element={<AuthGuard><InvitationEditor /></AuthGuard>} />
             
             {/* Couple Login & Dashboard */}
             <Route path="/couple/login" element={<CoupleLogin />} />
@@ -165,17 +168,22 @@ export default function App() {
             {/* New Event Slug based routes */}
             <Route path="/:slug/display" element={<Display />} />
             <Route path="/:slug/guest" element={<Guest />} />
+            <Route path="/:slug/rsvp" element={<RSVPPage />} />
             <Route path="/:slug" element={<Display />} />
 
             {/* Legacy/Compat routes */}
             <Route path="/guest/:projectId" element={<Guest />} />
+            <Route path="/rsvp/:projectId" element={<RSVPPage />} />
             <Route path="/display/:projectId" element={<Display />} />
             <Route path="/e/:slug" element={<Display />} />
             <Route path="/g/:slug" element={<Guest />} />
+            <Route path="/r/:slug" element={<RSVPPage />} />
             <Route path="/event/:projectId/display" element={<Display />} />
             <Route path="/event/:projectId/guest" element={<Guest />} />
+            <Route path="/event/:projectId/rsvp" element={<RSVPPage />} />
             <Route path="/agency/:agencySlug" element={<TemplateSelector />} />
             <Route path="/guest" element={<Guest />} />
+            <Route path="/rsvp" element={<RSVPPage />} />
             <Route path="/display" element={<Display />} />
             <Route path="/subscription" element={<Subscription />} />
             

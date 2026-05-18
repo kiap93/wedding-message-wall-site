@@ -27,7 +27,7 @@ export default function CoupleDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'aesthetic' | 'rsvp' | 'moderation'>('aesthetic');
+  const [activeTab, setActiveTab] = useState<'aesthetic' | 'rsvp' | 'moderation' | 'invitation'>('aesthetic');
 
   useEffect(() => {
     if (isLoadingWorkspace) return;
@@ -208,23 +208,27 @@ export default function CoupleDashboard() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7]">
-      <header className="bg-white border-b border-[#C5A059]/10 sticky top-0 z-30 px-6 py-4">
+      <header className="bg-white border-b border-[#C5A059]/10 sticky top-0 z-30 px-4 md:px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2 sm:gap-6">
             <div className="w-10 h-10 bg-[#C5A059]/10 rounded-xl flex items-center justify-center">
               <Heart className="w-5 h-5 text-[#C5A059] fill-current" />
             </div>
             <div>
-              <h1 className="text-xl font-serif text-[#2D2424]">{event.groom_name} & {event.bride_name}</h1>
-              <p className="text-[10px] font-black uppercase tracking-widest text-[#C5A059]">Event Dashboard</p>
+              <h1 className="text-sm sm:text-xl font-serif text-[#2D2424] truncate max-w-[120px] sm:max-w-none">
+                {event.groom_name} & {event.bride_name}
+              </h1>
+              <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest text-[#C5A059]">Event Dashboard</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">
             <button 
               onClick={() => {
-                const guestUrl = window.location.origin + '/' + event.slug + '/guest';
-                const text = `We're getting married! Check out our wedding site and RSVP here: ${guestUrl}`;
+                const baseUrl = window.location.origin + '/' + event.slug;
+                const guestUrl = `${baseUrl}/guest`;
+                const rsvpUrl = `${baseUrl}/rsvp`;
+                const text = `We're getting married! \n\nLeave us a message: ${guestUrl}\n\nRSVP here: ${rsvpUrl}`;
                 window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
               }}
               className="px-4 sm:px-6 py-2 sm:py-2.5 bg-[#25D366]/10 text-[#25D366] rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#25D366]/20 transition-all"
@@ -238,16 +242,26 @@ export default function CoupleDashboard() {
               target="_blank" 
               className="px-4 sm:px-6 py-2 sm:py-2.5 bg-[#C5A059]/5 text-[#C5A059] rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#C5A059]/10 transition-all"
             >
-              <span className="hidden sm:inline">View Guest Site</span>
-              <span className="sm:hidden">View</span>
+              <span className="hidden lg:inline">Message Hub</span>
+              <span className="lg:hidden">Message</span>
               <ExternalLink className="w-3 h-3" />
+            </a>
+            <a 
+              href={`/${event.slug}/rsvp`} 
+              target="_blank" 
+              className="px-4 sm:px-6 py-2 sm:py-2.5 bg-[#C5A059] text-white rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#B38D45] transition-all shadow-sm"
+            >
+              <span className="hidden lg:inline">RSVP Site</span>
+              <span className="lg:hidden">RSVP</span>
+              <ExternalLink className="w-3 h-3 text-white" />
             </a>
             <button 
               onClick={handleLogout}
-              className="p-2 sm:p-2.5 text-gray-400 hover:text-red-500 transition-colors"
+              className="p-2 sm:p-2.5 text-gray-400 hover:text-red-500 transition-colors shrink-0 flex items-center gap-2"
               title="Logout"
             >
               <LogOut className="w-5 h-5" />
+              <span className="text-[10px] font-black uppercase tracking-widest sm:hidden">Logout</span>
             </button>
           </div>
         </div>
@@ -285,6 +299,16 @@ export default function CoupleDashboard() {
             >
               <div className="flex items-center gap-2">
                  <MessageSquare className="w-4 h-4" /> Moderation
+              </div>
+            </button>
+            <button 
+              onClick={() => setActiveTab('invitation')}
+              className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+                activeTab === 'invitation' ? 'bg-[#2D2424] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                 <Layout className="w-4 h-4" /> Invitations
               </div>
             </button>
           </div>
@@ -427,6 +451,33 @@ export default function CoupleDashboard() {
                      <p className="text-gray-500">Moderate messages before they appear on the live display.</p>
                    </div>
                    <MessageModerator projectId={event.id} />
+                </motion.div>
+              )}
+
+              {activeTab === 'invitation' && (
+                <motion.div
+                  key="invitation"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                >
+                   <div className="bg-white p-12 rounded-[3rem] border border-[#C5A059]/10 shadow-sm overflow-hidden relative">
+                      <div className="absolute top-0 right-0 p-8 opacity-5">
+                         <Layout className="w-40 h-40 text-[#C5A059]" />
+                      </div>
+                      <div className="relative z-10 max-w-xl">
+                         <h2 className="text-4xl font-serif mb-4 leading-tight">Canva-style Invitation Designer</h2>
+                         <p className="text-gray-500 text-lg mb-8 leading-relaxed">
+                           Design a unique e-invitation with our drag-and-drop editor. Add romantic typography and photos for your guests.
+                         </p>
+                         <button 
+                           onClick={() => navigate(`/editor/${event.id}`)}
+                           className="px-10 py-5 bg-[#2D2424] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl flex items-center gap-3"
+                         >
+                           Open Designer
+                         </button>
+                      </div>
+                   </div>
                 </motion.div>
               )}
             </AnimatePresence>

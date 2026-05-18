@@ -44,6 +44,7 @@ export interface WeddingEvent {
   auto_approve_messages?: boolean;
   image_url?: string;
   rsvp_fields?: RSVPField[];
+  invitation_config?: any; // JSON configuration for the Canva-like editor
   created_at: string;
   updated_at: string;
 }
