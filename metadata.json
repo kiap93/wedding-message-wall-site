@@ -2,5 +2,7 @@
   "name": "EventFrame.io",
   "description": "A luxury white-label wedding platform for agencies and couples. Live guest moderation, RSVP tracking, and immersive celebration displays.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
