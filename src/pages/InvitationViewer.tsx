@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Stage, Layer, Text, Image, Rect, Group } from 'react-konva';
 import { useEditorStore, EditorElement } from '../editor/store';
-import { WORLD_WIDTH, WORLD_HEIGHT, getFitScale } from '../editor/utils/coordinates';
+import { WORLD_WIDTH, getFitScale } from '../editor/utils/coordinates';
 import { getSupabase } from '../lib/supabase';
 import { WeddingEvent } from '../types';
 import useImage from 'use-image';
@@ -13,6 +13,7 @@ export default function InvitationViewer() {
   const [searchParams] = useSearchParams();
   const [project, setProject] = useState<WeddingEvent | null>(null);
   const [elements, setElements] = useState<EditorElement[]>([]);
+  const [canvasConfig, setCanvasConfig] = useState({ width: 1000, height: 1414 });
   const [isLoading, setIsLoading] = useState(true);
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   
@@ -36,6 +37,10 @@ export default function InvitationViewer() {
               ? JSON.parse(data.invitation_config) 
               : data.invitation_config;
             setElements(config.elements || []);
+            setCanvasConfig({
+              width: config.canvasWidth || 1000,
+              height: config.canvasHeight || 1414
+            });
           }
         }
       } catch (err) {
@@ -55,16 +60,10 @@ export default function InvitationViewer() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Scale purely based on width to fit the screen
   const scale = useMemo(() => {
-    return getFitScale(dimensions.width, dimensions.height, 0);
-  }, [dimensions]);
-
-  const offset = useMemo(() => {
-    return {
-      x: (dimensions.width - WORLD_WIDTH * scale) / 2,
-      y: (dimensions.height - WORLD_HEIGHT * scale) / 2
-    };
-  }, [dimensions, scale]);
+    return dimensions.width / canvasConfig.width;
+  }, [dimensions.width, canvasConfig.width]);
 
   if (isLoading) {
     return (
@@ -74,11 +73,13 @@ export default function InvitationViewer() {
     );
   }
 
+  const scaledHeight = canvasConfig.height * scale;
+
   return (
-    <div className="h-screen w-screen bg-white overflow-hidden flex items-center justify-center">
-      <Stage width={dimensions.width} height={dimensions.height}>
-        <Layer x={offset.x} y={offset.y} scaleX={scale} scaleY={scale}>
-          <Rect x={0} y={0} width={WORLD_WIDTH} height={WORLD_HEIGHT} fill="white" />
+    <div className="min-h-screen w-full bg-white overflow-x-hidden">
+      <Stage width={dimensions.width} height={scaledHeight}>
+        <Layer scaleX={scale} scaleY={scale}>
+          <Rect x={0} y={0} width={canvasConfig.width} height={canvasConfig.height} fill="white" />
           {elements.sort((a, b) => a.zIndex - b.zIndex).map((el) => (
             <RenderOnlyElement key={el.id} element={el} slug={slug || ''} />
           ))}

@@ -25,7 +25,30 @@ export default function InvitationEditor() {
   const [isLoading, setIsLoading] = useState(true);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   
-  const { elements, setElements } = useEditorStore();
+  const { elements, setElements, canvasWidth, canvasHeight, setCanvasHeight, setPan, setScale } = useEditorStore();
+  const { undo, redo, pastStates, futureStates } = useEditorStore.temporal.getState();
+
+  // Reset viewport to fit
+  const handleResetViewport = () => {
+    const container = document.querySelector('main');
+    if (container) {
+      const { clientWidth, clientHeight } = container;
+      const newScale = (previewMode === 'mobile' ? 375 : clientWidth - 120) / canvasWidth;
+      const finalScale = Math.min(newScale, (previewMode === 'mobile' ? 667 : clientHeight - 120) / canvasHeight);
+      setScale(finalScale);
+      setPan({
+        x: (clientWidth - canvasWidth * finalScale) / 2,
+        y: (clientHeight - canvasHeight * finalScale) / 2
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!isLoading) {
+      // Small delay to ensure container is rendered
+      setTimeout(handleResetViewport, 100);
+    }
+  }, [previewMode, isLoading]);
 
   // Load design on mount
   useEffect(() => {
@@ -47,6 +70,7 @@ export default function InvitationEditor() {
               ? JSON.parse(data.invitation_config) 
               : data.invitation_config;
             setElements(config.elements || []);
+            if (config.canvasHeight) setCanvasHeight(config.canvasHeight);
           }
         }
       } catch (err) {
@@ -56,7 +80,7 @@ export default function InvitationEditor() {
       }
     }
     load();
-  }, [projectId, setElements]);
+  }, [projectId, setElements, setCanvasHeight]);
 
   const handleSave = async () => {
     if (!projectId) return;
@@ -69,7 +93,11 @@ export default function InvitationEditor() {
           'Authorization': `Bearer ${localStorage.getItem('wedding_token') || ''}`
         },
         body: JSON.stringify({
-          invitation_config: JSON.stringify({ elements })
+          invitation_config: JSON.stringify({ 
+            elements,
+            canvasWidth,
+            canvasHeight
+          })
         })
       });
 
@@ -129,10 +157,20 @@ export default function InvitationEditor() {
           </div>
 
           <div className="flex items-center gap-1">
-             <button className="p-2 text-gray-300 hover:text-[#C5A059] opacity-50 cursor-not-allowed">
+             <button 
+               onClick={() => undo()}
+               disabled={pastStates.length === 0}
+               className={`p-2 transition-colors ${pastStates.length > 0 ? 'text-[#C5A059] hover:bg-[#C5A059]/10' : 'text-gray-300 opacity-50 cursor-not-allowed'}`}
+               title="Undo (Ctrl+Z)"
+             >
                <Undo2 className="w-4 h-4" />
              </button>
-             <button className="p-2 text-gray-300 hover:text-[#C5A059] opacity-50 cursor-not-allowed">
+             <button 
+               onClick={() => redo()}
+               disabled={futureStates.length === 0}
+               className={`p-2 transition-colors ${futureStates.length > 0 ? 'text-[#C5A059] hover:bg-[#C5A059]/10' : 'text-gray-300 opacity-50 cursor-not-allowed'}`}
+               title="Redo (Ctrl+Shift+Z)"
+             >
                <Redo2 className="w-4 h-4" />
              </button>
           </div>

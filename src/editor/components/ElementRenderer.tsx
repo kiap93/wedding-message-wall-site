@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { Text, Image, Rect, Group } from 'react-konva';
 import { EditorElement, useEditorStore } from '../store';
 import useImage from 'use-image';
+import { getSnappingGuides } from '../utils/snapping';
 
 interface Props {
   element: EditorElement;
@@ -10,16 +11,30 @@ interface Props {
 
 export const ElementRenderer: React.FC<Props> = ({ element, isSelected }) => {
   const shapeRef = useRef<any>(null);
-  const updateElement = useEditorStore((state) => state.updateElement);
-  const setSelectedId = useEditorStore((state) => state.setSelectedId);
+  const { updateElement, setSelectedId, elements, canvasWidth, canvasHeight, setGuides } = useEditorStore();
   
   const [image] = useImage(element.src || '');
+
+  const handleDragMove = (e: any) => {
+    const { guides, snappedX, snappedY } = getSnappingGuides(
+      { ...element, x: e.target.x(), y: e.target.y() },
+      elements,
+      canvasWidth,
+      canvasHeight
+    );
+
+    if (snappedX !== null) e.target.x(snappedX);
+    if (snappedY !== null) e.target.y(snappedY);
+    
+    setGuides(guides);
+  };
 
   const handleDragEnd = (e: any) => {
     updateElement(element.id, {
       x: e.target.x(),
       y: e.target.y(),
     });
+    setGuides([]);
   };
 
   const handleTransformEnd = () => {
@@ -55,6 +70,7 @@ export const ElementRenderer: React.FC<Props> = ({ element, isSelected }) => {
     onClick: () => setSelectedId(element.id),
     onTap: () => setSelectedId(element.id),
     onDragEnd: handleDragEnd,
+    onDragMove: handleDragMove,
     onTransformEnd: handleTransformEnd,
   };
 
