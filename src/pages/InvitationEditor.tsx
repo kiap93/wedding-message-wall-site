@@ -139,7 +139,11 @@ export default function InvitationEditor() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button className="p-2.5 text-[#C5A059] hover:bg-[#C5A059]/10 rounded-xl transition-colors">
+          <button 
+            onClick={() => window.open(`/${project?.slug}/invitation`, '_blank')}
+            className="p-2.5 text-[#C5A059] hover:bg-[#C5A059]/10 rounded-xl transition-colors"
+            title="Preview Live"
+          >
             <Share2 className="w-4 h-4" />
           </button>
           <button 

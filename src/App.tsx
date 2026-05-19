@@ -14,6 +14,7 @@ import CoupleDashboard from './pages/CoupleDashboard';
 import StaffTemplates from './pages/StaffTemplates';
 import ResetPassword from './pages/ResetPassword';
 import InvitationEditor from './pages/InvitationEditor';
+import InvitationViewer from './pages/InvitationViewer';
 
 import { API_BASE } from './lib/config';
 import { authenticatedFetch, setAuthToken } from './lib/auth';
@@ -169,6 +170,7 @@ export default function App() {
             <Route path="/:slug/display" element={<Display />} />
             <Route path="/:slug/guest" element={<Guest />} />
             <Route path="/:slug/rsvp" element={<RSVPPage />} />
+            <Route path="/:slug/invitation" element={<InvitationViewer />} />
             <Route path="/:slug" element={<Display />} />
 
             {/* Legacy/Compat routes */}

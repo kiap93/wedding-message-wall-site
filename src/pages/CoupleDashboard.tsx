@@ -470,12 +470,20 @@ export default function CoupleDashboard() {
                          <p className="text-gray-500 text-lg mb-8 leading-relaxed">
                            Design a unique e-invitation with our drag-and-drop editor. Add romantic typography and photos for your guests.
                          </p>
-                         <button 
-                           onClick={() => navigate(`/editor/${event.id}`)}
-                           className="px-10 py-5 bg-[#2D2424] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl flex items-center gap-3"
-                         >
-                           Open Designer
-                         </button>
+                               <div className="flex flex-wrap gap-4">
+                                 <button 
+                                   onClick={() => navigate(`/editor/${event.id}`)}
+                                   className="px-10 py-5 bg-[#2D2424] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl flex items-center gap-3"
+                                 >
+                                   Open Designer
+                                 </button>
+                                 <button 
+                                   onClick={() => window.open(`/${event.slug}/invitation`, '_blank')}
+                                   className="px-10 py-5 bg-white border-2 border-[#2D2424] text-[#2D2424] rounded-2xl font-black uppercase tracking-widest hover:bg-gray-50 transition-all flex items-center gap-3"
+                                 >
+                                   View Live
+                                 </button>
+                               </div>
                       </div>
                    </div>
                 </motion.div>
