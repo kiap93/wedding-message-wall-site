@@ -22,7 +22,8 @@ export const EditorCanvas: React.FC = () => {
     setPan,
     guides,
     isSpacePressed,
-    setIsSpacePressed
+    setIsSpacePressed,
+    setViewportSize
   } = useEditorStore();
 
   // Handle auto-resize & initial scale
@@ -31,6 +32,7 @@ export const EditorCanvas: React.FC = () => {
       for (let entry of entries) {
         const { width, height } = entry.contentRect;
         setDimensions({ width, height });
+        setViewportSize(width, height);
         
         // Only set initial scale once or if requested
         if (scale === 1 && pan.x === 0 && pan.y === 0) {
@@ -47,7 +49,7 @@ export const EditorCanvas: React.FC = () => {
 
     if (containerRef.current) observer.observe(containerRef.current);
     return () => observer.disconnect();
-  }, [canvasWidth, canvasHeight, setScale, setPan]);
+  }, [canvasWidth, canvasHeight, setScale, setPan, setViewportSize]);
 
   // Handle Zoom (Wheel)
   const handleWheel = (e: any) => {

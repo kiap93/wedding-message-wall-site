@@ -28,11 +28,14 @@ interface EditorState {
   
   // Viewport
   pan: { x: number; y: number };
+  viewportWidth: number;
+  viewportHeight: number;
   guides: { type: 'h' | 'v'; pos: number }[];
   isSpacePressed: boolean;
   
   // Actions
   setCanvasHeight: (height: number) => void;
+  setViewportSize: (width: number, height: number) => void;
   setElements: (elements: EditorElement[], clearHistory?: boolean) => void;
   addElement: (element: EditorElement) => void;
   updateElement: (id: string, updates: Partial<EditorElement>) => void;
@@ -54,10 +57,14 @@ export const useEditorStore = create<EditorState>()(
       canvasWidth: 1000,
       canvasHeight: 1414,
       pan: { x: 0, y: 0 },
+      viewportWidth: 1000,
+      viewportHeight: 800,
       guides: [],
       isSpacePressed: false,
 
       setCanvasHeight: (height: number) => set({ canvasHeight: Math.min(20000, Math.max(500, height)) }),
+
+      setViewportSize: (width: number, height: number) => set({ viewportWidth: width, viewportHeight: height }),
 
       setElements: (elements) => {
         set({ elements: elements.slice().sort((a, b) => a.zIndex - b.zIndex) });
