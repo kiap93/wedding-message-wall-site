@@ -25,8 +25,9 @@ export default function InvitationEditor() {
   const [isLoading, setIsLoading] = useState(true);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   
-  const { elements, setElements, canvasWidth, canvasHeight, setCanvasHeight, setPan, setScale } = useEditorStore();
+  const { elements, setElements, canvasWidth, canvasHeight, setCanvasHeight, setPan, setScale, scale } = useEditorStore();
   const { undo, redo, pastStates, futureStates } = useEditorStore.temporal.getState();
+  const { clear: clearHistory } = useEditorStore.temporal.getState();
 
   // Reset viewport to fit
   const handleResetViewport = () => {
@@ -71,6 +72,11 @@ export default function InvitationEditor() {
               : data.invitation_config;
             setElements(config.elements || []);
             if (config.canvasHeight) setCanvasHeight(config.canvasHeight);
+            
+            // Clear history after load so user doesn't undo to empty state
+            setTimeout(() => {
+              clearHistory();
+            }, 200);
           }
         }
       } catch (err) {
@@ -138,8 +144,26 @@ export default function InvitationEditor() {
         </div>
 
         {/* Center: Viewport Controls & Undo/Redo */}
-        <div className="flex items-center gap-8">
-          <div className="flex items-center bg-gray-50 rounded-2xl p-1 gap-1 border border-gray-200">
+          <div className="flex items-center gap-8">
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setScale(s => s / 1.2)}
+                className="p-1 px-2 hover:bg-gray-100 rounded text-xs font-bold text-gray-500"
+              >
+                -
+              </button>
+              <span className="text-[10px] font-black w-10 text-center text-[#C5A059] tabular-nums">
+                {Math.round(scale * 100)}%
+              </span>
+              <button 
+                onClick={() => setScale(s => s * 1.2)}
+                className="p-1 px-2 hover:bg-gray-100 rounded text-xs font-bold text-gray-500"
+              >
+                +
+              </button>
+            </div>
+
+            <div className="flex items-center bg-gray-50 rounded-2xl p-1 gap-1 border border-gray-200">
             <button 
               onClick={() => setPreviewMode('desktop')}
               className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 ${previewMode === 'desktop' ? 'bg-white shadow-sm text-[#C5A059]' : 'text-gray-400 opacity-60'}`}

@@ -142,6 +142,8 @@ async function startServer() {
   // Headers for all responses
   app.use((req, res, next) => {
     res.setHeader('X-Powered-By', 'Wedding-Manager');
+    // Allow OAuth popups to communicate back to the parent
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
     next();
   });
 
@@ -262,12 +264,19 @@ async function startServer() {
 
       const token = jwt.sign(user, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
 
-      res.cookie('wedding_session', token, {
+      const cookieOptions: any = {
         httpOnly: true,
-        secure: true, // Required for SameSite=none
-        sameSite: 'none', // Required for iframe cross-origin
+        secure: true,
+        sameSite: 'none',
         maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      };
+
+      const currentHost = req.headers['host'] || '';
+      if (currentHost.endsWith('eventframe.io')) {
+        cookieOptions.domain = '.eventframe.io';
+      }
+
+      res.cookie('wedding_session', token, cookieOptions);
 
       // Use JS replace to ensure history cleanup and popup support
       const redirectUrl = targetOrigin.endsWith('/') ? `${targetOrigin}workspace?token=${token}` : `${targetOrigin}/workspace?token=${token}`;
@@ -568,12 +577,19 @@ function verifyPasswordNode(password: string, storedHash: string) {
 
       const sessionToken = jwt.sign(user, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
 
-      res.cookie('wedding_session', sessionToken, {
+      const cookieOptions: any = {
         httpOnly: true,
         secure: true,
         sameSite: 'none',
         maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      };
+
+      const currentHost = req.headers['host'] || '';
+      if (currentHost.endsWith('eventframe.io')) {
+        cookieOptions.domain = '.eventframe.io';
+      }
+
+      res.cookie('wedding_session', sessionToken, cookieOptions);
 
       res.json({ success: true, user, token: sessionToken });
     } catch (error: any) {

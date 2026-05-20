@@ -20,7 +20,9 @@ export const EditorCanvas: React.FC = () => {
     canvasHeight,
     pan,
     setPan,
-    guides
+    guides,
+    isSpacePressed,
+    setIsSpacePressed
   } = useEditorStore();
 
   // Handle auto-resize & initial scale
@@ -62,61 +64,118 @@ export const EditorCanvas: React.FC = () => {
       y: (pointer.y - pan.y) / oldScale,
     };
 
-    const speed = 0.005;
-    const isZoomIn = e.evt.deltaY < 0;
-    const newScale = isZoomIn ? oldScale * 1.1 : oldScale / 1.1;
+    // If metaKey or ctrlKey is pressed, zoom. Otherwise, scroll (pan)
+    if (e.evt.ctrlKey || e.evt.metaKey) {
+      const isZoomIn = e.evt.deltaY < 0;
+      const newScale = isZoomIn ? oldScale * 1.1 : oldScale / 1.1;
 
-    setScale(newScale);
-    setPan({
-      x: pointer.x - mousePointTo.x * newScale,
-      y: pointer.y - mousePointTo.y * newScale,
-    });
+      setScale(newScale);
+      setPan({
+        x: pointer.x - mousePointTo.x * newScale,
+        y: pointer.y - mousePointTo.y * newScale,
+      });
+    } else {
+      // Direct panning with wheel (like a spreadsheet or standard doc)
+      setPan((prev) => ({
+        x: prev.x - e.evt.deltaX,
+        y: prev.y - e.evt.deltaY
+      }));
+    }
   };
 
-  // Handle Panning (Spacebar + Drag OR Middle Mouse)
+  // Handle Panning (Stage background click OR Spacebar OR Touch dragging)
   const [isPanning, setIsPanning] = useState(false);
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
+  
   const handleMouseDown = (e: any) => {
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const isStageClick = e.target === e.target.getStage();
+    const isCanvasBgClick = e.target && typeof e.target.id === 'function' && e.target.id() === 'canvas-background';
+    
     // Selection logic
-    if (e.target === e.target.getStage()) {
+    if (isStageClick || isCanvasBgClick) {
       setSelectedId(null);
     }
     
-    // Pan logic: middle button or spacebar (keyboard not handled here yet)
-    if (e.evt.button === 1 || (e.evt.button === 0 && e.evt.altKey)) {
+    // Pan logic: middle button OR left button with Space/Alt OR clicks on Stage/Canvas background OR any touches on the backdrop!
+    const isTouch = e.evt && e.evt.touches;
+    const isMiddleClick = e.evt && e.evt.button === 1;
+    const isLeftClick = e.evt && e.evt.button === 0;
+    
+    if (
+      isMiddleClick || 
+      (isLeftClick && (e.evt.altKey || isSpacePressed || isStageClick || isCanvasBgClick)) ||
+      isTouch
+    ) {
       setIsPanning(true);
+      // Change cursor to grabbing
+      document.body.style.cursor = 'grabbing';
+      
+      const pointer = stage.getPointerPosition();
+      if (pointer) {
+        lastPointerRef.current = { x: pointer.x, y: pointer.y };
+      }
     }
   };
 
   const handleMouseMove = (e: any) => {
-    if (!isPanning) return;
+    if (!isPanning || !lastPointerRef.current) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    const dx = pointer.x - lastPointerRef.current.x;
+    const dy = pointer.y - lastPointerRef.current.y;
+
     setPan((prev) => ({
-      x: prev.x + e.evt.movementX,
-      y: prev.y + e.evt.movementY
+      x: prev.x + dx,
+      y: prev.y + dy
     }));
+
+    lastPointerRef.current = { x: pointer.x, y: pointer.y };
   };
 
   const handleMouseUp = () => {
     setIsPanning(false);
+    lastPointerRef.current = null;
+    document.body.style.cursor = 'default';
   };
 
-  // Keyboard listeners
+  // Keyboard listeners for Spacebar and Undo/Redo
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && (e.target as HTMLElement).tagName !== 'TEXTAREA' && (e.target as HTMLElement).tagName !== 'INPUT') {
+        if (!isSpacePressed) setIsSpacePressed(true);
+      }
+      
       // Undo/Redo
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
         if (e.shiftKey) {
           useEditorStore.temporal.getState().redo();
         } else {
           useEditorStore.temporal.getState().undo();
         }
       }
+    };
 
-      // Spacebar panning (not fully functional without separate state, but showing intent)
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setIsSpacePressed(false);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isSpacePressed, setIsSpacePressed]);
 
   // Handle Transformer updates
   useEffect(() => {
@@ -142,12 +201,16 @@ export const EditorCanvas: React.FC = () => {
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onTouchStart={handleMouseDown}
+        onTouchMove={handleMouseMove}
+        onTouchEnd={handleMouseUp}
         onWheel={handleWheel}
-        style={{ cursor: isPanning ? 'grabbing' : 'default' }}
+        style={{ cursor: isPanning ? 'grabbing' : isSpacePressed ? 'grab' : 'default' }}
       >
         <Layer x={pan.x} y={pan.y} scaleX={scale} scaleY={scale}>
           {/* Background Shadow/Border to visualize the world space */}
           <Rect
+            id="canvas-background"
             x={0}
             y={0}
             width={canvasWidth}

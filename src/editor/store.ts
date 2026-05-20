@@ -29,10 +29,11 @@ interface EditorState {
   // Viewport
   pan: { x: number; y: number };
   guides: { type: 'h' | 'v'; pos: number }[];
+  isSpacePressed: boolean;
   
   // Actions
   setCanvasHeight: (height: number) => void;
-  setElements: (elements: EditorElement[]) => void;
+  setElements: (elements: EditorElement[], clearHistory?: boolean) => void;
   addElement: (element: EditorElement) => void;
   updateElement: (id: string, updates: Partial<EditorElement>) => void;
   deleteElement: (id: string) => void;
@@ -40,6 +41,7 @@ interface EditorState {
   setScale: (scale: number | ((s: number) => number)) => void;
   setPan: (pan: { x: number; y: number } | ((p: { x: number; y: number }) => { x: number; y: number })) => void;
   setGuides: (guides: { type: 'h' | 'v'; pos: number }[]) => void;
+  setIsSpacePressed: (pressed: boolean) => void;
   moveElementZ: (id: string, direction: 'up' | 'down' | 'front' | 'back') => void;
 }
 
@@ -53,10 +55,13 @@ export const useEditorStore = create<EditorState>()(
       canvasHeight: 1414,
       pan: { x: 0, y: 0 },
       guides: [],
+      isSpacePressed: false,
 
       setCanvasHeight: (height: number) => set({ canvasHeight: Math.min(20000, Math.max(500, height)) }),
 
-      setElements: (elements) => set({ elements: elements.slice().sort((a, b) => a.zIndex - b.zIndex) }),
+      setElements: (elements) => {
+        set({ elements: elements.slice().sort((a, b) => a.zIndex - b.zIndex) });
+      },
 
       addElement: (element) => set((state) => ({ 
         elements: [...state.elements, { ...element, zIndex: state.elements.length }] 
@@ -83,6 +88,8 @@ export const useEditorStore = create<EditorState>()(
 
       setGuides: (guides) => set({ guides }),
 
+      setIsSpacePressed: (isSpacePressed) => set({ isSpacePressed }),
+
       moveElementZ: (id, direction) => set((state) => {
         const list = [...state.elements].sort((a, b) => a.zIndex - b.zIndex);
         const idx = list.findIndex(el => el.id === id);
@@ -108,6 +115,7 @@ export const useEditorStore = create<EditorState>()(
     }),
     {
       partialize: (state) => ({ elements: state.elements, canvasHeight: state.canvasHeight }),
+      equality: (pastState, currentState) => JSON.stringify(pastState) === JSON.stringify(currentState),
     }
   )
 );

@@ -98,7 +98,7 @@ export default function Login() {
     `);
 
     // 2. Fetch the actual URL
-    fetch(`${API_BASE}/api/auth/google`, {
+    fetch(`${API_BASE}/api/auth/google?origin=${encodeURIComponent(currentOrigin)}`, {
       headers: { 'Accept': 'application/json' }
     })
       .then(async response => {
@@ -161,21 +161,26 @@ export default function Login() {
 
     // Polling if popup closed without success
     const checkClosed = setInterval(() => {
-      if (popup.closed) {
-        console.log('Login: Popup closed - cleaning up');
-        window.removeEventListener('message', messageListener);
-        clearInterval(checkClosed);
-        
-        // Wait a tiny bit then check if we have a token in localStorage
-        setTimeout(() => {
-          const token = localStorage.getItem('wedding_session_token');
-          if (token) {
-            console.log('Login: Token found after popup closure');
-            window.location.replace('/workspace');
-          } else {
-            setLoading(false);
-          }
-        }, 800);
+      try {
+        if (popup.closed) {
+          console.log('Login: Popup closed - cleaning up');
+          window.removeEventListener('message', messageListener);
+          clearInterval(checkClosed);
+          
+          // Wait a tiny bit then check if we have a token in localStorage
+          setTimeout(() => {
+            const token = localStorage.getItem('wedding_session_token');
+            if (token) {
+              console.log('Login: Token found after popup closure');
+              window.location.replace('/workspace');
+            } else {
+              setLoading(false);
+            }
+          }, 800);
+        }
+      } catch (e) {
+        // If we can't access .closed yet because of COOP, just wait
+        console.warn('Login: Could not check popup.closed (COOP restriction), will retry...');
       }
     }, 1000);
   };

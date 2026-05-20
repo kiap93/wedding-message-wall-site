@@ -11,9 +11,16 @@ interface Props {
 
 export const ElementRenderer: React.FC<Props> = ({ element, isSelected }) => {
   const shapeRef = useRef<any>(null);
-  const { updateElement, setSelectedId, elements, canvasWidth, canvasHeight, setGuides } = useEditorStore();
+  const { updateElement, setSelectedId, elements, canvasWidth, canvasHeight, setGuides, isSpacePressed } = useEditorStore();
   
   const [image] = useImage(element.src || '');
+
+  const handleDragStart = (e: any) => {
+    const isPanningMode = isSpacePressed || (e.evt && e.evt.altKey);
+    if (isPanningMode) {
+      e.target.stopDrag();
+    }
+  };
 
   const handleDragMove = (e: any) => {
     const { guides, snappedX, snappedY } = getSnappingGuides(
@@ -65,10 +72,11 @@ export const ElementRenderer: React.FC<Props> = ({ element, isSelected }) => {
     height: element.height,
     rotation: element.rotation,
     opacity: element.opacity ?? 1,
-    draggable: true,
+    draggable: !isSpacePressed,
     ref: shapeRef,
     onClick: () => setSelectedId(element.id),
     onTap: () => setSelectedId(element.id),
+    onDragStart: handleDragStart,
     onDragEnd: handleDragEnd,
     onDragMove: handleDragMove,
     onTransformEnd: handleTransformEnd,
