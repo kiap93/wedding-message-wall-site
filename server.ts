@@ -12,6 +12,7 @@ import cors from 'cors';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { GoogleGenAI } from "@google/genai";
+import uploadRouter from './server/uploadRouter';
 
 dotenv.config();
 
@@ -162,6 +163,9 @@ async function startServer() {
   app.use(express.json());
 
   const apiRouter = express.Router();
+
+  // Mount image upload system router
+  apiRouter.use(uploadRouter);
 
   apiRouter.get('/health', (req, res) => {
     res.json({ 

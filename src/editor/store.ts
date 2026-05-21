@@ -17,6 +17,13 @@ export interface EditorElement {
   src?: string;
   borderRadius?: number;
   zIndex: number;
+  // Dynamic positioning & local cropping parameters
+  cropX?: number;
+  cropY?: number;
+  cropWidth?: number;
+  cropHeight?: number;
+  imageNaturalWidth?: number;
+  imageNaturalHeight?: number;
 }
 
 interface EditorState {

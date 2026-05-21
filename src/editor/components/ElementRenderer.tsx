@@ -15,6 +15,19 @@ export const ElementRenderer: React.FC<Props> = ({ element, isSelected }) => {
   
   const [image] = useImage(element.src || '');
 
+  useEffect(() => {
+    if (image && element.type === 'image' && (!element.imageNaturalWidth || !element.imageNaturalHeight)) {
+      updateElement(element.id, {
+        imageNaturalWidth: image.naturalWidth,
+        imageNaturalHeight: image.naturalHeight,
+        cropX: element.cropX ?? 0,
+        cropY: element.cropY ?? 0,
+        cropWidth: element.cropWidth ?? image.naturalWidth,
+        cropHeight: element.cropHeight ?? image.naturalHeight,
+      });
+    }
+  }, [image, element.id, element.type, updateElement]);
+
   const handleDragStart = (e: any) => {
     const isPanningMode = isSpacePressed || (e.evt && e.evt.altKey);
     if (isPanningMode) {
@@ -105,10 +118,19 @@ export const ElementRenderer: React.FC<Props> = ({ element, isSelected }) => {
   }
 
   if (element.type === 'image') {
+    const hasCrop = element.cropX !== undefined && element.cropY !== undefined;
     return (
       <Image
         {...commonProps}
         image={image}
+        {...(hasCrop && {
+          crop: {
+            x: element.cropX ?? 0,
+            y: element.cropY ?? 0,
+            width: element.cropWidth ?? (image ? image.naturalWidth : element.width),
+            height: element.cropHeight ?? (image ? image.naturalHeight : element.height),
+          }
+        })}
       />
     );
   }
