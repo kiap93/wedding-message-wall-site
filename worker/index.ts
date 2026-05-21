@@ -4,6 +4,7 @@ import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from "@google/genai";
 import Stripe from 'stripe';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 type Bindings = {
   GOOGLE_CLIENT_ID: string;
@@ -23,6 +24,11 @@ type Bindings = {
   GMAIL_PASS: string;
   RESEND_API_KEY: string;
   GEMINI_API_KEY: string;
+  R2_ENDPOINT?: string;
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
+  R2_BUCKET_NAME?: string;
+  R2_PUBLIC_URL?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -657,6 +663,270 @@ app.post('/api/auth/reset-password', async (c) => {
   } catch (error: any) {
     console.error('Reset password verification failed:', error.message);
     return c.json({ error: 'Invalid or expired reset link' }, 401);
+  }
+});
+
+// --- R2, S3, and Supabase Image Helpers for Cloudflare Worker ---
+function getS3Client(env: any): S3Client {
+  const endpoint = env.R2_ENDPOINT;
+  const accessKeyId = env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = env.R2_SECRET_ACCESS_KEY;
+  const bucketName = env.R2_BUCKET_NAME;
+
+  if (!endpoint || !accessKeyId || !secretAccessKey || !bucketName) {
+    throw new Error('Cloudflare R2 is not fully configured in the environment variables.');
+  }
+
+  return new S3Client({
+    endpoint,
+    region: 'auto',
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  });
+}
+
+function isR2Configured(env: any): boolean {
+  return !!(
+    env.R2_ENDPOINT &&
+    env.R2_ACCESS_KEY_ID &&
+    env.R2_SECRET_ACCESS_KEY &&
+    env.R2_BUCKET_NAME
+  );
+}
+
+const getSupabase = (c: any) => {
+  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.SUPABASE_SECRET_KEY || c.env.VITE_SUPABASE_ANON_KEY;
+  return createClient(supabaseUrl, serviceRoleKey);
+};
+
+// 5.4 Image Upload and Management API (Dual Architecture Support)
+app.post('/api/upload', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+
+  try {
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
+    const activeUserId = payload.id || payload.sub || 'guest_user';
+
+    const body = await c.req.parseBody();
+    const file = body.image as any; 
+    const event_id = (body.event_id || body.projectId || 'default-event') as string;
+
+    if (!file || !(file instanceof File)) {
+      return c.json({ error: 'No file uploaded or file is invalid.' }, 400);
+    }
+
+    const fileBuffer = await file.arrayBuffer();
+    const fileBytes = new Uint8Array(fileBuffer);
+    const uniqueId = Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+
+    // Generate unique remote file paths
+    const r2Folder = `${activeUserId}/${event_id}`;
+    const fileExt = file.name.split('.').pop() || 'webp';
+    const originalKey = `${r2Folder}/original/${uniqueId}_original.${fileExt}`;
+    const mediumKey = `${r2Folder}/medium/${uniqueId}_medium.${fileExt}`;
+    const thumbnailKey = `${r2Folder}/thumbnail/${uniqueId}_thumbnail.${fileExt}`;
+
+    let originalUrl = '';
+    let mediumUrl = '';
+    let thumbnailUrl = '';
+
+    if (isR2Configured(c.env)) {
+      const s3 = getS3Client(c.env);
+      const bucket = c.env.R2_BUCKET_NAME!;
+      const cdnUrl = c.env.R2_PUBLIC_URL || c.env.R2_ENDPOINT;
+
+      const uploadToR2 = async (key: string, bytes: Uint8Array) => {
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            Body: bytes,
+            ContentType: file.type || 'image/jpeg',
+            CacheControl: 'public, max-age=31536000, immutable',
+          })
+        );
+      };
+
+      // Upload raw files to R2 in parallel (Worker bypasses Sharp to skip native node module issues)
+      await Promise.all([
+        uploadToR2(originalKey, fileBytes),
+        uploadToR2(mediumKey, fileBytes),
+        uploadToR2(thumbnailKey, fileBytes),
+      ]);
+
+      const cleanPublicUrl = cdnUrl?.endsWith('/') ? cdnUrl.slice(0, -1) : cdnUrl;
+      originalUrl = `${cleanPublicUrl}/${originalKey}`;
+      mediumUrl = `${cleanPublicUrl}/${mediumKey}`;
+      thumbnailUrl = `${cleanPublicUrl}/${thumbnailKey}`;
+    } else {
+      // Return local fallback URLs
+      const urlFolder = `/uploads/${activeUserId}/${event_id}`;
+      originalUrl = `${urlFolder}/original/${uniqueId}_original.${fileExt}`;
+      mediumUrl = `${urlFolder}/medium/${uniqueId}_medium.${fileExt}`;
+      thumbnailUrl = `${urlFolder}/thumbnail/${uniqueId}_thumbnail.${fileExt}`;
+    }
+
+    const dbRecord = {
+      id: uniqueId,
+      user_id: activeUserId,
+      event_id,
+      original_url: originalUrl,
+      medium_url: mediumUrl,
+      thumbnail_url: thumbnailUrl,
+      width: 1200, 
+      height: 800, 
+      file_size: file.size,
+      created_at: new Date().toISOString()
+    };
+
+    const supabase = getSupabase(c);
+    const { error: dbError } = await supabase.from('uploaded_images').insert([dbRecord]);
+
+    if (dbError) {
+      console.error('Worker image save to DB failed:', dbError.message);
+      return c.json({ error: 'Database transaction failed: ' + dbError.message }, 500);
+    }
+
+    return c.json({
+      success: true,
+      message: 'Image fully processed and saved successfully.',
+      data: dbRecord
+    }, 201);
+
+  } catch (err: any) {
+    console.error('Worker image upload failed:', err);
+    return c.json({ error: 'Image upload failed: ' + err.message }, 500);
+  }
+});
+
+app.get('/api/images', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+
+  try {
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
+    const activeUserId = payload.id || payload.sub || 'guest_user';
+    const event_id = (c.req.query('event_id') || c.req.query('projectId')) as string;
+
+    const supabase = getSupabase(c);
+    let query = supabase.from('uploaded_images').select('*').eq('user_id', activeUserId);
+    if (event_id) {
+      query = query.eq('event_id', event_id);
+    }
+    query = query.order('created_at', { ascending: false });
+
+    const { data: imagesList, error: queryError } = await query;
+    if (queryError) {
+      console.error('Worker error querying images:', queryError.message);
+      return c.json({ error: 'Failed to query image library: ' + queryError.message }, 500);
+    }
+
+    return c.json({
+      success: true,
+      data: imagesList || []
+    });
+  } catch (err: any) {
+    console.error('Worker error fetching images:', err);
+    return c.json({ error: 'Failed to load image library: ' + err.message }, 500);
+  }
+});
+
+app.delete('/api/images/:id', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+
+  try {
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
+    const activeUserId = payload.id || payload.sub || 'guest_user';
+    const imageId = c.req.param('id');
+
+    const supabase = getSupabase(c);
+    
+    // Check if image exists and is owned by user
+    const { data: imageRecord, error: fetchError } = await supabase
+      .from('uploaded_images')
+      .select('*')
+      .eq('id', imageId)
+      .eq('user_id', activeUserId)
+      .single();
+
+    if (fetchError || !imageRecord) {
+      return c.json({ error: 'Image record not found or unauthorized.' }, 404);
+    }
+
+    // Attempt to delete from R2 if configured
+    if (isR2Configured(c.env)) {
+      const s3 = getS3Client(c.env);
+      const bucket = c.env.R2_BUCKET_NAME!;
+
+      const getR2Key = (url: string) => {
+        try {
+          const urlObj = new URL(url);
+          return urlObj.pathname.startsWith('/') ? urlObj.pathname.substring(1) : urlObj.pathname;
+        } catch (e) {
+          return url.replace(/https?:\/\/[^\/]+\//, '');
+        }
+      };
+
+      const keys = [
+        getR2Key(imageRecord.original_url),
+        getR2Key(imageRecord.medium_url),
+        getR2Key(imageRecord.thumbnail_url)
+      ];
+
+      await Promise.all(
+        keys.map(async (key) => {
+          try {
+            await s3.send(
+              new DeleteObjectCommand({
+                Bucket: bucket,
+                Key: key,
+              })
+            );
+          } catch (err) {
+            console.error(`[WORKER] Error deleting R2 key ${key}:`, err);
+          }
+        })
+      );
+    }
+
+    // Delete record from Supabase
+    const { error: deleteError } = await supabase
+      .from('uploaded_images')
+      .delete()
+      .eq('id', imageId);
+
+    if (deleteError) {
+      console.error('Worker failed to delete image record:', deleteError.message);
+      return c.json({ error: 'Failed to delete image record: ' + deleteError.message }, 500);
+    }
+
+    return c.json({
+      success: true,
+      message: 'Image and files completely deleted.'
+    });
+  } catch (err: any) {
+    console.error('Worker error deleting image:', err);
+    return c.json({ error: 'Failed deleting resources: ' + err.message }, 500);
   }
 });
 

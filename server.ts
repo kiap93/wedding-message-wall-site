@@ -297,37 +297,30 @@ async function startServer() {
                 console.log('Authentication successful, sending message to parent...');
                 
                 function finish() {
-                  let messaged = false;
+                  let isPopup = false;
                   try {
                     if (window.opener && window.opener !== window) {
+                      isPopup = true;
                       window.opener.postMessage({ type: 'AUTH_SUCCESS', token: token }, "*");
-                      messaged = true;
                       console.log('Message sent to opener');
                     }
                   } catch (e) {
                     console.error('Failed to postMessage to opener:', e);
                   }
 
-                  if (!messaged) {
-                    try {
-                      if (window.parent && window.parent !== window) {
-                        window.parent.postMessage({ type: 'AUTH_SUCCESS', token: token }, "*");
-                        console.log('Message sent to parent');
+                  if (isPopup) {
+                    // Popup mode: close after a small delay
+                    setTimeout(() => { 
+                      try { 
+                        window.close(); 
+                      } catch(e) { 
+                        window.location.replace(redirectUrl);
                       }
-                    } catch (e) {
-                      console.error('Failed to postMessage to parent:', e);
-                    }
+                    }, 1200);
+                  } else {
+                    // Direct same-window redirect mode: navigate immediately!
+                    window.location.replace(redirectUrl);
                   }
-                  
-                  // Close after a short delay
-                  setTimeout(() => { 
-                    try { 
-                      window.close(); 
-                    } catch(e) { 
-                      console.log('Could not close window, user may need to close manually or redirected');
-                      window.location.replace(redirectUrl);
-                    }
-                  }, 1200);
                 }
                 
                 if (document.readyState === 'complete') {

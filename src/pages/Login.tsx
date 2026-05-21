@@ -43,84 +43,24 @@ export default function Login() {
     setShowSetupHelper(false);
     localStorage.removeItem('wedding_session_token');
     
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    
     // Pass current origin to help server redirect back correctly
     const currentOrigin = window.location.origin;
     
-    if (isMobile) {
-      // On mobile, use direct redirect for better reliability
-      fetch(`${API_BASE}/api/auth/google?origin=${encodeURIComponent(currentOrigin)}`, {
-        headers: { 'Accept': 'application/json' }
-      })
-        .then(async response => {
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.message || data.error || 'Failed to initialize Google login');
-          if (data.url) {
-            window.location.href = data.url;
-          } else {
-            throw new Error('No URL returned from server');
-          }
-        })
-        .catch(err => {
-          console.error('Mobile login prep error:', err);
-          setError(err instanceof Error ? err.message : 'An error occurred during sign in');
-          setLoading(false);
-        });
-      return;
-    }
-
-    // 1. Open popup immediately to bypass popup blockers for desktop
-    const width = 500;
-    const height = 600;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
-    
-    const popup = window.open(
-      '',
-      'google_login_popup',
-      `width=${width},height=${height},left=${left},top=${top},status=no,menubar=no,toolbar=no`
-    );
-
-    if (!popup) {
-      setError('Popup blocked. Please check your browser settings and allow popups for this site.');
-      setLoading(false);
-      return;
-    }
-
-    // Show a loading message in the popup
-    popup.document.write(`
-      <html><body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #FDFCF0; margin: 0; color: #C5A059;">
-        <div style="border: 4px solid #f3f3f3; border-top: 4px solid #C5A059; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 20px;"></div>
-        <p>Connecting to Google...</p>
-        <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
-      </body></html>
-    `);
-
-    // 2. Fetch the actual URL
+    // Use direct redirect flow for maximum reliability across devices and domains (COOP-safe)
     fetch(`${API_BASE}/api/auth/google?origin=${encodeURIComponent(currentOrigin)}`, {
       headers: { 'Accept': 'application/json' }
     })
       .then(async response => {
         const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.message || data.error || 'Failed to initialize Google login');
-        }
-        
-        if (data.redirect_uri) {
-          setDetectedRedirectUri(data.redirect_uri);
-        }
-
+        if (!response.ok) throw new Error(data.message || data.error || 'Failed to initialize Google login');
         if (data.url) {
-          popup.location.href = data.url;
-          startLoginFlow(popup);
+          window.location.href = data.url;
         } else {
           throw new Error('No URL returned from server');
         }
       })
       .catch(err => {
-        console.error('Login prep error:', err);
-        popup.close();
+        console.error('Google login prep error:', err);
         const message = err instanceof Error ? err.message : 'An error occurred during sign in';
         setError(message);
         
@@ -134,56 +74,7 @@ export default function Login() {
       });
   };
 
-  const startLoginFlow = (popup: Window) => {
-    console.log('Login: Starting message listener and polling...');
-    // Listen for message from popup
-    const messageListener = (event: MessageEvent) => {
-      // In AI Studio, the origin might be the container URL
-      const isOwnOrigin = event.origin === window.location.origin;
-      const isDevOrigin = event.origin.includes('.run.app');
-      const isLocalOrigin = event.origin.includes('localhost') || event.origin.includes('127.0.0.1');
-      
-      if (!isOwnOrigin && !isDevOrigin && !isLocalOrigin) {
-        return;
-      }
 
-      if (event.data?.type === 'AUTH_SUCCESS' && event.data.token) {
-        console.log('Login: Authentication successful message received');
-        window.removeEventListener('message', messageListener);
-        if (checkClosed) clearInterval(checkClosed);
-        
-        localStorage.setItem('wedding_session_token', event.data.token);
-        window.location.replace('/workspace');
-      }
-    };
-
-    window.addEventListener('message', messageListener);
-
-    // Polling if popup closed without success
-    const checkClosed = setInterval(() => {
-      try {
-        if (popup.closed) {
-          console.log('Login: Popup closed - cleaning up');
-          window.removeEventListener('message', messageListener);
-          clearInterval(checkClosed);
-          
-          // Wait a tiny bit then check if we have a token in localStorage
-          setTimeout(() => {
-            const token = localStorage.getItem('wedding_session_token');
-            if (token) {
-              console.log('Login: Token found after popup closure');
-              window.location.replace('/workspace');
-            } else {
-              setLoading(false);
-            }
-          }, 800);
-        }
-      } catch (e) {
-        // If we can't access .closed yet because of COOP, just wait
-        console.warn('Login: Could not check popup.closed (COOP restriction), will retry...');
-      }
-    }, 1000);
-  };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
