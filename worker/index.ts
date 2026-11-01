@@ -36,7 +36,22 @@ const app = new Hono<{ Bindings: Bindings }>();
 // CORS Middleware
 app.use('*', async (c, next) => {
   const origin = c.req.header('Origin');
-  // In production, you might want to restrict this to eventframe.io
+  
+  if (c.req.method === 'OPTIONS') {
+    const headers = new Headers();
+    if (origin) {
+      headers.set('Access-Control-Allow-Origin', origin);
+      headers.set('Access-Control-Allow-Credentials', 'true');
+    }
+    headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+    return new Response(null, {
+      status: 204,
+      headers
+    });
+  }
+
   if (origin) {
     c.res.headers.set('Access-Control-Allow-Origin', origin);
     c.res.headers.set('Access-Control-Allow-Credentials', 'true');
@@ -44,11 +59,43 @@ app.use('*', async (c, next) => {
     c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   }
   
-  if (c.req.method === 'OPTIONS') {
-    return c.body(null, 204);
-  }
+  // Custom secure headers for OAuth popups
+  c.res.headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
   await next();
 });
+
+// Helper to proxy requests to backend (used when R2 is not configured in worker environment)
+async function proxyToBackend(c: any) {
+  const url = new URL(c.req.url);
+  const targetUrl = new URL(url.pathname + url.search, c.env.FRONTEND_URL || 'https://eventframe.io');
+  
+  console.log(`[PROXY-BACKEND] Delegating API ${url.pathname} -> ${targetUrl.toString()}`);
+
+  const headers = new Headers(c.req.raw.headers);
+  headers.delete('Host');
+  headers.set('X-Forwarded-Host', url.hostname);
+  headers.set('X-Forwarded-Proto', url.protocol.replace(':', ''));
+
+  const proxyRequest = new Request(targetUrl.toString(), {
+    method: c.req.method,
+    headers: headers,
+    body: c.req.method !== 'GET' && c.req.method !== 'HEAD' ? c.req.raw.body : undefined,
+    redirect: 'manual'
+  });
+
+  try {
+    const response = await fetch(proxyRequest);
+    const newHeaders = new Headers(response.headers);
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: newHeaders
+    });
+  } catch (e: any) {
+    console.error('[PROXY-BACKEND] Fetch error:', e);
+    return c.text(`Proxy Error: Failed to reach origin backend at ${c.env.FRONTEND_URL}.`, 502);
+  }
+}
 
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
@@ -704,6 +751,9 @@ const getSupabase = (c: any) => {
 
 // 5.4 Image Upload and Management API (Dual Architecture Support)
 app.post('/api/upload', async (c) => {
+  if (!isR2Configured(c.env)) {
+    return proxyToBackend(c);
+  }
   const tokenHeader = c.req.header('Authorization');
   const cookieToken = getCookie(c, 'wedding_session');
   let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
@@ -809,6 +859,9 @@ app.post('/api/upload', async (c) => {
 });
 
 app.get('/api/images', async (c) => {
+  if (!isR2Configured(c.env)) {
+    return proxyToBackend(c);
+  }
   const tokenHeader = c.req.header('Authorization');
   const cookieToken = getCookie(c, 'wedding_session');
   let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
@@ -846,6 +899,9 @@ app.get('/api/images', async (c) => {
 });
 
 app.delete('/api/images/:id', async (c) => {
+  if (!isR2Configured(c.env)) {
+    return proxyToBackend(c);
+  }
   const tokenHeader = c.req.header('Authorization');
   const cookieToken = getCookie(c, 'wedding_session');
   let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
