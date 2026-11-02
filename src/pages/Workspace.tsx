@@ -33,6 +33,7 @@ import { useWorkspace } from '../lib/WorkspaceContext';
 import { useUser } from '../lib/UserContext';
 import { fetchTemplates } from '../lib/templates';
 import DashboardLayout from '../layouts/DashboardLayout';
+import invitationCraftImage from '../assets/images/invitation_craft_showcase_1793501242453.jpg';
 import Button from '../design-system/components/Button';
 import Input from '../design-system/components/Input';
 import Select from '../design-system/components/Select';
@@ -1055,7 +1056,7 @@ export default function Workspace() {
 
                 <div className="aspect-[16/9] max-w-lg rounded-lg border border-[#E8E8E5] overflow-hidden bg-[#FAF9F7] relative flex items-center justify-center p-6">
                   <img
-                    src="/src/assets/images/invitation_craft_showcase_1793501242453.jpg"
+                    src={invitationCraftImage}
                     alt="Invitation Preview"
                     className="w-full h-full object-cover rounded"
                     referrerPolicy="no-referrer"

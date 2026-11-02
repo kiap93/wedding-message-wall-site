@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import heroWeddingImage from '../assets/images/hero_wedding_editorial_1793501242401.jpg';
 
 export interface AuthLayoutProps {
   children: React.ReactNode;
@@ -19,7 +20,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
       {/* Editorial Visual Column */}
       <div className="hidden lg:flex lg:w-1/2 relative bg-[#EFECE6] overflow-hidden flex-col justify-between p-12">
         <img
-          src="/src/assets/images/hero_wedding_editorial_1793501242401.jpg"
+          src={heroWeddingImage}
           alt="Modern Wedding Editorial"
           className="absolute inset-0 w-full h-full object-cover grayscale-[15%] contrast-[105%]"
           referrerPolicy="no-referrer"

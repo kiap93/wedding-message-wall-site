@@ -17,6 +17,9 @@ import {
 } from 'lucide-react';
 import MarketingLayout from '../layouts/MarketingLayout';
 import Button from '../design-system/components/Button';
+import heroWeddingImage from '../assets/images/hero_wedding_editorial_1793501242401.jpg';
+import invitationCraftImage from '../assets/images/invitation_craft_showcase_1793501242453.jpg';
+import celebrationVenueImage from '../assets/images/celebration_venue_mood_1793501242406.jpg';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -126,7 +129,7 @@ export default function Home() {
               <div className="relative rounded-lg overflow-hidden border border-[#E8E8E5] shadow-card bg-white p-2">
                 <div className="aspect-[4/3] overflow-hidden rounded">
                   <img
-                    src="/src/assets/images/hero_wedding_editorial_1793501242401.jpg"
+                    src={heroWeddingImage}
                     alt="Editorial Wedding Couple"
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
@@ -163,7 +166,7 @@ export default function Home() {
           <div className="grid md:grid-cols-2 gap-8 items-center mb-16">
             <div className="rounded-lg overflow-hidden border border-[#E8E8E5] shadow-subtle bg-[#FAF9F7]">
               <img
-                src="/src/assets/images/invitation_craft_showcase_1793501242453.jpg"
+                src={invitationCraftImage}
                 alt="Stationery Craft"
                 className="w-full h-auto object-cover"
                 referrerPolicy="no-referrer"
@@ -215,7 +218,7 @@ export default function Home() {
               <div className="rounded-lg overflow-hidden border border-[#E8E8E5] shadow-card bg-white p-2">
                 <div className="aspect-[16/9] overflow-hidden rounded relative">
                   <img
-                    src="/src/assets/images/celebration_venue_mood_1793501242406.jpg"
+                    src={celebrationVenueImage}
                     alt="Evening Reception Dinner"
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
