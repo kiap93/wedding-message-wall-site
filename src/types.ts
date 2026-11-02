@@ -43,6 +43,7 @@ export interface WeddingEvent {
   access_password?: string;
   auto_approve_messages?: boolean;
   image_url?: string;
+  music_url?: string;
   rsvp_fields?: RSVPField[];
   invitation_config?: any; // JSON configuration for the Canva-like editor
   created_at: string;

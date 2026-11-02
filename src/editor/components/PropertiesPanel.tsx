@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Trash2, ArrowUp, ArrowDown, MousePointer2, Image as ImageIcon, Crop } from 'lucide-react';
 import { useEditorStore } from '../store';
-import { motion, AnimatePresence } from 'motion/react';
 import { ImageLibraryModal } from './ImageLibraryModal';
+import Button from '../../design-system/components/Button';
 
 const FONTS = [
   'Inter', 'Playfair Display', 'Cormorant Garamond', 'Montserrat', 'Italiana', 'Parisienne', 'Great Vibes'
@@ -15,44 +15,53 @@ export const PropertiesPanel: React.FC = () => {
 
   if (!selectedElement) {
     return (
-      <aside className="w-80 bg-white border-l border-[#C5A059]/20 flex flex-col items-center justify-center p-12 text-center opacity-40">
-        <div className="w-16 h-16 bg-gray-50 border border-gray-100 rounded-full flex items-center justify-center mb-4">
-          <MousePointer2 className="w-6 h-6 text-gray-300" />
+      <aside className="w-72 bg-white border-l border-[#E8E8E5] flex flex-col items-center justify-center p-8 text-center">
+        <div className="w-10 h-10 bg-[#FAF9F7] border border-[#E8E8E5] rounded-full flex items-center justify-center mb-3 text-[#777777]">
+          <MousePointer2 className="w-4 h-4" />
         </div>
-        <h4 className="text-[10px] uppercase font-black tracking-widest text-[#2D2424]">Selection Tool</h4>
-        <p className="text-[9px] mt-2 text-[#C5A059]">Click an element on the canvas to edit its properties</p>
+        <h4 className="text-xs font-semibold text-[#252525]">No Selection</h4>
+        <p className="text-[11px] text-[#777777] mt-1 leading-relaxed">
+          Select an element on the canvas to inspect and edit its properties.
+        </p>
       </aside>
     );
   }
 
   return (
-    <aside className="w-80 bg-white border-l border-[#C5A059]/20 flex flex-col overflow-y-auto">
-      <motion.div 
-        key={selectedElement.id}
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        className="p-6 space-y-8"
-      >
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#C5A059]">Design Properties</h3>
-          <div className="flex gap-1">
-            <button onClick={() => moveElementZ(selectedElement.id, 'up')} className="p-2 hover:bg-gray-100 rounded-lg text-gray-400">
+    <aside className="w-72 bg-white border-l border-[#E8E8E5] flex flex-col overflow-y-auto select-none">
+      <div className="p-4 space-y-6">
+        {/* Header Bar */}
+        <div className="flex items-center justify-between pb-3 border-b border-[#E8E8E5]">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-[#252525] capitalize">{selectedElement.type}</span>
+            <span className="text-[10px] text-[#777777] font-mono">#{selectedElement.id.slice(0, 4)}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={() => moveElementZ(selectedElement.id, 'up')} 
+              className="p-1 hover:bg-[#FAF9F7] rounded text-[#777777] hover:text-[#252525] transition-colors"
+              title="Bring Forward"
+            >
               <ArrowUp className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => moveElementZ(selectedElement.id, 'down')} className="p-2 hover:bg-gray-100 rounded-lg text-gray-400">
+            <button 
+              onClick={() => moveElementZ(selectedElement.id, 'down')} 
+              className="p-1 hover:bg-[#FAF9F7] rounded text-[#777777] hover:text-[#252525] transition-colors"
+              title="Send Backward"
+            >
               <ArrowDown className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
-        {/* Text Content */}
+        {/* Text / Button Content */}
         {(selectedElement.type === 'text' || selectedElement.type === 'button') && (
-          <div className="space-y-3">
-            <label className="text-[10px] uppercase tracking-widest font-black text-gray-400">Content</label>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-[#777777]">Text Content</label>
             <textarea 
               value={selectedElement.text}
               onChange={(e) => updateElement(selectedElement.id, { text: e.target.value })}
-              className="w-full p-4 border border-gray-100 rounded-2xl bg-gray-50 text-sm h-24 resize-none focus:outline-none focus:ring-1 focus:ring-[#C5A059]/30"
+              className="w-full p-2.5 border border-[#E8E8E5] rounded-md bg-white text-xs text-[#252525] h-20 resize-none focus:outline-none focus:ring-1 focus:ring-[#8B806F]"
             />
           </div>
         )}
@@ -60,31 +69,37 @@ export const PropertiesPanel: React.FC = () => {
         {/* Typography */}
         {(selectedElement.type === 'text' || selectedElement.type === 'button') && (
           <div className="space-y-3">
-            <label className="text-[10px] uppercase tracking-widest font-black text-gray-400">Typography</label>
-            <select 
-              value={selectedElement.fontFamily}
-              onChange={(e) => updateElement(selectedElement.id, { fontFamily: e.target.value })}
-              className="w-full p-3 border border-gray-100 rounded-xl bg-gray-50 text-sm"
-            >
-              {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
-            </select>
-            <div className="flex items-center gap-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#777777]">Font Family</label>
+              <select 
+                value={selectedElement.fontFamily}
+                onChange={(e) => updateElement(selectedElement.id, { fontFamily: e.target.value })}
+                className="w-full h-8 px-2.5 border border-[#E8E8E5] rounded-md bg-white text-xs text-[#252525] focus:outline-none focus:ring-1 focus:ring-[#8B806F]"
+              >
+                {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-[#777777]">
+                <span>Font Size</span>
+                <span className="font-mono text-[#252525] tabular-nums">{selectedElement.fontSize}px</span>
+              </div>
               <input 
-                type="range" min="8" max="200" 
+                type="range" min="8" max="180" 
                 value={selectedElement.fontSize}
                 onChange={(e) => updateElement(selectedElement.id, { fontSize: parseInt(e.target.value) })}
-                className="flex-1 h-1 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-[#C5A059]"
+                className="w-full h-1 bg-[#E8E8E5] rounded appearance-none cursor-pointer accent-[#252525]"
               />
-              <span className="text-[10px] font-black w-8">{selectedElement.fontSize}px</span>
             </div>
           </div>
         )}
 
-        {/* Color */}
+        {/* Color & Opacity */}
         <div className="space-y-3">
-          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400">Appearance</label>
-          <div className="flex gap-4">
-            <div className="w-12 h-12 rounded-2xl border border-gray-200 relative overflow-hidden shadow-sm" style={{ backgroundColor: selectedElement.fill }}>
+          <label className="text-xs font-medium text-[#777777]">Appearance</label>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded border border-[#E8E8E5] relative overflow-hidden shrink-0 shadow-subtle" style={{ backgroundColor: selectedElement.fill }}>
               <input 
                 type="color" 
                 value={selectedElement.fill}
@@ -92,52 +107,48 @@ export const PropertiesPanel: React.FC = () => {
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full scale-150"
               />
             </div>
-            <div className="flex-1 flex flex-col justify-center gap-1">
+            <div className="flex-1 space-y-1">
+              <div className="flex justify-between text-[11px] text-[#777777]">
+                <span>Opacity</span>
+                <span className="font-mono tabular-nums">{Math.round((selectedElement.opacity ?? 1) * 100)}%</span>
+              </div>
               <input 
                 type="range" min="0" max="1" step="0.01"
                 value={selectedElement.opacity ?? 1}
                 onChange={(e) => updateElement(selectedElement.id, { opacity: parseFloat(e.target.value) })}
-                className="w-full h-1 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-[#C5A059]"
+                className="w-full h-1 bg-[#E8E8E5] rounded appearance-none cursor-pointer accent-[#252525]"
               />
-              <div className="flex justify-between text-[8px] font-black text-gray-400 uppercase tracking-widest">
-                <span>Opacity</span>
-                <span>{Math.round((selectedElement.opacity ?? 1) * 100)}%</span>
-              </div>
             </div>
           </div>
         </div>
 
-        {/* Image URL with Library Selector & Custom Crops */}
+        {/* Image Controls */}
         {selectedElement.type === 'image' && (
-          <div className="space-y-6">
-            <div className="space-y-3">
-              <label className="text-[10px] uppercase tracking-widest font-black text-gray-400">Photo Resource</label>
-              <button
-                type="button"
+          <div className="space-y-4 pt-2 border-t border-[#E8E8E5]">
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-[#777777]">Image Source</label>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
                 onClick={() => setIsLibraryOpen(true)}
-                className="w-full py-3 border border-dashed border-[#C5A059]/30 hover:border-[#C5A059] rounded-xl flex items-center justify-center gap-1.5 transition-all text-gray-600 bg-[#C5A059]/5 hover:bg-[#C5A059]/10 font-black uppercase text-[9px] tracking-wider"
+                leftIcon={<ImageIcon className="w-3.5 h-3.5" />}
               >
-                <ImageIcon className="w-3.5 h-3.5 text-[#C5A059]" />
                 Browse Image Library
-              </button>
-              
-              <div className="text-[8px] text-gray-400 italic text-center mt-1">
-                Upload from device or swap with optimized library files.
-              </div>
+              </Button>
             </div>
 
-            {/* Scale, Slide & Crop Adjusters */}
-            <div className="space-y-4 pt-4 border-t border-gray-100">
-              <div className="flex items-center gap-1.5 mb-1 text-[#C5A059]">
-                <Crop className="w-3.5 h-3.5" />
-                <span className="text-[10px] uppercase tracking-widest font-black">Position & Crop</span>
+            {/* Position & Crop Adjusters */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-[#252525]">
+                <Crop className="w-3.5 h-3.5 text-[#8B806F]" />
+                <span>Crop Framing</span>
               </div>
 
-              {/* Crop X Slider */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-[8px] font-black text-gray-400 uppercase tracking-widest">
-                  <span>Crop Offset X</span>
-                  <span className="font-mono">{selectedElement.cropX ?? 0}px</span>
+              <div className="space-y-1">
+                <div className="flex justify-between text-[11px] text-[#777777]">
+                  <span>Offset X</span>
+                  <span className="font-mono tabular-nums">{selectedElement.cropX ?? 0}px</span>
                 </div>
                 <input 
                   type="range"
@@ -145,15 +156,14 @@ export const PropertiesPanel: React.FC = () => {
                   max={selectedElement.imageNaturalWidth ? Math.max(0, selectedElement.imageNaturalWidth - 50) : 2000}
                   value={selectedElement.cropX ?? 0}
                   onChange={(e) => updateElement(selectedElement.id, { cropX: parseInt(e.target.value) })}
-                  className="w-full h-1 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-[#C5A059]"
+                  className="w-full h-1 bg-[#E8E8E5] rounded appearance-none cursor-pointer accent-[#252525]"
                 />
               </div>
 
-              {/* Crop Y Slider */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-[8px] font-black text-gray-400 uppercase tracking-widest">
-                  <span>Crop Offset Y</span>
-                  <span className="font-mono">{selectedElement.cropY ?? 0}px</span>
+              <div className="space-y-1">
+                <div className="flex justify-between text-[11px] text-[#777777]">
+                  <span>Offset Y</span>
+                  <span className="font-mono tabular-nums">{selectedElement.cropY ?? 0}px</span>
                 </div>
                 <input 
                   type="range"
@@ -161,42 +171,10 @@ export const PropertiesPanel: React.FC = () => {
                   max={selectedElement.imageNaturalHeight ? Math.max(0, selectedElement.imageNaturalHeight - 50) : 2000}
                   value={selectedElement.cropY ?? 0}
                   onChange={(e) => updateElement(selectedElement.id, { cropY: parseInt(e.target.value) })}
-                  className="w-full h-1 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-[#C5A059]"
+                  className="w-full h-1 bg-[#E8E8E5] rounded appearance-none cursor-pointer accent-[#252525]"
                 />
               </div>
 
-              {/* Crop Width Slider */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-[8px] font-black text-gray-400 uppercase tracking-widest">
-                  <span>Crop Window Width</span>
-                  <span className="font-mono">{selectedElement.cropWidth ?? selectedElement.width}px</span>
-                </div>
-                <input 
-                  type="range"
-                  min="20"
-                  max={selectedElement.imageNaturalWidth || 2000}
-                  value={selectedElement.cropWidth ?? selectedElement.imageNaturalWidth ?? selectedElement.width}
-                  onChange={(e) => updateElement(selectedElement.id, { cropWidth: parseInt(e.target.value) })}
-                  className="w-full h-1 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-[#C5A059]"
-                />
-              </div>
-
-              {/* Crop Height Slider */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-[8px] font-black text-gray-400 uppercase tracking-widest">
-                  <span>Crop Window Height</span>
-                  <span className="font-mono">{selectedElement.cropHeight ?? selectedElement.height}px</span>
-                </div>
-                <input 
-                  type="range"
-                  min="20"
-                  max={selectedElement.imageNaturalHeight || 2000}
-                  value={selectedElement.cropHeight ?? selectedElement.imageNaturalHeight ?? selectedElement.height}
-                  onChange={(e) => updateElement(selectedElement.id, { cropHeight: parseInt(e.target.value) })}
-                  className="w-full h-1 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-[#C5A059]"
-                />
-              </div>
-              
               <button
                 type="button"
                 onClick={() => updateElement(selectedElement.id, {
@@ -205,28 +183,28 @@ export const PropertiesPanel: React.FC = () => {
                   cropWidth: selectedElement.imageNaturalWidth || selectedElement.width,
                   cropHeight: selectedElement.imageNaturalHeight || selectedElement.height,
                 })}
-                className="w-full py-1.5 border border-gray-100 hover:border-gray-200 text-gray-400 text-[8px] uppercase font-bold text-center rounded-lg transition-colors bg-gray-50/20"
+                className="w-full py-1 text-[11px] text-[#777777] hover:text-[#252525] border border-[#E8E8E5] rounded hover:bg-[#FAF9F7] transition-colors"
               >
-                Reset Crop Layout
+                Reset Crop
               </button>
             </div>
           </div>
         )}
 
-        {/* Actions */}
-        <div className="pt-8 border-t border-gray-100">
-          <button 
-            type="button"
+        {/* Delete Element Button */}
+        <div className="pt-4 border-t border-[#E8E8E5]">
+          <Button
+            variant="danger"
+            size="sm"
+            className="w-full !bg-red-50 !text-red-700 !border-red-200 border hover:!bg-red-100"
             onClick={() => deleteElement(selectedElement.id)}
-            className="w-full py-4 text-red-400 hover:text-red-500 font-black uppercase tracking-[0.2em] text-[10px] flex items-center justify-center gap-2 bg-red-50 rounded-2xl transition-all"
+            leftIcon={<Trash2 className="w-3.5 h-3.5" />}
           >
-            <Trash2 className="w-4 h-4" />
             Delete Element
-          </button>
+          </Button>
         </div>
-      </motion.div>
+      </div>
 
-      {/* Render Image Catalog Library Portal Popups */}
       <ImageLibraryModal 
         isOpen={isLibraryOpen}
         onClose={() => setIsLibraryOpen(false)}

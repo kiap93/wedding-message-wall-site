@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
 import { 
   Save, 
-  LogOut, 
-  Heart, 
-  ArrowRight, 
   Plus, 
   ArrowLeft, 
   Settings, 
@@ -18,13 +14,12 @@ import {
   Layout,
   ChevronLeft,
   ChevronRight,
-  Zap,
-  Monitor,
-  Smartphone,
-  Sparkles,
   Share2,
   Check,
-  X
+  Search,
+  Key,
+  Music,
+  Code
 } from 'lucide-react';
 import { Agency, WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate } from '../types';
 import RSVPManager from '../components/RSVPManager';
@@ -37,7 +32,15 @@ import { getSupabase } from '../lib/supabase';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { useUser } from '../lib/UserContext';
 import { fetchTemplates } from '../lib/templates';
-import { Palette } from 'lucide-react';
+import DashboardLayout from '../layouts/DashboardLayout';
+import Button from '../design-system/components/Button';
+import Input from '../design-system/components/Input';
+import Select from '../design-system/components/Select';
+import Badge from '../design-system/components/Badge';
+import Tabs from '../design-system/components/Tabs';
+import PageHeader from '../design-system/components/PageHeader';
+import Modal from '../design-system/components/Modal';
+import EmptyState from '../design-system/components/EmptyState';
 
 export default function Workspace() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
@@ -54,6 +57,7 @@ export default function Workspace() {
   const [events, setEvents] = useState<WeddingEvent[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Calendar State
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -64,6 +68,9 @@ export default function Workspace() {
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
   const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'form' | 'moderation' | 'invitation'>('aesthetic');
 
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showRSVPPreview, setShowRSVPPreview] = useState(false);
+
   useEffect(() => {
     async function load() {
       const data = await fetchTemplates();
@@ -71,8 +78,14 @@ export default function Workspace() {
     }
     load();
   }, []);
-  const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [showRSVPPreview, setShowRSVPPreview] = useState(false);
+
+  // Sync view query param if passed
+  useEffect(() => {
+    const viewParam = searchParams.get('view');
+    if (viewParam === 'calendar' || viewParam === 'agency_settings' || viewParam === 'list') {
+      setView(viewParam);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const initAdmin = async () => {
@@ -81,11 +94,9 @@ export default function Workspace() {
       const targetProjectId = searchParams.get('project');
 
       if (workspace) {
-        // We have a workspace from subdomain
         setAgency(workspace);
         fetchEvents(workspace.id, workspace.user_role, targetProjectId);
       } else {
-        // Root domain (likely a couple or an agency visiting global admin)
         const supabase = getSupabase();
         const userId = user.id || user.sub;
         const { data: userAgencies, error } = await supabase
@@ -104,7 +115,6 @@ export default function Workspace() {
           setAgency(primaryWorkspace);
           fetchEvents(primaryWorkspace.id, primaryWorkspace.user_role, targetProjectId);
         } else {
-          // No agency yet, maybe redirect to onboarding?
           navigate('/onboarding');
         }
       }
@@ -133,7 +143,6 @@ export default function Workspace() {
       }));
       setEvents(eventList);
       
-      // Auto-switch to editor based on target project ID or if user is a couple
       if (targetProjectId) {
         const targetEvent = eventList.find(e => e.id === targetProjectId);
         if (targetEvent) {
@@ -181,7 +190,6 @@ export default function Workspace() {
         setAgency(resData.data);
       }
 
-      // If slug changed, we need to redirect to the new subdomain URL
       const newSlug = agencyData.slug;
       if (newSlug && newSlug !== agency?.slug) {
         const protocol = window.location.protocol;
@@ -220,7 +228,6 @@ export default function Workspace() {
   const isStaff = user?.email === 'buildsiteasia@gmail.com' || user?.email?.includes('@eventframe.io');
 
   useEffect(() => {
-    // If couple and 0 events, auto-trigger creation if they are subscribed
     if (isCouple && events.length === 0 && view === 'list' && !isLoadingEvents && isSubscribed) {
       handleCreateNew();
     }
@@ -266,18 +273,15 @@ export default function Workspace() {
     if (!editingEvent || !agency) return;
     setIsSaving(true);
 
-    const supabase = getSupabase();
     const eventData = {
       ...editingEvent,
       agency_id: agency.id,
       updated_at: new Date().toISOString()
     };
     
-    // Explicitly remove user_id if it existed to avoid constraint issues if using agency legacy
     delete (eventData as any).user_id;
 
     if (eventData.id) {
-      // Update via API for security/RLS bypass in live worker
       try {
         const response = await authenticatedFetch(`${API_BASE}/api/projects/${eventData.id}`, {
           method: 'PUT',
@@ -286,14 +290,8 @@ export default function Workspace() {
         });
 
         if (!response.ok) {
-          let errorMessage = 'Failed to save event';
-          try {
-            const errData = await response.json();
-            errorMessage = errData.error || errorMessage;
-          } catch (e) {
-            errorMessage = `Error ${response.status}: ${response.statusText || 'Unknown error'}`;
-          }
-          throw new Error(errorMessage);
+          const errData = await response.json();
+          throw new Error(errData.error || 'Failed to save event');
         }
 
         if (agency) await fetchEvents(agency.id, agency.user_role);
@@ -303,7 +301,6 @@ export default function Workspace() {
         alert('Error saving event: ' + err.message);
       }
     } else {
-      // Create via API for security/RLS bypass
       try {
         const response = await authenticatedFetch(`${API_BASE}/api/projects`, {
           method: 'POST',
@@ -312,14 +309,8 @@ export default function Workspace() {
         });
 
         if (!response.ok) {
-          let errorMessage = 'Failed to create event';
-          try {
-            const errData = await response.json();
-            errorMessage = errData.error || errorMessage;
-          } catch (e) {
-            errorMessage = `Error ${response.status}: ${response.statusText || 'Unknown error'}`;
-          }
-          throw new Error(errorMessage);
+          const errData = await response.json();
+          throw new Error(errData.error || 'Failed to create event');
         }
 
         if (agency) await fetchEvents(agency.id, agency.user_role);
@@ -333,7 +324,7 @@ export default function Workspace() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this event?')) return;
+    if (!window.confirm('Are you sure you want to delete this event? All guest RSVPs and records will be deleted.')) return;
     
     try {
       const response = await authenticatedFetch(`${API_BASE}/api/projects/${id}`, {
@@ -341,14 +332,8 @@ export default function Workspace() {
       });
 
       if (!response.ok) {
-        let errorMessage = 'Failed to delete event';
-        try {
-          const errData = await response.json();
-          errorMessage = errData.error || errorMessage;
-        } catch (e) {
-          errorMessage = `Error ${response.status}: ${response.statusText || 'Unknown error'}`;
-        }
-        throw new Error(errorMessage);
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to delete event');
       }
 
       setEvents(events.filter(e => e.id !== id));
@@ -358,7 +343,7 @@ export default function Workspace() {
     }
   };
 
-  const getEventUrl = (event: WeddingEvent, type: 'display' | 'guest' | 'rsvp' | 'couple_login') => {
+  const getEventUrl = (event: WeddingEvent, type: 'display' | 'guest' | 'rsvp' | 'couple_login' | 'invitation') => {
     const currentHost = window.location.host;
     const hostParts = currentHost.split('.');
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -371,19 +356,19 @@ export default function Workspace() {
     }
     
     if (isCouple) {
-      // Couples use root domain path
       const base = `https://${baseDomain}/${agency?.slug}`;
       if (type === 'display') return base;
       if (type === 'guest') return `${base}/guest`;
       if (type === 'rsvp') return `${base}/rsvp`;
+      if (type === 'invitation') return `${base}/invitation`;
       return `https://${baseDomain}/couple/login?agency=${agency?.slug}`;
     }
 
-    // Agencies use subdomains
     const base = agency?.domain ? `https://${agency.domain}` : `https://${agency?.slug}.${baseDomain}`;
     if (type === 'display') return `${base}/${event.slug}/display`;
     if (type === 'guest') return `${base}/${event.slug}/guest`;
     if (type === 'rsvp') return `${base}/${event.slug}/rsvp`;
+    if (type === 'invitation') return `${base}/${event.slug}/invitation`;
     return `${base}/couple/login?slug=${event.slug}`;
   };
 
@@ -397,1112 +382,709 @@ export default function Workspace() {
     });
   };
 
-  const handleLogout = async () => {
-    await authenticatedFetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
-    removeAuthToken();
-    window.location.replace('/login');
-  };
-
-  if (isLoadingWorkspace) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#FDFCF0]">
-        <div className="w-8 h-8 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
-    </div>
+  const filteredEvents = events.filter(e => 
+    (e.name && e.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (e.groom_name && e.groom_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (e.bride_name && e.bride_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (e.location && e.location.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  const activeNavItem = view === 'calendar' ? 'calendar' : view === 'agency_settings' ? 'settings' : 'events';
+
   return (
-    <div className="min-h-screen bg-[#FDFCF0] font-sans text-[#2D2424]">
-      {/* Top Navigation */}
-      <nav className="bg-white border-b border-[#C5A059]/20 px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-50 shadow-sm">
-        <div className="flex items-center gap-2 md:gap-3">
-          {agency?.logo_url ? (
-            <img src={agency.logo_url} alt={agency.name} className="h-10 w-auto object-contain" />
-          ) : (
-            <div className="p-2 bg-[#C5A059]/10 rounded-xl">
-              <Heart className="w-6 h-6 text-[#C5A059]" />
-            </div>
-          )}
-          <div className="flex flex-col">
-            <h1 className="font-serif text-xl leading-tight hidden sm:block">
-              {isCouple ? 'My Wedding Hub' : (agency?.name || 'Wedding Hub')}
-            </h1>
-            {agency && (
-              <span className="text-[10px] font-bold text-[#C5A059] uppercase tracking-[0.2em] hidden xs:block">
-                {isCouple ? `eventframe.io/${agency.slug}` : `${agency.slug}.eventframe.io`}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 md:gap-4">
-          {isStaff && (
-            <button 
-              onClick={() => navigate('/templates/manage')}
-              className="p-2 hover:bg-[#C5A059]/10 rounded-xl transition-colors text-[#C5A059]"
-              title="Aesthetic Plugins Manager"
-            >
-              <Palette className="w-5 h-5" />
-            </button>
-          )}
-            <button 
-              onClick={() => navigate('/subscription')}
-              className={`px-3 md:px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
-                isSubscribed 
-                  ? 'bg-green-50 border-green-100 text-green-600' 
-                  : 'bg-[#C5A059]/10 border-[#C5A059]/20 text-[#C5A059] hover:bg-[#C5A059]/20 shadow-sm'
-              }`}
-            >
-              <span className="hidden sm:inline">{isSubscribed ? 'Pro Plan Active' : 'Upgrade to Pro'}</span>
-              <span className="sm:hidden">{isSubscribed ? 'Pro' : 'Upgrade'}</span>
-            </button>
-            <button 
-              onClick={() => setView('agency_settings')}
-              className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-500 flex items-center gap-2"
-              title={isCouple ? "Account Settings" : "Organization Settings"}
-            >
-              <div className="hidden lg:flex flex-col items-end mr-1">
-                <span className="text-[9px] font-black uppercase tracking-widest text-[#C5A059] leading-none mb-0.5">Logged in as</span>
-                <span className="text-xs font-bold text-gray-700 leading-none">{user?.name}</span>
-              </div>
-              <Settings className="w-5 h-5" />
-            </button>
-          <button 
-            onClick={handleLogout}
-            className="p-2 hover:bg-red-50 text-red-500 rounded-xl transition-colors flex items-center gap-1 md:gap-2 text-xs md:text-sm font-bold uppercase tracking-wider shrink-0"
-          >
-            <LogOut className="w-4 h-4 md:w-5 h-5" />
-            <span className="hidden sm:inline">Logout</span>
-          </button>
-        </div>
-      </nav>
+    <DashboardLayout activeItem={activeNavItem} onNewEvent={handleCreateNew}>
+      {view === 'agency_settings' ? (
+        <div className="space-y-6 max-w-3xl">
+          <PageHeader
+            title={isCouple ? 'Wedding Profile Settings' : 'Agency Branding & Subdomain'}
+            description={
+              isCouple 
+                ? 'Manage your custom URL slug and event color styling.' 
+                : 'Configure your white-label studio name, custom subdomain, and default branding palette.'
+            }
+            breadcrumbs={[
+              { label: 'Weddings', onClick: () => setView('list') },
+              { label: 'Branding Settings' }
+            ]}
+          />
 
-      <main className="max-w-6xl mx-auto p-8">
-        <AnimatePresence mode="wait">
-          {view === 'agency_settings' ? (
-             <motion.div
-               key="agency_settings"
-               initial={{ opacity: 0, x: 20 }}
-               animate={{ opacity: 1, x: 0 }}
-               className="max-w-2xl mx-auto space-y-8"
-             >
-                <button 
-                  onClick={() => setView('list')}
-                  className="flex items-center gap-2 text-gray-500 hover:text-[#C5A059] transition-colors font-bold uppercase tracking-widest text-xs"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  Back to Events
-                </button>
-
-                <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-[#C5A059]/10">
-                   <h2 className="text-3xl font-serif mb-8">{isCouple ? 'Your Wedding Settings' : 'Agency Branding'}</h2>
-                   <form onSubmit={(e) => {
-                     e.preventDefault();
-                     const formData = new FormData(e.currentTarget);
-                     handleSaveAgency({
-                       name: formData.get('name') as string,
-                       slug: (formData.get('slug') as string).toLowerCase().replace(/[^a-z0-9-]/g, ''),
-                       logo_url: formData.get('logo_url') as string,
-                       domain: formData.get('domain') as string,
-                       theme_config: {
-                          primaryColor: formData.get('primaryColor') as string,
-                          accentColor: formData.get('accentColor') as string,
-                       }
-                     });
-                   }} className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">
-                            {isCouple ? 'Wedding Name' : 'Agency Name'}
-                          </label>
-                          <input name="name" defaultValue={agency?.name} className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50" />
-                        </div>
-                        <div>
-                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">
-                            {isCouple ? 'Personal URL Slug' : 'Subdomain Slug'}
-                          </label>
-                          <input name="slug" defaultValue={agency?.slug} className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 font-mono text-sm" />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">
-                          {isCouple ? 'Wedding Logo/Monogram URL' : 'Logo URL'}
-                        </label>
-                        <input name="logo_url" defaultValue={agency?.logo_url} placeholder="https://..." className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50" />
-                      </div>
-                      {!isCouple && (
-                        <div>
-                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Custom Domain (Optional)</label>
-                          <input name="domain" defaultValue={agency?.domain} placeholder="weddings.yourbrand.com" className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50" />
-                        </div>
-                      )}
-                      
-                      <div className="grid grid-cols-2 gap-6 p-6 bg-gray-50 rounded-3xl border border-gray-100">
-                        <div>
-                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">
-                            {isCouple ? 'Wedding Theme Color' : 'Primary Brand Color'}
-                          </label>
-                          <div className="flex gap-3">
-                            <input type="color" name="primaryColor" defaultValue={agency?.theme_config?.primaryColor || '#C5A059'} className="h-12 w-12 rounded-lg cursor-pointer" />
-                            <input type="text" defaultValue={agency?.theme_config?.primaryColor || '#C5A059'} className="flex-1 px-4 py-2 rounded-xl border border-gray-100 bg-white font-mono text-xs" />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">
-                            {isCouple ? 'Secondary Color' : 'Accent Accent Color'}
-                          </label>
-                          <div className="flex gap-3">
-                            <input type="color" name="accentColor" defaultValue={agency?.theme_config?.accentColor || '#2D2424'} className="h-12 w-12 rounded-lg cursor-pointer" />
-                            <input type="text" defaultValue={agency?.theme_config?.accentColor || '#2D2424'} className="flex-1 px-4 py-2 rounded-xl border border-gray-100 bg-white font-mono text-xs" />
-                          </div>
-                        </div>
-                      </div>
-
-                      <button 
-                        type="submit"
-                        disabled={isSavingAgency}
-                        className="w-full bg-[#2D2424] text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl disabled:opacity-50"
-                      >
-                        {isSavingAgency ? 'Saving Changes...' : (isCouple ? 'Update Wedding Profile' : 'Update Organization Profile')}
-                      </button>
-                   </form>
-                </div>
-             </motion.div>
-          ) : view === 'list' ? (
-            <motion.div 
-              key="list"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="space-y-8"
-            >
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                <div>
-                  <h2 className="text-4xl font-serif mb-2 text-[#2D2424]">
-                    {isCouple ? 'Your Wedding' : 'Organization Events'}
-                  </h2>
-                  <p className="text-gray-500">
-                    {isCouple ? 'Manage your digital guestbook and event experience.' : 'Manage white-label wedding events and guest experiences.'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-4">
-                  {!isCouple && (
-                    <div className="flex p-1 bg-white rounded-2xl border border-[#C5A059]/10 shadow-sm">
-                      <button 
-                        onClick={() => setView('list')}
-                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                          (view as string) === 'list' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
-                        }`}
-                      >
-                        List
-                      </button>
-                      <button 
-                        onClick={() => setView('calendar')}
-                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                          (view as string) === 'calendar' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
-                        }`}
-                      >
-                        Calendar
-                      </button>
-                    </div>
-                  )}
-                  {(!isCouple || events.length === 0) && (
-                    <button 
-                      onClick={handleCreateNew}
-                      className={`px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 transition-all shadow-xl active:scale-95 ${
-                        isSubscribed 
-                          ? 'bg-[#C5A059] text-white hover:bg-[#B38D45]' 
-                          : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-50'
-                      }`}
-                    >
-                      <Plus className="w-5 h-5" />
-                      {isCouple ? 'Initialize Wedding' : 'New Event'}
-                    </button>
-                  )}
-                </div>
+          <div className="bg-white p-6 sm:p-8 rounded-lg border border-[#E8E8E5] shadow-subtle">
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const formData = new FormData(e.currentTarget);
+              handleSaveAgency({
+                name: formData.get('name') as string,
+                slug: (formData.get('slug') as string).toLowerCase().replace(/[^a-z0-9-]/g, ''),
+                logo_url: formData.get('logo_url') as string,
+                domain: formData.get('domain') as string,
+                theme_config: {
+                  primaryColor: formData.get('primaryColor') as string,
+                  accentColor: formData.get('accentColor') as string,
+                }
+              });
+            }} className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  name="name"
+                  label={isCouple ? 'Couple / Wedding Title' : 'Agency Name'}
+                  defaultValue={agency?.name}
+                  required
+                />
+                <Input
+                  name="slug"
+                  label={isCouple ? 'Wedding Slug' : 'Subdomain Slug'}
+                  defaultValue={agency?.slug}
+                  required
+                  hint={isCouple ? `eventframe.io/${agency?.slug || 'slug'}` : `${agency?.slug || 'agency'}.eventframe.io`}
+                />
               </div>
 
+              <Input
+                name="logo_url"
+                label={isCouple ? 'Wedding Monogram / Logo URL' : 'Studio Logo Image URL'}
+                defaultValue={agency?.logo_url}
+                placeholder="https://example.com/logo.png"
+              />
 
-
-              {isLoadingEvents ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="h-64 bg-white/50 animate-pulse rounded-[2rem] border border-[#C5A059]/10" />
-                  ))}
-                </div>
-              ) : events.length === 0 ? (
-                <div className="bg-white p-16 rounded-[3rem] border-2 border-dashed border-[#C5A059]/30 flex flex-col items-center text-center">
-                  <div className="w-20 h-20 bg-[#C5A059]/10 rounded-full flex items-center justify-center mb-6">
-                    <Heart className="w-10 h-10 text-[#C5A059] opacity-20" />
-                  </div>
-                  <h3 className="text-2xl font-serif mb-2">{isCouple ? 'Initialize your wedding' : 'No events created'}</h3>
-                  <p className="text-gray-400 max-w-sm mb-8">
-                    {isCouple 
-                      ? 'Welcome! Let\'s set up your beautiful wedding space to start sharing with guests.' 
-                      : 'Ready to start planning? Create your first branded event to begin customizing the experience.'}
-                  </p>
-                  <button onClick={handleCreateNew} className="text-[#C5A059] font-bold uppercase tracking-widest flex items-center gap-2 hover:translate-x-1 transition-transform">
-                    {isCouple ? 'Start Planning' : 'Initialize Event'} <ArrowRight className="w-5 h-5" />
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  {events.map((event) => (
-                    <motion.div 
-                      key={event.id}
-                      whileHover={{ y: -8 }}
-                      className="bg-white rounded-[2.5rem] shadow-xl border border-[#C5A059]/10 overflow-hidden flex flex-col group"
-                    >
-                      <div className="p-8 flex-1">
-                        <div className="flex items-center justify-between mb-6">
-                          <span className="text-[10px] font-black uppercase tracking-widest bg-[#C5A059]/10 text-[#C5A059] px-3 py-1 rounded-full">
-                            {templates.find(t => t.id === event.theme_id)?.name || DEFAULT_TEMPLATES.find(t => t.id === event.theme_id)?.name || 'Classic'}
-                          </span>
-                          <div className="flex gap-2">
-                            <button 
-                              onClick={() => handleEdit(event)}
-                              className="p-2 hover:bg-[#C5A059]/10 rounded-lg text-gray-400 hover:text-[#C5A059] transition-colors"
-                            >
-                              <Settings className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={() => handleDelete(event.id)}
-                              className="p-2 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-500 transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                        
-                        <h3 className="text-2xl font-serif mb-2 leading-tight">
-                          {event.groom_name} <span className="text-[#C5A059]">&</span> {event.bride_name}
-                        </h3>
-                        <p className="text-[10px] font-bold text-[#C5A059] uppercase tracking-widest mb-6 opacity-60">
-                          {isCouple 
-                            ? `eventframe.io/${agency?.slug}`
-                            : (agency?.domain || `${agency?.slug}.eventframe.io / ${event.slug}`)}
-                        </p>
-
-                          <div className="space-y-3 text-sm text-gray-500 mb-8">
-                            <div className="flex items-center gap-2">
-                              <CalendarIcon className="w-3.5 h-3.5 opacity-50" />
-                              <span>{new Date(event.wedding_date).toLocaleDateString(undefined, { dateStyle: 'long' })}</span>
-                            </div>
-                          <div className="flex items-center gap-2">
-                            <MapPin className="w-3.5 h-3.5 opacity-50" />
-                            <span className="truncate">{event.location}</span>
-                          </div>
-                          {event.access_password && (
-                            <div className="pt-2 mt-2 border-t border-gray-50 flex items-center justify-between text-[10px] font-bold">
-                              <span className="text-gray-400 uppercase tracking-widest">Dashboard PIN</span>
-                              <span className="bg-gray-100 px-2 py-0.5 rounded text-[#2D2424] font-mono">{event.access_password}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                       <div className="px-8 pb-8 flex gap-3">
-                        <button 
-                          onClick={() => window.open(getEventUrl(event, 'display'), '_blank')}
-                          className="flex-1 bg-[#2D2424] text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black transition-colors"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Display
-                        </button>
-                        <button 
-                          onClick={() => window.open(getEventUrl(event, 'guest'), '_blank')}
-                          className="flex-1 bg-[#C5A059]/10 text-[#C5A059] py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#C5A059]/20 transition-colors"
-                        >
-                          <MessageSquare className="w-3 h-3" />
-                          Guest
-                        </button>
-                        <button 
-                          onClick={() => window.open(getEventUrl(event, 'rsvp'), '_blank')}
-                          className="flex-1 bg-[#C5A059]/10 text-[#C5A059] py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#C5A059]/20 transition-colors"
-                        >
-                          <Users className="w-3 h-3" />
-                          RSVP
-                        </button>
-                        <button 
-                          onClick={() => navigate(`/editor/${event.id}`)}
-                          className="flex-1 bg-white border border-[#C5A059]/30 text-[#C5A059] py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#C5A059]/5 transition-colors"
-                        >
-                          <Layout className="w-3 h-3" />
-                          Design
-                        </button>
-                        {!isCouple && (
-                          <button 
-                            onClick={() => handleShareCoupleLogin(event)}
-                            className={`p-3 rounded-xl transition-all flex items-center justify-center ${
-                              copiedId === event.id 
-                                ? 'bg-green-500 text-white shadow-lg shadow-green-200' 
-                                : 'bg-[#C5A059]/10 text-[#C5A059] hover:bg-[#C5A059]/20'
-                            }`}
-                            title="Share Couple Login"
-                          >
-                            {copiedId === event.id ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
-                          </button>
-                        )}
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
+              {!isCouple && (
+                <Input
+                  name="domain"
+                  label="Custom Apex Domain (Optional)"
+                  defaultValue={agency?.domain}
+                  placeholder="weddings.yourbrand.com"
+                  hint="Point a CNAME record to EventFrame to use your own apex domain."
+                />
               )}
-            </motion.div>
-          ) : view === 'calendar' ? (
-            <motion.div
-              key="calendar"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="space-y-8"
-            >
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                <div>
-                  <h2 className="text-4xl font-serif mb-2 text-[#2D2424]">Event Calendar</h2>
-                  <p className="text-gray-500">Monthly overview of all scheduled celebrations.</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex p-1 bg-white rounded-2xl border border-[#C5A059]/10 shadow-sm">
-                    <button 
-                      onClick={() => setView('list')}
-                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                        (view as string) === 'list' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
-                      }`}
-                    >
-                      List
-                    </button>
-                    <button 
-                      onClick={() => setView('calendar')}
-                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-                        (view as string) === 'calendar' ? 'bg-[#C5A059] text-white shadow-md' : 'text-gray-400 hover:text-gray-600'
-                      }`}
-                    >
-                      Calendar
-                    </button>
-                  </div>
-                  <button 
-                    onClick={handleCreateNew}
-                    className={`px-8 py-4 rounded-2xl font-bold uppercase tracking-widest flex items-center gap-3 transition-all shadow-xl active:scale-95 ${
-                      isSubscribed 
-                        ? 'bg-[#C5A059] text-white hover:bg-[#B38D45]' 
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-50'
-                    }`}
-                  >
-                    <Plus className="w-5 h-5" />
-                    New Event
-                  </button>
-                </div>
-              </div>
 
-              <div className="bg-white rounded-[3rem] shadow-xl border border-[#C5A059]/10 overflow-hidden">
-                {/* Calendar Header */}
-                <div className="p-8 flex items-center justify-between border-b border-gray-100">
-                  <h3 className="text-2xl font-serif">
-                    {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
-                  </h3>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))}
-                      className="p-3 hover:bg-gray-50 rounded-2xl transition-colors border border-gray-100"
-                    >
-                      <ChevronLeft className="w-5 h-5" />
-                    </button>
-                    <button 
-                      onClick={() => setCurrentMonth(new Date())}
-                      className="px-6 py-3 hover:bg-gray-50 rounded-2xl transition-colors border border-gray-100 text-[10px] font-black uppercase tracking-widest"
-                    >
-                      Today
-                    </button>
-                    <button 
-                      onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))}
-                      className="p-3 hover:bg-gray-50 rounded-2xl transition-colors border border-gray-100"
-                    >
-                      <ChevronRight className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Calendar Grid */}
-                <div className="p-8">
-                  <div className="grid grid-cols-7 gap-px bg-gray-100 border border-gray-100 rounded-3xl overflow-hidden">
-                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                      <div key={day} className="bg-gray-50 py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">
-                        {day}
-                      </div>
-                    ))}
-                    {(() => {
-                      const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
-                      const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
-                      const days = [];
-
-                      // Add empty slots for days before the 1st
-                      for (let i = 0; i < firstDayOfMonth; i++) {
-                        days.push(<div key={`empty-${i}`} className="bg-white/50 min-h-[140px]" />);
-                      }
-
-                      // Add actual days
-                      for (let day = 1; day <= daysInMonth; day++) {
-                        const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                        const dayEvents = events.filter(e => e.wedding_date === dateStr);
-                        const isToday = new Date().toDateString() === new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day).toDateString();
-                        const hasEvents = dayEvents.length > 0;
-
-                        days.push(
-                          <div key={day} className={`bg-white min-h-[140px] p-4 group transition-colors relative ${hasEvents ? 'hover:bg-[#FDFCF0]/50' : 'hover:bg-gray-50'}`}>
-                            <div className="flex items-center justify-between mb-3">
-                              <span className={`text-[10px] font-black tracking-widest flex items-center justify-center ${isToday ? 'bg-[#C5A059] text-white w-6 h-6 rounded-full -ml-1 -mt-1' : 'text-gray-300 group-hover:text-[#C5A059]'}`}>
-                                {day}
-                              </span>
-                              {hasEvents && (
-                                <div className="flex gap-0.5">
-                                  {dayEvents.slice(0, 3).map((_, i) => (
-                                    <div key={i} className="w-1.5 h-1.5 rounded-full bg-[#C5A059] shadow-sm animate-pulse" />
-                                  ))}
-                                  {dayEvents.length > 3 && (
-                                    <span className="text-[8px] font-black text-[#C5A059] ml-0.5">+{dayEvents.length - 3}</span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                            <div className="space-y-1">
-                              {dayEvents.map(event => (
-                                <button
-                                  key={event.id}
-                                  onClick={() => handleEdit(event)}
-                                  className="w-full text-left p-2 rounded-xl bg-[#C5A059]/5 border border-[#C5A059]/10 hover:bg-[#C5A059]/10 transition-all group/event"
-                                >
-                                  <p className="text-[10px] font-black uppercase tracking-tight text-[#C5A059] truncate">
-                                    {event.groom_name} & {event.bride_name}
-                                  </p>
-                                  <p className="text-[8px] text-gray-400 font-bold flex items-center gap-1 mt-0.5">
-                                    <MapPin className="w-2 h-2" /> {event.location}
-                                  </p>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      }
-                      return days;
-                    })()}
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div 
-              key="editor"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="grid grid-cols-1 lg:grid-cols-12 gap-6"
-            >
-              {/* Back Button */}
-              <div className="lg:col-span-12">
-                <button 
-                  onClick={() => setView('list')}
-                  className="flex items-center gap-2 text-gray-500 hover:text-[#C5A059] transition-colors font-bold uppercase tracking-widest text-xs"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  {isCouple ? 'Back to Dashboard' : 'Back to List'}
-                </button>
-              </div>
-
-              {/* Settings Sidebar */}
-              <div className="lg:col-span-4">
-                <div className="sticky top-24 space-y-8">
-                  <section className="bg-white rounded-[2.5rem] shadow-xl border border-[#C5A059]/10 flex flex-col max-h-[calc(100vh-120px)] overflow-hidden">
-                    <div className="p-8 pb-4 space-y-4">
-
-                      <h2 className="text-2xl font-serif flex items-center gap-3">
-                        <Settings className="w-6 h-6 text-[#C5A059]" />
-                        Configuration
-                      </h2>
+              <div className="p-4 bg-[#FAF9F7] rounded-md border border-[#E8E8E5] space-y-3">
+                <div className="text-xs font-medium text-[#252525]">Brand Palette</div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-[#777777] block mb-1.5">Primary Color</label>
+                    <div className="flex gap-2 items-center">
+                      <input type="color" name="primaryColor" defaultValue={agency?.theme_config?.primaryColor || '#252525'} className="w-8 h-8 rounded border border-[#E8E8E5] cursor-pointer" />
+                      <input type="text" defaultValue={agency?.theme_config?.primaryColor || '#252525'} className="flex-1 h-8 px-2.5 text-xs font-mono bg-white border border-[#E8E8E5] rounded" />
                     </div>
-                    
-                    <div className="flex-1 overflow-y-auto px-8 py-4 space-y-6 custom-scrollbar">
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Domain Slug</label>
-                        <div className="flex items-center flex-wrap">
-                          <div className="bg-gray-100 px-4 py-4 rounded-l-2xl border border-r-0 border-gray-100 text-[10px] font-bold text-gray-400 select-none whitespace-nowrap">
-                            {isCouple 
-                              ? `${window.location.host.split('.').slice(-2).join('.')}/${agency?.slug}/`
-                              : (agency?.domain || `${agency?.slug || 'agency'}.${window.location.host.split('.').slice(-2).join('.')}/`)}
-                          </div>
-                          {!isCouple && (
-                            <input 
-                              type="text" 
-                              placeholder="wedding-slug"
-                              value={editingEvent?.slug || ''}
-                              onChange={(e) => setEditingEvent({ ...editingEvent!, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
-                              className="flex-1 px-5 py-4 rounded-r-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-mono text-sm min-w-[120px]"
-                            />
-                          )}
-                          {isCouple && (
-                             <div className="flex-1 px-5 py-4 rounded-r-2xl border border-gray-100 bg-gray-50 text-gray-400 font-mono text-sm">
-                               Display
-                             </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Name</label>
-                        <input 
-                          type="text" 
-                          placeholder="e.g. Summer Wedding 2026"
-                          value={editingEvent?.name || ''}
-                          onChange={(e) => setEditingEvent({ ...editingEvent!, name: e.target.value })}
-                          className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
-                        />
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Groom / Partner A</label>
-                          <input 
-                            type="text" 
-                            value={editingEvent?.groom_name || ''}
-                            onChange={(e) => setEditingEvent({ ...editingEvent!, groom_name: e.target.value })}
-                            className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Bride / Partner B</label>
-                          <input 
-                            type="text" 
-                            value={editingEvent?.bride_name || ''}
-                            onChange={(e) => setEditingEvent({ ...editingEvent!, bride_name: e.target.value })}
-                            className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Event Date</label>
-                        <input 
-                          type="date" 
-                          value={editingEvent?.wedding_date || ''}
-                          onChange={(e) => setEditingEvent({ ...editingEvent!, wedding_date: e.target.value })}
-                          className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Location</label>
-                        <input 
-                          type="text" 
-                          value={editingEvent?.location || ''}
-                          onChange={(e) => setEditingEvent({ ...editingEvent!, location: e.target.value })}
-                          className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-2 block ml-1">Couple Dashboard Password</label>
-                        <input 
-                          type="text" 
-                          placeholder="Simple password for the couple"
-                          value={editingEvent?.access_password || ''}
-                          onChange={(e) => setEditingEvent({ ...editingEvent!, access_password: e.target.value })}
-                          className="w-full px-5 py-4 rounded-2xl border border-gray-100 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all font-medium"
-                        />
-                      </div>
-
-                      <div className="flex items-center gap-3 p-4 bg-[#C5A059]/5 rounded-2xl border border-[#C5A059]/10">
-                        <input 
-                          id="auto_approve"
-                          type="checkbox" 
-                          checked={editingEvent?.auto_approve_messages || false}
-                          onChange={(e) => setEditingEvent({ ...editingEvent!, auto_approve_messages: e.target.checked })}
-                          className="w-5 h-5 rounded border-gray-300 text-[#C5A059] focus:ring-[#C5A059]"
-                        />
-                        <label htmlFor="auto_approve" className="text-xs font-bold text-[#2D2424] cursor-pointer">
-                          Auto-approve guest messages
-                          <p className="text-[10px] text-gray-400 font-normal">Messages will appear instantly on display</p>
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="p-8 pt-4 space-y-4">
-
-                      
-                      <button 
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl active:scale-95 disabled:opacity-50 ${
-                          isCouple && !isSubscribed 
-                            ? 'bg-gray-800 text-white hover:bg-black' 
-                            : 'bg-[#C5A059] text-white hover:bg-[#B38D45]'
-                        }`}
-                      >
-                        {isSaving ? 'Synchronizing...' : (isCouple && !isSubscribed ? 'Save Preview' : 'Save and Deploy')}
-                        <Save className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </section>
-                </div>
-              </div>
-
-              {/* Management Sections */}
-              <div className="lg:col-span-8 space-y-12">
-                <div className="flex flex-wrap gap-4 p-1 bg-white rounded-3xl border border-[#C5A059]/10 w-fit">
-                  <button 
-                    onClick={() => setActiveEditorTab('aesthetic')}
-                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
-                      activeEditorTab === 'aesthetic' ? 'bg-[#C5A059] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Layout className="w-4 h-4" />
-                      Aesthetic
-                    </div>
-                  </button>
-                  <button 
-                    onClick={() => setActiveEditorTab('form')}
-                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
-                      activeEditorTab === 'form' ? 'bg-[#C5A059] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                       <Layout className="w-4 h-4" />
-                       RSVP Form
-                    </div>
-                  </button>
-                  <button 
-                    onClick={() => setActiveEditorTab('rsvp')}
-                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
-                      activeEditorTab === 'rsvp' ? 'bg-[#C5A059] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                       <Users className="w-4 h-4" />
-                       Guest Responses
-                    </div>
-                  </button>
-                  <button 
-                    onClick={() => setActiveEditorTab('moderation')}
-                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
-                      activeEditorTab === 'moderation' ? 'bg-[#C5A059] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                       <MessageSquare className="w-4 h-4" />
-                       Moderation
-                    </div>
-                  </button>
-                  <button 
-                    onClick={() => setActiveEditorTab('invitation')}
-                    className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
-                      activeEditorTab === 'invitation' ? 'bg-[#2D2424] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                       <Sparkles className="w-4 h-4" />
-                       Invitations
-                    </div>
-                  </button>
-                </div>
-
-                <div className="min-h-[600px]">
-                  <AnimatePresence mode="wait">
-                    {activeEditorTab === 'aesthetic' && (
-                      <motion.div
-                        key="aesthetic"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        className="space-y-8"
-                      >
-                        <div className="mb-8 flex items-center justify-between">
-                          <div>
-                            <h2 className="text-3xl font-serif">Selected Aesthetic</h2>
-                            <p className="text-gray-500">Choose the visual style for your wedding display.</p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {editingEvent?.id && (
-                              <button 
-                                onClick={() => setShowPreviewModal(true)}
-                                className="px-6 py-2.5 bg-white border border-[#C5A059]/30 text-[#C5A059] rounded-xl text-xs font-black uppercase tracking-widest hover:bg-[#C5A059]/5 transition-all flex items-center gap-2 shadow-sm"
-                              >
-                                <Zap className="w-3.5 h-3.5" />
-                                Live Preview
-                              </button>
-                            )}
-                            <span className="text-xs font-bold uppercase tracking-widest text-[#C5A059] bg-[#C5A059]/10 px-4 py-2 rounded-full">
-                              {templates.length} Art Styles
-                            </span>
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-12">
-                          {/* Standard Templates */}
-                          <div>
-                            <h3 className="text-xs font-black uppercase tracking-[0.3em] text-[#C5A059] mb-6 flex items-center gap-3">
-                              <div className="h-px bg-[#C5A059]/20 flex-1" />
-                              Classic Event Layouts
-                              <div className="h-px bg-[#C5A059]/20 flex-1" />
-                            </h3>
-                            <div className="flex overflow-x-auto gap-6 pb-6 snap-x snap-mandatory custom-scrollbar">
-                              {templates.filter(t => !t.is_custom).map((t) => (
-                                <button 
-                                  key={t.id}
-                                  onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
-                                  className={`relative min-w-[280px] snap-start overflow-hidden rounded-3xl border-2 transition-all group text-left
-                                    ${editingEvent?.theme_id === t.id ? 'border-[#C5A059] shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
-                                  `}
-                                >
-                                  <div className={`${t.colors.background} ${t.colors.text} p-6 rounded-[calc(1.5rem-4px)] min-h-[180px] flex flex-col justify-between relative`}>
-                                    <div>
-                                      <div className={`w-8 h-8 rounded-lg ${t.colors.accent} bg-opacity-10 mb-4 flex items-center justify-center`}>
-                                        <Heart className="w-4 h-4 fill-current opacity-30" />
-                                      </div>
-                                      <h4 className={`text-xl font-bold ${t.colors.headerText} mb-1 truncate`}>{t.name}</h4>
-                                      <p className="text-[10px] opacity-60 leading-relaxed max-w-[200px] line-clamp-2">{t.description}</p>
-                                    </div>
-                                    
-                                    <div className="flex gap-2 mt-4">
-                                      <div className={`w-3 h-3 rounded-full ${t.colors.accent.split(' ')[0].replace('text-', 'bg-') || 'bg-[#C5A059]'}`} />
-                                      <div className={`w-3 h-3 rounded-full ${t.colors.border.split(' ')[0].replace('border-', 'bg-') || 'bg-gray-200'} opacity-50`} />
-                                    </div>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Custom / AI Plugins */}
-                          {templates.filter(t => t.is_custom).length > 0 && (
-                            <div>
-                               <h3 className="text-xs font-black uppercase tracking-[0.3em] text-[#C5A059] mb-6 flex items-center gap-3">
-                                <div className="h-px bg-[#C5A059]/20 flex-1" />
-                                AI Crafted Experience Plugins
-                                <div className="h-px bg-[#C5A059]/20 flex-1" />
-                              </h3>
-                              <div className="flex overflow-x-auto gap-6 pb-6 snap-x snap-mandatory custom-scrollbar">
-                                {templates.filter(t => t.is_custom).map((t) => (
-                                  <button 
-                                    key={t.id}
-                                    onClick={() => setEditingEvent({ ...editingEvent!, theme_id: t.id })}
-                                    className={`relative min-w-[280px] snap-start overflow-hidden rounded-3xl border-2 transition-all group text-left
-                                      ${editingEvent?.theme_id === t.id ? 'border-indigo-400 shadow-2xl p-1' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-[1.02]'}
-                                    `}
-                                  >
-                                    <div className={`${t.colors.background} ${t.colors.text} p-6 rounded-[calc(1.5rem-4px)] min-h-[180px] flex flex-col justify-between relative bg-gradient-to-br from-white to-indigo-50/30`}>
-                                      <div className="absolute top-0 right-0 p-4">
-                                        <div className="bg-indigo-500 text-white text-[8px] font-black px-2 py-1 rounded-full flex items-center gap-1 shadow-lg shadow-indigo-200">
-                                          <Sparkles className="w-2.5 h-2.5" />
-                                          PREMIUM
-                                        </div>
-                                      </div>
-                                      
-                                      <div>
-                                        <div className={`w-8 h-8 rounded-lg bg-indigo-500 text-white mb-4 flex items-center justify-center shadow-lg shadow-indigo-100`}>
-                                          <Palette className="w-4 h-4" />
-                                        </div>
-                                        <h4 className={`text-xl font-bold text-indigo-900 mb-1 truncate pr-12`}>{t.name}</h4>
-                                        <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mb-1">Custom Plugin</p>
-                                        <p className="text-[10px] opacity-60 leading-relaxed max-w-[200px] line-clamp-2">{t.description || 'AI-generated interactive experience'}</p>
-                                      </div>
-                                      
-                                      <div className="flex gap-2 mt-4">
-                                        <div className="w-3 h-3 rounded-full bg-indigo-500" />
-                                        <div className="w-3 h-3 rounded-full bg-indigo-200" />
-                                      </div>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-
-                    {activeEditorTab === 'form' && editingEvent?.id && (
-                      <motion.div
-                        key="form"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        className="space-y-8"
-                      >
-                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                           <div>
-                             <h2 className="text-3xl font-serif">Setup RSVP Form</h2>
-                             <p className="text-gray-500">Customize the questions you want to ask your guests.</p>
-                           </div>
-                           <div className="flex items-center gap-3">
-                             <button 
-                               onClick={() => setShowRSVPPreview(true)}
-                               className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-[#C5A059]/30 text-[#C5A059] rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#C5A059]/5 transition-all w-fit"
-                             >
-                               <Sparkles className="w-4 h-4" />
-                               Preview Form
-                             </button>
-                             <button 
-                               onClick={handleSave}
-                               disabled={isSaving}
-                               className="flex items-center gap-2 px-8 py-3 bg-[#C5A059] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-xl disabled:opacity-50 w-fit"
-                             >
-                               <Save className="w-4 h-4" />
-                               {isSaving ? 'Saving...' : 'Save Form'}
-                             </button>
-                           </div>
-                         </div>
-
-                         <div className="max-w-4xl">
-                            <RSVPFieldEditor 
-                               fields={editingEvent.rsvp_fields || []} 
-                               onChange={(fields) => setEditingEvent({ ...editingEvent!, rsvp_fields: fields })}
-                            />
-                         </div>
-                      </motion.div>
-                    )}
-
-                    {activeEditorTab === 'rsvp' && editingEvent?.id && (
-                      <motion.div
-                        key="rsvp"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                      >
-                         <div className="mb-8">
-                           <h2 className="text-3xl font-serif">Guest Responses</h2>
-                           <p className="text-gray-500">Track attendances, meal choices, and dietary requirements.</p>
-                         </div>
-                         <RSVPManager 
-                           projectId={editingEvent.id} 
-                           rsvpFields={editingEvent.rsvp_fields}
-                         />
-                      </motion.div>
-                    )}
-
-                    {activeEditorTab === 'moderation' && editingEvent?.id && (
-                      <motion.div
-                        key="moderation"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                      >
-                         <div className="mb-8">
-                           <h2 className="text-3xl font-serif">Guest Messages</h2>
-                           <p className="text-gray-500">Moderate messages before they appear on the live display.</p>
-                         </div>
-                         <MessageModerator projectId={editingEvent.id} />
-                      </motion.div>
-                    )}
-                    {activeEditorTab === 'invitation' && editingEvent?.id && (
-                      <motion.div
-                        key="invitation"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        className="space-y-8"
-                      >
-                         <div className="bg-white p-12 rounded-[3rem] border border-[#C5A059]/10 shadow-sm overflow-hidden relative">
-                            <div className="absolute top-0 right-0 p-8 opacity-5">
-                               <Layout className="w-40 h-40 text-[#C5A059]" />
-                            </div>
-                            <div className="relative z-10 max-w-xl">
-                               <h2 className="text-4xl font-serif mb-4 leading-tight">Canva-style Invitation Designer</h2>
-                               <p className="text-gray-500 text-lg mb-8 leading-relaxed">
-                                 Design a unique e-invitation with our drag-and-drop editor. Add romantic typography and photos for your guests.
-                               </p>
-                               <button 
-                                 onClick={() => navigate(`/editor/${editingEvent.id}`)}
-                                 className="px-10 py-5 bg-[#2D2424] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl flex items-center gap-3"
-                               >
-                                 Open Designer <ArrowRight className="w-5 h-5" />
-                               </button>
-                            </div>
-                         </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </main>
-
-      {/* RSVP Preview Modal */}
-      <AnimatePresence>
-        {showRSVPPreview && editingEvent && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowRSVPPreview(false)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            />
-            
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col border border-white/20"
-            >
-              <div className="p-6 border-b border-[#C5A059]/10 flex items-center justify-between bg-white/50">
-                <div className="flex items-center gap-3 font-serif">
-                  <div className="p-2 bg-[#C5A059]/10 rounded-xl">
-                    <Sparkles className="w-5 h-5 text-[#C5A059]" />
                   </div>
                   <div>
-                    <h3 className="text-xl">RSVP Preview</h3>
-                    <p className="text-[10px] font-bold font-sans uppercase tracking-[0.1em] text-gray-400">Guest Perspective</p>
+                    <label className="text-xs text-[#777777] block mb-1.5">Accent Color</label>
+                    <div className="flex gap-2 items-center">
+                      <input type="color" name="accentColor" defaultValue={agency?.theme_config?.accentColor || '#8B806F'} className="w-8 h-8 rounded border border-[#E8E8E5] cursor-pointer" />
+                      <input type="text" defaultValue={agency?.theme_config?.accentColor || '#8B806F'} className="flex-1 h-8 px-2.5 text-xs font-mono bg-white border border-[#E8E8E5] rounded" />
+                    </div>
                   </div>
                 </div>
-                <button 
-                  onClick={() => setShowRSVPPreview(false)}
-                  className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-2xl transition-all"
-                >
-                  <X className="w-6 h-6" />
-                </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
-                <div className="max-w-md mx-auto">
-                    {(() => {
-                      const activeTemplate = templates.find(t => t.id === editingEvent?.theme_id) || templates[0];
-                      if (!activeTemplate) return null;
-                      
-                      return (
-                        <div className={`${activeTemplate.colors.background} ${activeTemplate.colors.text} p-8 rounded-3xl shadow-xl border border-[#C5A059]/5`}>
-                          <div className="mb-8 text-center">
-                            <h4 className={`text-2xl font-serif mb-2 ${activeTemplate.colors.headerText}`}>Will you join us?</h4>
-                            <p className={`text-xs opacity-60 uppercase tracking-widest ${activeTemplate.colors.subtleText}`}>Please respond by the date below</p>
-                          </div>
+              <div className="pt-2 flex justify-end">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  isLoading={isSavingAgency}
+                >
+                  Save Branding Settings
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : view === 'list' ? (
+        <div className="space-y-6">
+          <PageHeader
+            title={isCouple ? 'Wedding Dashboard' : 'Weddings & Celebrations'}
+            description={
+              isCouple 
+                ? 'Manage your live guest moderation, RSVP submissions, and digital stationery.' 
+                : 'Centralized registry of client weddings, live display streams, and RSVP questionnaires.'
+            }
+            actions={
+              <div className="flex items-center gap-2">
+                <div className="flex bg-[#F2EFE9] p-0.5 rounded border border-[#E8E8E5]">
+                  <button
+                    onClick={() => setView('list')}
+                    className="px-3 py-1 text-xs font-medium rounded bg-white text-[#252525] shadow-subtle transition-colors"
+                  >
+                    Grid View
+                  </button>
+                  <button
+                    onClick={() => setView('calendar')}
+                    className="px-3 py-1 text-xs font-medium rounded text-[#777777] hover:text-[#252525] transition-colors"
+                  >
+                    Calendar
+                  </button>
+                </div>
 
-                          <div>
-                            {/* Use the actual component */}
-                            {editingEvent && (
-                              <RSVPForm 
-                                projectId={editingEvent.id || 'preview'}
-                                template={activeTemplate}
-                                onSuccess={() => {}}
-                                isPreview={true}
-                                rsvpFields={editingEvent.rsvp_fields}
-                              />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleCreateNew}
+                  leftIcon={<Plus className="w-3.5 h-3.5" />}
+                >
+                  {isCouple ? 'Initialize Wedding' : 'New Wedding'}
+                </Button>
+              </div>
+            }
+          />
+
+          {/* Metric KPI Strip */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white p-4 rounded-lg border border-[#E8E8E5] shadow-subtle">
+              <div className="text-xs text-[#777777]">Total Registered Weddings</div>
+              <div className="mt-2 text-2xl font-semibold font-mono tabular-nums text-[#252525]">
+                {events.length}
+              </div>
+              <div className="mt-1 text-xs text-[#777777]">Across this workspace</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg border border-[#E8E8E5] shadow-subtle">
+              <div className="text-xs text-[#777777]">Upcoming Celebrations</div>
+              <div className="mt-2 text-2xl font-semibold font-mono tabular-nums text-[#252525]">
+                {events.filter(e => new Date(e.wedding_date) >= new Date()).length}
+              </div>
+              <div className="mt-1 text-xs text-[#777777]">Scheduled on calendar</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg border border-[#E8E8E5] shadow-subtle">
+              <div className="text-xs text-[#777777]">Workspace Status</div>
+              <div className="mt-2 text-sm font-semibold text-[#252525]">
+                {isSubscribed ? 'Pro License Active' : 'Starter Account'}
+              </div>
+              <div className="mt-1 text-xs text-[#8B806F]">
+                {agency?.slug ? `${agency.slug}.eventframe.io` : 'Standard domain'}
+              </div>
+            </div>
+          </div>
+
+          {/* Search toolbar */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="relative w-72">
+              <Search className="w-3.5 h-3.5 text-[#777777] absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search weddings by couple or venue..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full h-8 pl-8 pr-3 text-xs bg-white text-[#252525] placeholder:text-[#999999] border border-[#E8E8E5] rounded-md focus:outline-none focus:ring-1 focus:ring-[#8B806F]"
+              />
+            </div>
+          </div>
+
+          {/* Events Grid */}
+          {isLoadingEvents ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-48 bg-white border border-[#E8E8E5] rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : filteredEvents.length === 0 ? (
+            <EmptyState
+              icon={<Users className="w-5 h-5" />}
+              title={searchTerm ? "No weddings match your search" : "No weddings created yet"}
+              description={
+                searchTerm 
+                  ? "Try searching by a different name or location." 
+                  : "Create your first wedding event to set up RSVP questionnaires, live displays, and digital invitations."
+              }
+              action={
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleCreateNew}
+                  leftIcon={<Plus className="w-3.5 h-3.5" />}
+                >
+                  Create Wedding Event
+                </Button>
+              }
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredEvents.map((event) => {
+                const coupleTitle = event.groom_name && event.bride_name 
+                  ? `${event.groom_name} & ${event.bride_name}` 
+                  : event.name || 'Untitled Wedding';
+
+                return (
+                  <div
+                    key={event.id}
+                    className="bg-white rounded-lg border border-[#E8E8E5] hover:border-[#D4D4CE] shadow-subtle p-5 flex flex-col justify-between transition-colors"
+                  >
+                    <div>
+                      {/* Top Bar on Card */}
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <Badge variant="taupe" size="sm">
+                          {templates.find(t => t.id === event.theme_id)?.name || 'Minimal Luxury'}
+                        </Badge>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleEdit(event)}
+                            className="p-1 text-[#777777] hover:text-[#252525] rounded transition-colors"
+                            title="Edit Event Settings"
+                          >
+                            <Settings className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(event.id)}
+                            className="p-1 text-[#777777] hover:text-red-600 rounded transition-colors"
+                            title="Delete Event"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Main Title */}
+                      <h3 className="text-base font-semibold text-[#252525] leading-snug">
+                        {coupleTitle}
+                      </h3>
+
+                      <div className="text-xs text-[#777777] font-mono mt-1 truncate">
+                        /{event.slug}
+                      </div>
+
+                      {/* Metadata */}
+                      <div className="mt-4 pt-3 border-t border-[#EFEFEA] space-y-1.5 text-xs text-[#777777]">
+                        <div className="flex items-center gap-2">
+                          <CalendarIcon className="w-3.5 h-3.5 text-[#B0ADA8]" />
+                          <span className="font-mono tabular-nums">
+                            {new Date(event.wedding_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                          </span>
+                        </div>
+                        {event.location && (
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-3.5 h-3.5 text-[#B0ADA8]" />
+                            <span className="truncate">{event.location}</span>
+                          </div>
+                        )}
+                        {event.access_password && (
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-[11px] text-[#999999]">Access PIN:</span>
+                            <span className="font-mono text-xs text-[#252525] bg-[#FAF9F7] px-1.5 py-0.5 rounded border border-[#E8E8E5]">
+                              {event.access_password}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Bottom Action Strip */}
+                    <div className="mt-5 pt-3 border-t border-[#EFEFEA] flex flex-wrap gap-1.5">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => window.open(getEventUrl(event, 'display'), '_blank')}
+                        className="flex-1 !h-7 !text-[11px]"
+                      >
+                        Display
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => window.open(getEventUrl(event, 'guest'), '_blank')}
+                        className="flex-1 !h-7 !text-[11px]"
+                      >
+                        Guest
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => window.open(getEventUrl(event, 'rsvp'), '_blank')}
+                        className="flex-1 !h-7 !text-[11px]"
+                      >
+                        RSVP
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate(`/editor/${event.id}`)}
+                        className="flex-1 !h-7 !text-[11px]"
+                      >
+                        Studio
+                      </Button>
+                      {!isCouple && (
+                        <button
+                          onClick={() => handleShareCoupleLogin(event)}
+                          title="Copy couple login link and PIN"
+                          className="px-2 h-7 bg-[#FAF9F7] text-[#777777] hover:text-[#252525] rounded border border-[#E8E8E5] transition-colors flex items-center justify-center text-xs"
+                        >
+                          {copiedId === event.id ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Share2 className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : view === 'calendar' ? (
+        <div className="space-y-6">
+          <PageHeader
+            title="Event Schedule Calendar"
+            description="Monthly calendar view of upcoming celebrations across your workspace."
+            breadcrumbs={[
+              { label: 'Weddings', onClick: () => setView('list') },
+              { label: 'Calendar' }
+            ]}
+            actions={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setView('list')}
+              >
+                Back to Grid View
+              </Button>
+            }
+          />
+
+          <div className="bg-white rounded-lg border border-[#E8E8E5] shadow-subtle overflow-hidden">
+            {/* Calendar Controls */}
+            <div className="p-4 border-b border-[#E8E8E5] flex items-center justify-between bg-[#FAF9F7]">
+              <h3 className="text-sm font-semibold text-[#252525]">
+                {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+              </h3>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))}
+                  className="!px-2"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentMonth(new Date())}
+                >
+                  Today
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))}
+                  className="!px-2"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Calendar Days */}
+            <div className="p-4 overflow-x-auto">
+              <div className="min-w-[640px]">
+                <div className="grid grid-cols-7 border-b border-[#E8E8E5] pb-2 text-center text-xs font-medium text-[#777777]">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+                    <div key={d}>{d}</div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 border-l border-t border-[#E8E8E5]">
+                  {(() => {
+                    const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
+                    const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
+                    const days = [];
+
+                    for (let i = 0; i < firstDayOfMonth; i++) {
+                      days.push(
+                        <div key={`empty-${i}`} className="min-h-[100px] bg-[#FAF9F7]/50 border-r border-b border-[#E8E8E5]" />
+                      );
+                    }
+
+                    for (let day = 1; day <= daysInMonth; day++) {
+                      const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                      const dayEvents = events.filter(e => e.wedding_date === dateStr);
+                      const isToday = new Date().toDateString() === new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day).toDateString();
+
+                      days.push(
+                        <div
+                          key={day}
+                          className={`min-h-[100px] p-2 border-r border-b border-[#E8E8E5] transition-colors ${
+                            dayEvents.length > 0 ? 'bg-white' : 'hover:bg-[#FAF9F7]/40'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className={`text-xs font-mono tabular-nums ${
+                              isToday ? 'bg-[#252525] text-white px-1.5 py-0.5 rounded font-medium' : 'text-[#777777]'
+                            }`}>
+                              {day}
+                            </span>
+                            {dayEvents.length > 0 && (
+                              <span className="text-[10px] font-mono text-[#8B806F] bg-[#FAF9F7] px-1 rounded border border-[#E8E8E5]">
+                                {dayEvents.length}
+                              </span>
                             )}
                           </div>
-                          
-                          <div className="mt-8 pt-8 border-t border-current border-opacity-10 text-center">
-                            <p className="text-[10px] font-bold uppercase tracking-widest opacity-30">This is a preview</p>
+
+                          <div className="space-y-1">
+                            {dayEvents.map(ev => (
+                              <button
+                                key={ev.id}
+                                onClick={() => handleEdit(ev)}
+                                className="w-full text-left p-1.5 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded text-xs transition-colors"
+                              >
+                                <div className="font-medium text-[#252525] truncate text-[11px]">
+                                  {ev.groom_name} & {ev.bride_name}
+                                </div>
+                                {ev.location && (
+                                  <div className="text-[10px] text-[#777777] truncate">
+                                    {ev.location}
+                                  </div>
+                                )}
+                              </button>
+                            ))}
                           </div>
                         </div>
                       );
-                    })()}
+                    }
+
+                    return days;
+                  })()}
                 </div>
               </div>
-              
-              <div className="p-6 bg-white border-t border-[#C5A059]/10 text-center">
-                <button 
-                  onClick={() => setShowRSVPPreview(false)}
-                  className="px-8 py-3 bg-[#C5A059] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-lg"
-                >
-                  Close Preview
-                </button>
-              </div>
-            </motion.div>
+            </div>
           </div>
-        )}
-      </AnimatePresence>
-
-      {/* Preview Modal */}
-      <AnimatePresence>
-        {showPreviewModal && editingEvent && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowPreviewModal(false)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-md"
-            />
-            
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-7xl h-[90vh] sm:h-[85vh] bg-[#FDFCF0] rounded-[2rem] sm:rounded-[3rem] shadow-2xl overflow-hidden flex flex-col border border-white/20"
-            >
-              <div className="p-4 sm:p-6 border-b border-[#C5A059]/10 flex items-center justify-between bg-white/50">
-                <div className="flex items-center gap-3 sm:gap-4 font-serif">
-                  <div className="p-2 bg-[#C5A059]/10 rounded-xl hidden xs:block">
-                    <Layout className="w-5 h-5 text-[#C5A059]" />
-                  </div>
-                  <div>
-                    <h3 className="text-base sm:text-xl">Simultaneous Preview</h3>
-                    <p className="text-[8px] sm:text-[10px] font-bold font-sans uppercase tracking-[0.1em] text-gray-400">Display & Guest View</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setShowPreviewModal(false)}
-                  className="p-2 sm:p-3 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-2xl transition-all"
+        </div>
+      ) : (
+        /* Event Configuration Editor */
+        <div className="space-y-6">
+          <PageHeader
+            title={
+              editingEvent?.groom_name && editingEvent?.bride_name
+                ? `${editingEvent.groom_name} & ${editingEvent.bride_name}`
+                : editingEvent?.name || 'Wedding Configuration'
+            }
+            description="Configure event details, RSVP fields, and live guest moderation."
+            breadcrumbs={[
+              { label: 'Weddings', onClick: () => setView('list') },
+              { label: editingEvent?.slug || 'Event Configuration' }
+            ]}
+            actions={
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setView('list')}
                 >
-                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
-                </button>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSave}
+                  isLoading={isSaving}
+                  leftIcon={<Save className="w-3.5 h-3.5" />}
+                >
+                  Save Changes
+                </Button>
               </div>
+            }
+          />
 
-              <div className="flex-1 overflow-y-auto lg:overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-px bg-gray-100">
-                {/* Display (Desktop View) */}
-                <div className="lg:col-span-8 bg-[#FDFCF0] flex flex-col">
-                  <div className="p-4 bg-white/30 border-b border-gray-100 flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
-                      <Monitor className="w-3 h-3" /> Main Display Preview
-                    </span>
-                    <button 
-                      onClick={() => window.open(getEventUrl(editingEvent as WeddingEvent, 'display'), '_blank')}
-                      className="text-[10px] font-bold text-[#C5A059] hover:underline"
-                    >
-                      Open in new tab
-                    </button>
-                  </div>
-                  <div className="flex-1 relative bg-black/5 p-4 flex items-center justify-center">
-                    <div className="w-full h-full rounded-2xl overflow-hidden shadow-2xl border border-white/50 bg-white">
-                      <iframe 
-                        src={`${getEventUrl(editingEvent as WeddingEvent, 'display')}?preview=true&template=${editingEvent?.theme_id}`}
-                        className="w-full h-full border-0"
-                        title="Display Preview"
-                      />
-                    </div>
-                  </div>
-                </div>
+          {/* Editor Tabs */}
+          <Tabs
+            items={[
+              { id: 'aesthetic', label: 'Event Details & Style' },
+              { id: 'rsvp', label: 'RSVP Responses' },
+              { id: 'form', label: 'RSVP Form Schema' },
+              { id: 'moderation', label: 'Guest Messages' },
+              { id: 'invitation', label: 'Invitation Studio' },
+            ]}
+            activeId={activeEditorTab}
+            onChange={(id) => setActiveEditorTab(id as any)}
+          />
 
-                {/* Guest (Mobile View) */}
-                <div className="lg:col-span-4 bg-[#FDFCF0] flex flex-col">
-                  <div className="p-4 bg-white/30 border-b border-gray-100 flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
-                      <Smartphone className="w-3 h-3" /> Guest Mobile View
-                    </span>
-                    <button 
-                      onClick={() => window.open(getEventUrl(editingEvent as WeddingEvent, 'guest'), '_blank')}
-                      className="text-[10px] font-bold text-[#C5A059] hover:underline"
-                    >
-                      Open in new tab
-                    </button>
+          {/* Tab Content */}
+          <div className="pt-2">
+            {activeEditorTab === 'aesthetic' && editingEvent && (
+              <div className="space-y-8 max-w-4xl">
+                {/* Event Details Card */}
+                <div className="bg-white p-6 rounded-lg border border-[#E8E8E5] shadow-subtle space-y-5">
+                  <h3 className="text-sm font-semibold text-[#252525]">Event Information</h3>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input
+                      label="Groom's Name"
+                      value={editingEvent.groom_name || ''}
+                      onChange={(e) => setEditingEvent({ ...editingEvent, groom_name: e.target.value })}
+                      placeholder="e.g. Lucas"
+                    />
+                    <Input
+                      label="Bride's Name"
+                      value={editingEvent.bride_name || ''}
+                      onChange={(e) => setEditingEvent({ ...editingEvent, bride_name: e.target.value })}
+                      placeholder="e.g. Sofia"
+                    />
                   </div>
-                  <div className="flex-1 relative bg-[#C5A059]/5 p-8 flex items-center justify-center">
-                    {/* Phone Frame */}
-                    <div className="w-[320px] h-[640px] bg-black rounded-[3rem] p-3 shadow-2xl relative border-4 border-gray-800 shrink-0">
-                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-6 bg-black rounded-b-2xl z-10" />
-                      <div className="w-full h-full rounded-[2.2rem] overflow-hidden bg-white">
-                        <iframe 
-                          src={`${getEventUrl(editingEvent as WeddingEvent, 'guest')}?preview=true&template=${editingEvent?.theme_id}`}
-                          className="w-full h-full border-0 shadow-inner"
-                          title="Guest Preview"
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input
+                      label="Event URL Slug"
+                      value={editingEvent.slug || ''}
+                      onChange={(e) => setEditingEvent({ ...editingEvent, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                      placeholder="lucas-sofia"
+                      hint="Public slug for guest access"
+                    />
+                    <Input
+                      label="Wedding Date"
+                      type="date"
+                      value={editingEvent.wedding_date || ''}
+                      onChange={(e) => setEditingEvent({ ...editingEvent, wedding_date: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input
+                      label="Venue / Ceremony Location"
+                      value={editingEvent.location || ''}
+                      onChange={(e) => setEditingEvent({ ...editingEvent, location: e.target.value })}
+                      placeholder="Villa Erba, Lake Como"
+                    />
+                    <Input
+                      label="Couple Access PIN"
+                      value={editingEvent.access_password || ''}
+                      onChange={(e) => setEditingEvent({ ...editingEvent, access_password: e.target.value.toUpperCase() })}
+                      placeholder="ABC123"
+                      hint="Used by the couple to log into their dashboard"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input
+                      label="Background Music Audio URL"
+                      value={editingEvent.music_url || ''}
+                      onChange={(e) => setEditingEvent({ ...editingEvent, music_url: e.target.value })}
+                      placeholder="https://example.com/audio.mp3"
+                    />
+                    <div className="flex items-center gap-3 pt-6">
+                      <label className="flex items-center gap-2 text-xs font-medium text-[#252525] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editingEvent.auto_approve_messages || false}
+                          onChange={(e) => setEditingEvent({ ...editingEvent, auto_approve_messages: e.target.checked })}
+                          className="rounded border-[#E8E8E5] text-[#252525] focus:ring-[#8B806F]"
                         />
-                      </div>
+                        <span>Auto-approve guest messages on live display</span>
+                      </label>
                     </div>
                   </div>
                 </div>
+
+                {/* Theme Selection */}
+                <div className="bg-white p-6 rounded-lg border border-[#E8E8E5] shadow-subtle space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[#252525]">Display Art Aesthetic</h3>
+                      <p className="text-xs text-[#777777]">Choose the visual styling and typography for reception screens</p>
+                    </div>
+                    {editingEvent.id && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(getEventUrl(editingEvent as WeddingEvent, 'display'), '_blank')}
+                        rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
+                      >
+                        Preview Live Display
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-2">
+                    {templates.map((tpl) => {
+                      const isSelected = editingEvent.theme_id === tpl.id;
+                      return (
+                        <div
+                          key={tpl.id}
+                          onClick={() => setEditingEvent({ ...editingEvent, theme_id: tpl.id })}
+                          className={`p-4 rounded-lg border cursor-pointer transition-colors text-left flex flex-col justify-between min-h-[110px] ${
+                            isSelected 
+                              ? 'border-[#252525] bg-[#FAF9F7] shadow-subtle' 
+                              : 'border-[#E8E8E5] bg-white hover:border-[#D4D4CE]'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-xs font-semibold text-[#252525]">{tpl.name}</span>
+                              {isSelected && <Badge variant="taupe" size="sm">Active</Badge>}
+                            </div>
+                            <p className="text-[11px] text-[#777777] line-clamp-2 leading-relaxed">
+                              {tpl.description || 'Editorial layout tailored for digital wedding displays'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-3 pt-2 border-t border-[#EFEFEA]">
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#8B806F]" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#252525]" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#E8E8E5]" />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-            </motion.div>
+            )}
+
+            {activeEditorTab === 'rsvp' && editingEvent?.id && (
+              <RSVPManager
+                projectId={editingEvent.id}
+                rsvpFields={editingEvent.rsvp_fields}
+              />
+            )}
+
+            {activeEditorTab === 'form' && editingEvent && (
+              <div className="max-w-4xl">
+                <RSVPFieldEditor
+                  fields={editingEvent.rsvp_fields || []}
+                  onChange={(fields) => setEditingEvent({ ...editingEvent, rsvp_fields: fields })}
+                />
+              </div>
+            )}
+
+            {activeEditorTab === 'moderation' && editingEvent?.id && (
+              <MessageModerator projectId={editingEvent.id} />
+            )}
+
+            {activeEditorTab === 'invitation' && editingEvent?.id && (
+              <div className="max-w-3xl bg-white p-8 rounded-lg border border-[#E8E8E5] shadow-subtle space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-[#252525]">Digital Invitation Studio</h3>
+                  <p className="text-xs text-[#777777] mt-1 leading-relaxed">
+                    Access our precision drag-and-drop stationery studio. Position monogram typography, photo backdrops, wax seals, and wedding schedule elements with coordinate snapping.
+                  </p>
+                </div>
+
+                <div className="aspect-[16/9] max-w-lg rounded-lg border border-[#E8E8E5] overflow-hidden bg-[#FAF9F7] relative flex items-center justify-center p-6">
+                  <img
+                    src="/src/assets/images/invitation_craft_showcase_1793501242453.jpg"
+                    alt="Invitation Preview"
+                    className="w-full h-full object-cover rounded"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={() => navigate(`/editor/${editingEvent.id}`)}
+                    rightIcon={<Layout className="w-4 h-4" />}
+                  >
+                    Open Invitation Studio
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="md"
+                    onClick={() => window.open(getEventUrl(editingEvent as WeddingEvent, 'invitation'), '_blank')}
+                    rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
+                  >
+                    View Guest Invitation
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </AnimatePresence>
-    </div>
+        </div>
+      )}
+    </DashboardLayout>
   );
 }

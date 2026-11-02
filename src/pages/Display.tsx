@@ -285,8 +285,8 @@ export default function Display() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FDFCF0]">
-        <div className="w-12 h-12 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-[#F7F7F5]">
+        <div className="w-8 h-8 border-2 border-[#8B806F] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -294,16 +294,16 @@ export default function Display() {
   return (
     <div className={`min-h-screen ${template.colors.background} transition-colors duration-700 relative ${template.fontSans} ${template.colors.text}`}>
       {isPreview && (
-        <div className="absolute top-0 left-0 right-0 bg-[#2D2424]/90 backdrop-blur-md text-white py-2 px-4 shadow-2xl z-[100] flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-           <Zap className="w-3.5 h-3.5 text-[#C5A059]" />
-           <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+        <div className="absolute top-0 left-0 right-0 bg-[#252525]/90 backdrop-blur-md text-white py-2 px-6 shadow-sm z-[100] flex items-center justify-between gap-4 text-xs">
+          <div className="flex items-center gap-2">
+           <Zap className="w-3.5 h-3.5 text-[#8B806F]" />
+           <span className="font-mono text-[11px]">
              Preview Mode • Guestbook Limited to 5 Messages
            </span>
           </div>
           <button 
             onClick={() => window.open('/subscription', '_blank')}
-            className="bg-[#C5A059] text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-[#C5A059]/20"
+            className="bg-white text-[#252525] px-3 py-1 rounded text-xs font-medium hover:bg-[#F7F7F5] transition-colors"
           >
             Upgrade to Publish
           </button>

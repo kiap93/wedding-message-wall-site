@@ -1,20 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { motion } from 'motion/react';
-import { Mail, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, ArrowRight } from 'lucide-react';
 import { API_BASE } from '../lib/config';
+import AuthLayout from '../layouts/AuthLayout';
+import Button from '../design-system/components/Button';
 
 export default function Verify() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
-  const [message, setMessage] = useState('Verifying your email...');
+  const [message, setMessage] = useState('Verifying your email address...');
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!token) {
       setStatus('error');
-      setMessage('Missing verification token.');
+      setMessage('Missing or invalid verification token.');
       return;
     }
 
@@ -28,17 +29,17 @@ export default function Verify() {
         if (response.ok && data.token) {
           localStorage.setItem('wedding_session_token', data.token);
           setStatus('success');
-          setMessage('Email verified successfully! Redirecting to workspace...');
+          setMessage('Email confirmed successfully. Redirecting you to your workspace...');
           setTimeout(() => {
             navigate('/workspace');
-          }, 2000);
+          }, 1800);
         } else {
           setStatus('error');
-          setMessage(data.error || 'Verification failed. The link may have expired.');
+          setMessage(data.error || 'Verification link expired or already used.');
         }
       } catch (err) {
         setStatus('error');
-        setMessage('A network error occurred. Please try again.');
+        setMessage('A network error occurred while verifying your email.');
       }
     };
 
@@ -46,49 +47,47 @@ export default function Verify() {
   }, [token, navigate]);
 
   return (
-    <div className="min-h-screen bg-[#FDFCF0] flex items-center justify-center p-6">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md bg-white p-12 rounded-[2.5rem] shadow-2xl border border-[#C5A059]/10 text-center"
-      >
-        <div className="mb-8 flex justify-center">
-          {status === 'loading' && (
-            <div className="p-4 rounded-full bg-[#C5A059]/10 animate-pulse">
-              <Loader2 className="w-12 h-12 text-[#C5A059] animate-spin" />
-            </div>
-          )}
-          {status === 'success' && (
-            <div className="p-4 rounded-full bg-green-50">
-              <CheckCircle2 className="w-12 h-12 text-green-500" />
-            </div>
-          )}
-          {status === 'error' && (
-            <div className="p-4 rounded-full bg-red-50">
-              <XCircle className="w-12 h-12 text-red-500" />
-            </div>
-          )}
-        </div>
+    <AuthLayout
+      title="Email Verification"
+      subtitle="Confirming your credentials to secure your workspace"
+    >
+      <div className="py-4 text-center space-y-4">
+        {status === 'loading' && (
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="w-8 h-8 text-[#8B806F] animate-spin" />
+            <p className="text-xs text-[#777777]">{message}</p>
+          </div>
+        )}
 
-        <h1 className="text-3xl font-serif mb-4 text-[#2D2424]">
-          {status === 'loading' && 'Verifying...'}
-          {status === 'success' && 'Welcome Back!'}
-          {status === 'error' && 'Verification Error'}
-        </h1>
-        
-        <p className="text-[#2D2424]/60 mb-8">
-          {message}
-        </p>
+        {status === 'success' && (
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-green-50 text-green-600 flex items-center justify-center">
+              <CheckCircle2 className="w-6 h-6" />
+            </div>
+            <p className="text-xs font-medium text-green-700">{message}</p>
+          </div>
+        )}
 
         {status === 'error' && (
-          <button
-            onClick={() => navigate('/login')}
-            className="w-full py-4 px-6 rounded-2xl bg-[#C5A059] text-white font-bold uppercase tracking-widest text-xs hover:bg-[#B38D45] transition-all shadow-xl shadow-[#C5A059]/20"
-          >
-            Back to Login
-          </button>
+          <div className="space-y-4">
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-10 h-10 rounded-full bg-red-50 text-red-600 flex items-center justify-center">
+                <XCircle className="w-6 h-6" />
+              </div>
+              <p className="text-xs text-red-600 leading-relaxed">{message}</p>
+            </div>
+            <Button
+              variant="primary"
+              size="md"
+              className="w-full"
+              onClick={() => navigate('/login')}
+              rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
+            >
+              Return to Sign In
+            </Button>
+          </div>
         )}
-      </motion.div>
-    </div>
+      </div>
+    </AuthLayout>
   );
 }

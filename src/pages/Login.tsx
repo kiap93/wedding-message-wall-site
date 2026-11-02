@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { motion } from 'motion/react';
-import { Mail, Chrome, Heart, Globe, XCircle, CheckCircle2 } from 'lucide-react';
-
+import { Mail, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { API_BASE } from '../lib/config';
-import { authenticatedFetch } from '../lib/auth';
 import { useUser } from '../lib/UserContext';
+import AuthLayout from '../layouts/AuthLayout';
+import Button from '../design-system/components/Button';
+import Input from '../design-system/components/Input';
 
 export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showSetupHelper, setShowSetupHelper] = useState(false);
-  const [detectedRedirectUri, setDetectedRedirectUri] = useState<string | null>(null);
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,12 +20,9 @@ export default function Login() {
   const [searchParams] = useSearchParams();
   const authError = searchParams.get('error');
 
-  // If already have token, check if we should redirect
   useEffect(() => {
     const token = localStorage.getItem('wedding_session_token');
-    // ONLY redirect if we are NOT loading and we have a token
     if (token && !loading && !isGlobalLoading) {
-      console.log('Login: Token found and global loading finished, redirecting to /workspace');
       navigate('/workspace');
     }
   }, [navigate, loading, isGlobalLoading]);
@@ -43,10 +39,8 @@ export default function Login() {
     setShowSetupHelper(false);
     localStorage.removeItem('wedding_session_token');
     
-    // Pass current origin to help server redirect back correctly
     const currentOrigin = window.location.origin;
     
-    // Use direct redirect flow for maximum reliability across devices and domains (COOP-safe)
     fetch(`${API_BASE}/api/auth/google?origin=${encodeURIComponent(currentOrigin)}`, {
       headers: { 'Accept': 'application/json' }
     })
@@ -74,15 +68,12 @@ export default function Login() {
       });
   };
 
-
-
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setSuccess(null);
 
-    // Basic validation
     if (!email || !email.includes('@')) {
       setError('Please enter a valid email address.');
       setLoading(false);
@@ -119,8 +110,8 @@ export default function Login() {
             setSuccess('If this email is registered, you will receive a password reset link shortly.');
           } else {
             setSuccess(mode === 'signup' 
-              ? 'Account created! Please check your email (including spam folder) for a verification link.' 
-              : 'A secure login link has been sent to your email. If it doesn\'t arrive in a few minutes, check your spam or try again.');
+              ? 'Account created! Please check your email for a verification link.' 
+              : 'A secure login link has been sent to your email.');
           }
           setError(null);
         } else {
@@ -128,7 +119,7 @@ export default function Login() {
         }
       } else {
         if (data.error?.includes('already exists')) {
-          setError('This email is already registered. If you haven\'t verified it, try signing up again to resend the link.');
+          setError('This email is already registered. If you have not verified it, try signing up again.');
         } else {
           setError(data.error || (mode === 'signup' ? 'Failed to create account.' : 'Invalid credentials.'));
         }
@@ -140,177 +131,166 @@ export default function Login() {
     }
   };
 
+  const titles = {
+    login: 'Agency & Studio Sign In',
+    signup: 'Create Agency Account',
+    'forgot-password': 'Reset Your Password',
+  };
+
+  const subtitles = {
+    login: 'Access your white-label weddings, live moderation, and invitations.',
+    signup: 'Start delivering custom digital wedding suites to your clients.',
+    'forgot-password': 'Enter your registered email address to receive reset instructions.',
+  };
+
   return (
-    <div className="min-h-screen bg-[#FDFCF0] flex flex-col md:flex-row shadow-inner">
-      <div className="hidden md:flex md:w-1/2 bg-[#C5A059] items-center justify-center p-12 text-white relative overflow-hidden">
-        <div className="absolute inset-0 bg-[#2D2424]/10" />
-        <div className="max-w-md relative z-10">
-          <Heart className="w-16 h-16 mb-8 text-white/40" />
-          <h1 className="text-6xl font-serif mb-6 leading-tight">Your Wedding, Perfectly Frame by Frame.</h1>
-          <p className="text-xl text-white/80 font-light">The all-in-one platform for professional wedding photographers and happy couples.</p>
+    <AuthLayout title={titles[mode]} subtitle={subtitles[mode]}>
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-xs flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {success && (
+        <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-md text-xs flex items-start gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-green-600" />
+          <span>{success}</span>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {/* Google Continue */}
+        <Button
+          variant="outline"
+          size="md"
+          onClick={handleGoogleLogin}
+          isLoading={loading}
+          className="w-full"
+          leftIcon={
+            <svg className="w-4 h-4" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+            </svg>
+          }
+        >
+          Continue with Google
+        </Button>
+
+        {showSetupHelper && (
+          <div className="p-3 bg-[#FAF9F7] rounded-md border border-[#E8E8E5] text-[11px] text-[#777777] space-y-1.5">
+            <div className="font-medium text-[#252525]">Google OAuth Configuration:</div>
+            <p>Ensure your OAuth redirect URI includes:</p>
+            <code className="block p-1.5 bg-white border border-[#E8E8E5] rounded font-mono text-[10px] text-[#252525] select-all break-all">
+              {window.location.origin}/api/auth/callback
+            </code>
+          </div>
+        )}
+
+        <div className="relative py-2">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-[#E8E8E5]" />
+          </div>
+          <div className="relative flex justify-center text-xs">
+            <span className="px-3 bg-white text-[#777777]">or email</span>
+          </div>
+        </div>
+
+        {/* Email form */}
+        <form onSubmit={handleEmailAuth} className="space-y-3">
+          <Input
+            label="Email Address"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="planner@studio.com"
+            required
+          />
+
+          {mode !== 'forgot-password' && (
+            <div>
+              <Input
+                label="Password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Minimum 6 characters"
+                required
+              />
+              {mode === 'login' && (
+                <div className="flex justify-end mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('forgot-password');
+                      setError(null);
+                      setSuccess(null);
+                    }}
+                    className="text-xs text-[#777777] hover:text-[#252525] transition-colors"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <Button
+            type="submit"
+            variant="primary"
+            size="md"
+            isLoading={loading}
+            className="w-full mt-2"
+          >
+            {mode === 'login' ? 'Sign In to Workspace' : mode === 'signup' ? 'Create Agency Account' : 'Send Reset Link'}
+          </Button>
+        </form>
+
+        <div className="pt-2 text-center text-xs text-[#777777]">
+          {mode === 'login' ? (
+            <span>
+              New agency?{' '}
+              <button
+                onClick={() => {
+                  setMode('signup');
+                  setError(null);
+                  setSuccess(null);
+                }}
+                className="text-[#252525] font-medium hover:underline"
+              >
+                Create an account
+              </button>
+            </span>
+          ) : (
+            <span>
+              Already have an account?{' '}
+              <button
+                onClick={() => {
+                  setMode('login');
+                  setError(null);
+                  setSuccess(null);
+                }}
+                className="text-[#252525] font-medium hover:underline"
+              >
+                Sign in
+              </button>
+            </span>
+          )}
+        </div>
+
+        {/* Link to Couple Portal */}
+        <div className="pt-4 border-t border-[#E8E8E5] text-center">
+          <span className="text-xs text-[#777777]">Are you a bride or groom? </span>
+          <button
+            onClick={() => navigate('/couple/login')}
+            className="text-xs text-[#8B806F] font-medium hover:underline"
+          >
+            Couple Event Login &rarr;
+          </button>
         </div>
       </div>
-
-      <div className="flex-1 flex items-center justify-center p-6 md:p-12">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md bg-white p-8 md:p-12 rounded-[2.5rem] shadow-2xl border border-[#C5A059]/10"
-        >
-          <div className="mb-8 items-center flex flex-col">
-            <div className="w-16 h-16 bg-[#C5A059] rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-[#C5A059]/20">
-              <Globe className="text-white w-8 h-8" />
-            </div>
-            <h2 className="text-3xl font-serif text-[#2D2424] mb-2">
-              {mode === 'login' ? 'Welcome Back' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
-            </h2>
-            <p className="text-[#2D2424]/60 text-center text-sm">
-              {mode === 'login' 
-                ? 'Sign in to manage your wedding workspace' 
-                : mode === 'signup'
-                ? 'Join our community of wedding creators'
-                : 'Enter your email to receive a reset link'}
-            </p>
-          </div>
-
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-2xl text-sm flex items-center gap-2">
-              <XCircle className="w-4 h-4 shrink-0" />
-              {error}
-            </div>
-          )}
-
-          {success && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-2xl text-sm leading-relaxed">
-              <div className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  {success}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <button 
-              onClick={handleGoogleLogin}
-              disabled={loading}
-              className="w-full py-4 px-6 rounded-2xl border-2 border-slate-100 hover:border-[#C5A059] flex items-center justify-center gap-3 transition-all group disabled:opacity-50"
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Chrome className="w-5 h-5 text-slate-400 group-hover:text-[#C5A059]" />
-              )}
-              <span className="font-bold text-[#2D2424] text-xs uppercase tracking-widest">
-                {loading ? 'Authenticating...' : 'Continue with Google'}
-              </span>
-            </button>
-
-            {showSetupHelper && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="p-5 bg-amber-50 rounded-2xl border border-amber-200"
-              >
-                <div className="flex items-center gap-2 mb-3 text-amber-900 font-bold text-[10px] uppercase tracking-widest">
-                  <CheckCircle2 className="w-4 h-4 text-amber-600" />
-                  Configuration Needed
-                </div>
-                <div className="space-y-3 text-[11px] text-amber-800 leading-relaxed font-medium">
-                  <p>The <strong>403 Forbidden</strong> or <strong>invalid_client</strong> error usually means your Google OAuth is not yet fully configured:</p>
-                  <ol className="list-decimal list-inside space-y-2">
-                    <li>
-                      Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-[#C5A059] underline font-bold">Google Cloud Console</a>
-                    </li>
-                    <li>
-                      Authorized Redirect URIs must include:
-                      <div className="mt-1 p-2 bg-white/50 border border-amber-100 rounded font-mono break-all select-all text-stone-600">
-                        {detectedRedirectUri || `${window.location.origin}/api/auth/callback`}
-                      </div>
-                    </li>
-                    <li>
-                      Set <strong>GOOGLE_CLIENT_ID</strong> and <strong>GOOGLE_CLIENT_SECRET</strong> in the Settings menu (use your real keys, not placeholders like "123").
-                    </li>
-                  </ol>
-                </div>
-              </motion.div>
-            )}
-
-            <div className="relative my-8">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-100"></div>
-              </div>
-              <div className="relative flex justify-center text-[10px]">
-                <span className="px-4 bg-white text-slate-400 uppercase tracking-[0.2em] font-bold">Or email</span>
-              </div>
-            </div>
-
-            <form onSubmit={handleEmailAuth} className="space-y-4">
-              <div>
-                <input 
-                  type="email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email Address" 
-                  className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-transparent focus:border-[#C5A059] focus:bg-white outline-none transition-all text-[#2D2424] text-sm"
-                  required
-                />
-              </div>
-              {mode !== 'forgot-password' && (
-                <div>
-                  <input 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Password (Min 6 chars)" 
-                    className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-transparent focus:border-[#C5A059] focus:bg-white outline-none transition-all text-[#2D2424] text-sm"
-                    required
-                  />
-                  {mode === 'login' && (
-                    <div className="flex justify-end mt-2">
-                      <button 
-                        type="button"
-                        onClick={() => setMode('forgot-password')}
-                        className="text-[10px] uppercase tracking-widest font-bold text-[#C5A059] hover:text-[#B38D45]"
-                      >
-                        Forgot Password?
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-              <button 
-                type="submit"
-                disabled={loading}
-                className="w-full py-4 px-6 rounded-2xl bg-[#C5A059] text-white font-bold uppercase tracking-widest text-xs hover:bg-[#B38D45] transition-all shadow-xl shadow-[#C5A059]/20 disabled:opacity-50"
-              >
-                {loading ? 'Processing...' : (mode === 'login' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Link')}
-              </button>
-            </form>
-          </div>
-
-          <p className="mt-8 text-center text-sm text-[#2D2424]/60">
-            {mode === 'login' ? "Don't have an account?" : "Ready to sign in?"}{' '}
-            <button 
-              onClick={() => {
-                setMode(mode === 'login' ? 'signup' : 'login');
-                setError(null);
-                setSuccess(null);
-              }}
-              className="text-[#C5A059] font-bold hover:underline"
-            >
-              {mode === 'login' ? 'Sign Up' : 'Log In'}
-            </button>
-          </p>
-
-          <div className="mt-12 pt-8 border-t border-slate-50 flex justify-center gap-6">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest cursor-pointer hover:text-slate-600">Privacy</span>
-            <span className="text-[10px] text-slate-300">•</span>
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest cursor-pointer hover:text-slate-600">Terms</span>
-          </div>
-        </motion.div>
-      </div>
-    </div>
+    </AuthLayout>
   );
 }

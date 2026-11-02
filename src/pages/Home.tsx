@@ -1,380 +1,450 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'motion/react';
 import { 
+  ArrowRight, 
+  Check, 
   Heart, 
-  Globe, 
+  Layers, 
+  Sparkles, 
   Smartphone, 
   Monitor, 
-  CheckCircle, 
-  ArrowRight,
-  Plus,
-  Users,
-  MessageSquare,
-  Layout,
-  Star,
-  Zap,
-  Shield
+  ShieldCheck, 
+  Sliders, 
+  Users, 
+  ChevronDown,
+  Globe,
+  MessageSquare
 } from 'lucide-react';
+import MarketingLayout from '../layouts/MarketingLayout';
+import Button from '../design-system/components/Button';
 
 export default function Home() {
   const navigate = useNavigate();
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [pricingCycle, setPricingCycle] = useState<'monthly' | 'annual'>('monthly');
+
+  const features = [
+    {
+      title: 'Digital Stationery Suite',
+      description: 'Precision typography and canvas customization. Deliver digital wedding invitations with custom RSVP flows matching your exact agency aesthetic.',
+      icon: <Layers className="w-5 h-5 text-[#8B806F]" />,
+    },
+    {
+      title: 'Real-Time Guest Moderation',
+      description: 'Stream guest wishes and photos to venue displays with instant live moderation to ensure every moment on screen is tasteful and approved.',
+      icon: <MessageSquare className="w-5 h-5 text-[#8B806F]" />,
+    },
+    {
+      title: 'White-Label Subdomains',
+      description: 'Operate entirely under your studio name. Clients access their wedding dashboards through your customized subdomain with your logo and palette.',
+      icon: <Globe className="w-5 h-5 text-[#8B806F]" />,
+    },
+    {
+      title: 'Custom RSVP Logic',
+      description: 'Collect dietary restrictions, plus-one names, meal selections, and transport requirements with custom conditional questionnaire fields.',
+      icon: <Sliders className="w-5 h-5 text-[#8B806F]" />,
+    },
+  ];
+
+  const faqs = [
+    {
+      q: 'Can agencies brand the client experience under their own domain?',
+      a: 'Yes. EventFrame is built specifically for wedding studios and planners. Your clients see your agency name, logo, and subdomain (e.g., yourstudio.eventframe.io).'
+    },
+    {
+      q: 'How does live guest moderation work during the reception?',
+      a: 'Guests scan a QR code on the table to post photos and well-wishes from their mobile browser. The studio or bridal party can approve or decline messages in real-time from the dashboard before they appear on the ballroom projector.'
+    },
+    {
+      q: 'Do guests need to install an app to RSVP or post photos?',
+      a: 'No app download is required. Everything runs in the mobile browser with responsive, lightweight, touch-optimized interfaces.'
+    },
+    {
+      q: 'Can couples edit their wedding pages directly?',
+      a: 'Yes. Couples receive a secure event access PIN that gives them access to their private dashboard to view RSVPs, download guest lists, and moderate celebration messages.'
+    }
+  ];
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] text-[#2D2424] selection:bg-[#C5A059] selection:text-white">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-[#FDFBF7]/80 backdrop-blur-md border-b border-[#C5A059]/10">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-[#C5A059] rounded-xl flex items-center justify-center shadow-lg shadow-[#C5A059]/20">
-              <Heart className="w-6 h-6 text-white fill-current" />
-            </div>
-            <span className="text-2xl font-serif font-black tracking-tighter">
-              eventframe<span className="text-[#C5A059]">.io</span>
-            </span>
-          </div>
-          
-          <div className="hidden md:flex items-center gap-8 text-[10px] uppercase font-black tracking-widest text-gray-400">
-            <a href="#agencies" className="hover:text-[#C5A059] transition-colors">Agencies</a>
-            <a href="#couples" className="hover:text-[#C5A059] transition-colors">Couples</a>
-            <a href="#features" className="hover:text-[#C5A059] transition-colors">Features</a>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => navigate('/login')}
-              className="px-6 py-2.5 text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-[#C5A059] transition-colors"
-            >
-              Sign In
-            </button>
-            <button 
-              onClick={() => navigate('/login')}
-              className="hidden sm:flex px-6 py-2.5 bg-[#C5A059] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-lg shadow-[#C5A059]/20 active:scale-95"
-            >
-              Get Started
-            </button>
-          </div>
-        </div>
-      </nav>
-
+    <MarketingLayout>
       {/* Hero Section */}
-      <section className="pt-40 pb-24 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-6 relative">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.8 }}
-            >
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#C5A059]/10 border border-[#C5A059]/20 text-[#C5A059] text-[10px] font-black uppercase tracking-widest mb-6">
-                <Zap className="w-3 h-3" />
-                White-label Wedding Platform
+      <section className="pt-16 pb-20 md:pt-24 md:pb-28 border-b border-[#E8E8E5]">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="grid lg:grid-cols-12 gap-12 items-center">
+            {/* Left Content (7 cols) */}
+            <div className="lg:col-span-7 space-y-6">
+              <div className="inline-flex items-center gap-2 text-xs font-medium text-[#736959] bg-[#EFECE6] px-2.5 py-1 rounded">
+                <span>EventFrame Studio Platform</span>
+                <span className="text-[#8B806F]">·</span>
+                <span>White-Label Wedding OS</span>
               </div>
-              <h1 className="text-6xl md:text-7xl lg:text-8xl font-serif leading-[1.1] mb-8 tracking-tight">
-                The New Standard <br />
-                <span className="text-[#C5A059]">for Modern</span> <br />
-                Weddings
+
+              <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-normal tracking-tight text-[#252525] leading-[1.12]">
+                The editorial software platform for modern wedding studios.
               </h1>
-              <p className="text-xl text-gray-500 font-medium leading-relaxed max-w-xl mb-10">
-                A custom-branded experience for agencies to provide luxury digital wedding suites to their clients. Real-time moderation, RSVP management, and immersive guest interactions.
+
+              <p className="text-sm md:text-base text-[#777777] max-w-xl leading-relaxed">
+                Empower your agency to provide digital stationery, real-time reception screens, and RSVP tracking under your own white-label brand.
               </p>
-              
-              <div className="flex flex-col sm:flex-row items-center gap-4">
-                <button 
+
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <Button
+                  variant="primary"
+                  size="lg"
                   onClick={() => navigate('/login')}
-                  className="w-full sm:w-auto px-10 py-5 bg-[#C5A059] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-2xl shadow-[#C5A059]/30 active:scale-95 flex items-center justify-center gap-3"
+                  rightIcon={<ArrowRight className="w-4 h-4" />}
                 >
-                  Start Your Agency
-                  <ArrowRight className="w-5 h-5" />
-                </button>
-                <button 
-                  onClick={() => window.open('/demo/guest', '_blank')}
-                  className="w-full sm:w-auto px-10 py-5 bg-white text-[#C5A059] border border-[#C5A059]/20 rounded-2xl font-black uppercase tracking-widest hover:bg-[#C5A059]/5 transition-all shadow-xl active:scale-95 flex items-center justify-center gap-2"
+                  Create Agency Workspace
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => navigate('/templates')}
                 >
-                  <Globe className="w-5 h-5" />
-                  View Live Demo
-                </button>
+                  Browse Invitation Suites
+                </Button>
               </div>
 
-              <div className="mt-12 flex items-center gap-6">
-                <div className="flex -space-x-4">
-                  {[1,2,3,4].map(i => (
-                    <div key={i} className="w-12 h-12 rounded-full ring-4 ring-[#FDFBF7] bg-gray-200 overflow-hidden">
-                      <img src={`https://i.pravatar.cc/150?u=wedding_${i}`} alt="User" />
-                    </div>
-                  ))}
+              <div className="pt-6 flex items-center gap-6 text-xs text-[#777777]">
+                <div className="flex items-center gap-1.5">
+                  <Check className="w-4 h-4 text-[#8B806F]" />
+                  <span>White-label subdomain</span>
                 </div>
-                <div className="text-xs font-bold text-gray-400">
-                  <span className="text-[#2D2424]">500+</span> Agencies trust eventframe.io
+                <div className="flex items-center gap-1.5">
+                  <Check className="w-4 h-4 text-[#8B806F]" />
+                  <span>Real-time guest moderation</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Check className="w-4 h-4 text-[#8B806F]" />
+                  <span>Instant RSVP export</span>
                 </div>
               </div>
-            </motion.div>
+            </div>
 
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 1, delay: 0.2 }}
-              className="relative"
-            >
-              {/* Mockup Display */}
-              <div className="relative bg-white rounded-[3rem] shadow-2xl border border-gray-100 p-4 transform rotate-1 lg:rotate-3">
-                <div className="aspect-[4/5] bg-[#F9F6F0] rounded-[2.5rem] overflow-hidden relative group">
-                  <img src="https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80" alt="Wedding App" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-all" />
-                  
-                  <div className="absolute bottom-8 left-8 right-8 bg-white/10 backdrop-blur-md p-6 rounded-3xl border border-white/20">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center">
-                        <Heart className="w-6 h-6 text-[#C5A059] fill-current" />
-                      </div>
-                      <div>
-                        <h4 className="text-white font-serif text-xl">Lucas & Sofia</h4>
-                        <p className="text-white/60 text-[10px] font-black uppercase tracking-widest">Villa Erba, Lake Como</p>
-                      </div>
-                    </div>
+            {/* Right Visual (5 cols) */}
+            <div className="lg:col-span-5 relative">
+              <div className="relative rounded-lg overflow-hidden border border-[#E8E8E5] shadow-card bg-white p-2">
+                <div className="aspect-[4/3] overflow-hidden rounded">
+                  <img
+                    src="/src/assets/images/hero_wedding_editorial_1793501242401.jpg"
+                    alt="Editorial Wedding Couple"
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <div className="p-4 flex items-center justify-between border-t border-[#E8E8E5] mt-2 bg-[#FAF9F7] rounded">
+                  <div>
+                    <div className="text-xs font-semibold text-[#252525]">Celia & Elias</div>
+                    <div className="text-[11px] text-[#777777]">Sonoma Valley · 142 Confirmed RSVPs</div>
                   </div>
+                  <span className="text-[10px] font-mono tabular-nums text-[#8B806F] bg-white px-2 py-0.5 rounded border border-[#E8E8E5]">
+                    LIVE SUITE
+                  </span>
                 </div>
-
-                {/* Floating UI Elements */}
-                <motion.div 
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                  className="absolute -top-10 -left-10 bg-white p-6 rounded-3xl shadow-2xl border border-gray-100 hidden md:block"
-                >
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                      <CheckCircle className="w-4 h-4 text-green-500" />
-                    </div>
-                    <span className="text-xs font-black uppercase tracking-widest text-[#2D2424]">New RSVP</span>
-                  </div>
-                  <p className="text-[10px] text-gray-400 font-bold mb-1">MARIA DELGADO</p>
-                  <p className="text-sm font-medium">Attending + 2 Guests</p>
-                </motion.div>
-
-                <motion.div 
-                  animate={{ y: [0, 10, 0] }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-                  className="absolute -bottom-10 -right-10 bg-[#C5A059] p-6 rounded-3xl shadow-2xl text-white hidden md:block"
-                >
-                  <MessageSquare className="w-6 h-6 mb-4" />
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">GUEST MESSAGE</p>
-                  <p className="font-serif italic text-lg leading-snug">"So happy for you both! <br />Can't wait to dance."</p>
-                </motion.div>
               </div>
-            </motion.div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Agency Benefits */}
-      <section id="agencies" className="py-32 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto mb-20">
-            <h2 className="text-4xl md:text-5xl font-serif mb-6 tracking-tight">For Event Agencies</h2>
-            <p className="text-gray-500 font-medium leading-relaxed">
-              Elevate your service offering with professional digital tools. Manage all your clients under one roof with full white-label capabilities.
+      {/* Craft & Stationery Showcase Section */}
+      <section id="features" className="py-20 md:py-28 border-b border-[#E8E8E5] bg-white">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="max-w-2xl mb-16">
+            <span className="text-xs font-medium text-[#8B806F] tracking-wide">ARCHITECTURE & CRAFT</span>
+            <h2 className="font-serif text-3xl md:text-4xl font-normal tracking-tight text-[#252525] mt-2 leading-tight">
+              Designed for studios who refuse generic wedding software.
+            </h2>
+            <p className="text-xs md:text-sm text-[#777777] mt-3 leading-relaxed">
+              Every detail is calibrated to maintain the aesthetic integrity of high-end ceremonies. From typographical balance to guest moderation, EventFrame delivers quiet luxury.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: Globe,
-                title: "Custom Domain Slugs",
-                desc: "Every wedding gets its own personalized URL under your organization's umbrella."
-              },
-              {
-                icon: Layout,
-                title: "Template Ecosystem",
-                desc: "Choose from our curated luxury aesthetics. Minimal, Floral, Dark, or Garden themes."
-              },
-              {
-                icon: Shield,
-                title: "Full Control",
-                desc: "Moderate guest messages, manage RSVPs, and oversee your agency's entire event portfolio."
-              }
-            ].map((feature, i) => (
-              <div key={i} className="p-8 rounded-[2.5rem] bg-gray-50 hover:bg-[#FDFCF0] transition-all border border-transparent hover:border-[#C5A059]/10 group">
-                <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-lg mb-8 group-hover:scale-110 transition-transform">
-                  <feature.icon className="w-7 h-7 text-[#C5A059]" />
-                </div>
-                <h3 className="text-xl font-serif text-[#2D2424] mb-4">{feature.title}</h3>
-                <p className="text-gray-500 text-sm font-medium leading-relaxed">{feature.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Couple Features */}
-      <section id="couples" className="py-32 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-full bg-[#C5A059]/5 -skew-y-3 origin-top-left" />
-        <div className="max-w-7xl mx-auto px-6 relative">
-          <div className="flex flex-col lg:flex-row items-center gap-20">
-            <div className="lg:w-1/2 order-2 lg:order-1">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-4 pt-12">
-                  <div className="aspect-square bg-white rounded-3xl p-6 shadow-xl border border-gray-100 flex flex-col justify-between">
-                    <Users className="w-8 h-8 text-[#C5A059]" />
-                    <div>
-                      <p className="text-2xl font-serif">RSVP</p>
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Real-time Tracking</p>
-                    </div>
-                  </div>
-                  <div className="aspect-[4/5] bg-gray-200 rounded-3xl overflow-hidden ring-1 ring-gray-100">
-                    <img src="https://images.unsplash.com/photo-1510076857177-7470076d4098?auto=format&fit=crop&q=80" alt="Couple" className="w-full h-full object-cover" />
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="aspect-[3/4] bg-gray-200 rounded-3xl overflow-hidden ring-1 ring-gray-100">
-                    <img src="https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80" alt="Wedding Table" className="w-full h-full object-cover" />
-                  </div>
-                  <div className="aspect-square bg-[#C5A059] rounded-3xl p-6 shadow-xl text-white flex flex-col justify-between">
-                    <Monitor className="w-8 h-8" />
-                    <div>
-                      <p className="text-2xl font-serif">Display</p>
-                      <p className="text-[10px] font-black opacity-60 uppercase tracking-widest">Live Guest Board</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+          <div className="grid md:grid-cols-2 gap-8 items-center mb-16">
+            <div className="rounded-lg overflow-hidden border border-[#E8E8E5] shadow-subtle bg-[#FAF9F7]">
+              <img
+                src="/src/assets/images/invitation_craft_showcase_1793501242453.jpg"
+                alt="Stationery Craft"
+                className="w-full h-auto object-cover"
+                referrerPolicy="no-referrer"
+              />
             </div>
 
-            <div className="lg:w-1/2 order-1 lg:order-2">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#C5A059]/10 border border-[#C5A059]/20 text-[#C5A059] text-[10px] font-black uppercase tracking-widest mb-6">
-                Loved by Couples
-              </div>
-              <h2 className="text-4xl md:text-5xl lg:text-6xl font-serif leading-tight mb-8">
-                Manage your day <br />
-                <span className="text-[#C5A059]">without the stress.</span>
-              </h2>
-              <ul className="space-y-6 mb-10">
-                {[
-                  "Personalized Couple Dashboard",
-                  "Instant Guest Message Moderation",
-                  "Digital Guest RSVP & Dietary Tracking",
-                  "Elegant Live Display for the Wedding Day"
-                ].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-lg font-medium text-gray-600">
-                    <div className="w-6 h-6 rounded-full bg-[#C5A059]/10 flex items-center justify-center">
-                      <div className="w-2 h-2 rounded-full bg-[#C5A059]" />
-                    </div>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              <button 
-                onClick={() => navigate('/couple/login')}
-                className="group flex items-center gap-4 text-[#C5A059] text-sm font-black uppercase tracking-widest hover:gap-6 transition-all"
-              >
-                Explore Couple Tools
-                <ArrowRight className="w-5 h-5" />
-              </button>
+            <div className="space-y-6">
+              {features.map((feat, idx) => (
+                <div key={idx} className="flex gap-4">
+                  <div className="w-9 h-9 rounded-md bg-[#F7F7F5] border border-[#E8E8E5] flex items-center justify-center shrink-0 mt-0.5">
+                    {feat.icon}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#252525]">{feat.title}</h3>
+                    <p className="text-xs text-[#777777] mt-1 leading-relaxed">{feat.description}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-32 relative">
-        <div className="max-w-5xl mx-auto px-6 text-center">
-          <div className="bg-[#2D2424] rounded-[4rem] p-12 md:p-24 text-white relative overflow-hidden">
-            {/* Background Texture */}
-            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
-            
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="relative z-10"
-            >
-              <h2 className="text-4xl md:text-6xl font-serif mb-8 max-w-2xl mx-auto leading-tight">
-                Ready to transform <br />
-                your wedding agency?
+      {/* Live Reception Screen Spotlight */}
+      <section id="agencies" className="py-20 md:py-28 border-b border-[#E8E8E5] bg-[#FAF9F7]">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="grid lg:grid-cols-12 gap-12 items-center">
+            <div className="lg:col-span-5 space-y-5">
+              <span className="text-xs font-medium text-[#8B806F]">VENUE STREAMING</span>
+              <h2 className="font-serif text-3xl md:text-4xl font-normal text-[#252525] leading-tight">
+                An immersive visual memory wall for the reception ballroom.
               </h2>
-              <p className="text-white/60 text-lg font-medium max-w-xl mx-auto mb-12">
-                Join the exclusive network of wedding professionals providing elite digital experiences.
+              <p className="text-xs md:text-sm text-[#777777] leading-relaxed">
+                Connect any venue display, projector, or LED screen. Guests upload photos and warm wishes from their phones, while studio operators or bridal party members review entries before they broadcast.
               </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
-                <button 
+              <div className="pt-2">
+                <Button
+                  variant="outline"
+                  size="md"
                   onClick={() => navigate('/login')}
-                  className="w-full sm:w-auto px-12 py-6 bg-[#C5A059] text-white rounded-3xl font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-2xl active:scale-95"
+                  rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
                 >
-                  Create Your Account
-                </button>
-                <div className="flex items-center gap-2 text-white/40 text-[10px] font-black uppercase tracking-widest">
-                  <Star className="w-3 h-3 fill-current text-[#C5A059]" />
-                  No credit card required
+                  Configure Live Display
+                </Button>
+              </div>
+            </div>
+
+            <div className="lg:col-span-7">
+              <div className="rounded-lg overflow-hidden border border-[#E8E8E5] shadow-card bg-white p-2">
+                <div className="aspect-[16/9] overflow-hidden rounded relative">
+                  <img
+                    src="/src/assets/images/celebration_venue_mood_1793501242406.jpg"
+                    alt="Evening Reception Dinner"
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex items-end p-6">
+                    <div className="text-white space-y-1">
+                      <div className="text-xs font-mono text-white/80">RECEPTION SCREEN 01 · CONNECTED</div>
+                      <div className="text-sm font-medium">“Wishing Celia and Elias an eternity of laughter and shared horizons.”</div>
+                      <div className="text-[11px] text-white/60">— The Sterling Family</div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </motion.div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-20 border-t border-gray-100">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-12">
-            <div className="col-span-2">
-              <div className="flex items-center gap-2 mb-6">
-                <div className="w-8 h-8 bg-[#C5A059] rounded-lg flex items-center justify-center">
-                  <Heart className="w-5 h-5 text-white fill-current" />
-                </div>
-                <span className="text-xl font-serif font-black tracking-tighter text-[#2D2424]">
-                  eventframe<span className="text-[#C5A059]">.io</span>
-                </span>
-              </div>
-              <p className="text-gray-400 text-sm font-medium leading-relaxed max-w-xs">
-                Luxury white-label platforms for modern event professionals and high-end wedding planning.
-              </p>
-            </div>
-            
-            <div>
-              <h5 className="text-[10px] uppercase font-black tracking-widest text-[#2D2424] mb-6">Platform</h5>
-              <ul className="space-y-4 text-sm font-bold text-gray-400">
-                <li><a href="#" className="hover:text-[#C5A059] transition-colors">Templates</a></li>
-                <li><a href="#" className="hover:text-[#C5A059] transition-colors">Pricing</a></li>
-                <li><a href="#" className="hover:text-[#C5A059] transition-colors">Onboarding</a></li>
-              </ul>
-            </div>
-
-            <div>
-              <h5 className="text-[10px] uppercase font-black tracking-widest text-[#2D2424] mb-6">Support</h5>
-              <ul className="space-y-4 text-sm font-bold text-gray-400">
-                <li><a href="#" className="hover:text-[#C5A059] transition-colors">Help Center</a></li>
-                <li><a href="#" className="hover:text-[#C5A059] transition-colors">Status</a></li>
-                <li><a href="#" className="hover:text-[#C5A059] transition-colors">Contact</a></li>
-              </ul>
-            </div>
-
-            <div className="col-span-2 lg:col-span-2">
-              <h5 className="text-[10px] uppercase font-black tracking-widest text-[#2D2424] mb-6">Subscribe</h5>
-              <div className="flex gap-2">
-                <input 
-                  type="email" 
-                  placeholder="Email address"
-                  className="flex-1 px-5 py-4 rounded-2xl bg-gray-50 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all text-sm font-medium"
-                />
-                <button className="p-4 bg-[#C5A059] text-white rounded-2xl hover:bg-[#B38D45] transition-all">
-                  <ArrowRight className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          </div>
-          
-          <div className="mt-20 pt-8 border-t border-gray-50 flex flex-col md:flex-row items-center justify-between gap-6">
-            <p className="text-gray-300 text-xs font-bold font-mono">
-              © 2024 EVENTFRAME.IO ALL RIGHTS RESERVED
+      {/* Pricing Section */}
+      <section id="pricing" className="py-20 md:py-28 border-b border-[#E8E8E5] bg-white">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center max-w-xl mx-auto mb-12">
+            <span className="text-xs font-medium text-[#8B806F]">TRANSPARENT PLANS</span>
+            <h2 className="font-serif text-3xl md:text-4xl font-normal text-[#252525] mt-2">
+              Simple, predictable agency pricing.
+            </h2>
+            <p className="text-xs md:text-sm text-[#777777] mt-2">
+              Everything you need to deliver high-touch digital wedding experiences.
             </p>
-            <div className="flex items-center gap-8 text-[10px] uppercase font-black tracking-widest text-gray-300">
-              <a href="#" className="hover:text-[#C5A059] transition-colors">Privacy</a>
-              <a href="#" className="hover:text-[#C5A059] transition-colors">Terms</a>
-              <a href="#" className="hover:text-[#C5A059] transition-colors">Cookie Policy</a>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {/* Starter Plan */}
+            <div className="border border-[#E8E8E5] rounded-lg p-6 bg-white flex flex-col justify-between shadow-subtle">
+              <div>
+                <div className="text-xs font-semibold text-[#777777]">INDIVIDUAL WEDDING</div>
+                <h3 className="text-lg font-semibold text-[#252525] mt-1">Single Event</h3>
+                <p className="text-xs text-[#777777] mt-1">For single couples managing their personal wedding.</p>
+                
+                <div className="my-6">
+                  <span className="text-3xl font-semibold font-mono text-[#252525] tabular-nums">$49</span>
+                  <span className="text-xs text-[#777777]"> / event lifetime</span>
+                </div>
+
+                <div className="space-y-2.5 text-xs text-[#555555]">
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span>1 Custom Wedding URL</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span>Up to 250 RSVP entries</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span>Live Display & Moderation</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span>Digital Invitation Suite</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-8">
+                <Button
+                  variant="outline"
+                  size="md"
+                  className="w-full"
+                  onClick={() => navigate('/login')}
+                >
+                  Start Single Event
+                </Button>
+              </div>
+            </div>
+
+            {/* Studio Pro */}
+            <div className="border-2 border-[#252525] rounded-lg p-6 bg-[#FAF9F7] flex flex-col justify-between shadow-card relative">
+              <div className="absolute -top-3 right-6 bg-[#252525] text-white text-[10px] font-medium px-2 py-0.5 rounded">
+                MOST POPULAR
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-[#8B806F]">STUDIO PRO</div>
+                <h3 className="text-lg font-semibold text-[#252525] mt-1">Agency Suite</h3>
+                <p className="text-xs text-[#777777] mt-1">For boutique wedding planners & photography studios.</p>
+                
+                <div className="my-6">
+                  <span className="text-3xl font-semibold font-mono text-[#252525] tabular-nums">$149</span>
+                  <span className="text-xs text-[#777777]"> / month</span>
+                </div>
+
+                <div className="space-y-2.5 text-xs text-[#252525]">
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span className="font-medium">Unlimited Wedding Events</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span>Custom Agency Subdomain</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span>White-label Client Dashboards</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span>Invitation Template Designer</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span>Custom RSVP Fields & Export</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-8">
+                <Button
+                  variant="primary"
+                  size="md"
+                  className="w-full"
+                  onClick={() => navigate('/login')}
+                >
+                  Launch Agency Pro
+                </Button>
+              </div>
+            </div>
+
+            {/* Enterprise Plan */}
+            <div className="border border-[#E8E8E5] rounded-lg p-6 bg-white flex flex-col justify-between shadow-subtle">
+              <div>
+                <div className="text-xs font-semibold text-[#777777]">BESPOKE ENTERPRISE</div>
+                <h3 className="text-lg font-semibold text-[#252525] mt-1">Agency Network</h3>
+                <p className="text-xs text-[#777777] mt-1">For multi-location event firms and luxury venues.</p>
+                
+                <div className="my-6">
+                  <span className="text-3xl font-semibold font-mono text-[#252525] tabular-nums">$399</span>
+                  <span className="text-xs text-[#777777]"> / month</span>
+                </div>
+
+                <div className="space-y-2.5 text-xs text-[#555555]">
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span>Custom Apex Domain CNAME</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span>Dedicated Priority Concierge</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span>Multi-Team Seat Management</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
+                    <span>Custom CSS & Asset CDN</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-8">
+                <Button
+                  variant="outline"
+                  size="md"
+                  className="w-full"
+                  onClick={() => navigate('/login')}
+                >
+                  Contact Enterprise
+                </Button>
+              </div>
             </div>
           </div>
         </div>
-      </footer>
-    </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section className="py-20 md:py-24 border-b border-[#E8E8E5] bg-[#FAF9F7]">
+        <div className="max-w-3xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <span className="text-xs font-medium text-[#8B806F]">FREQUENTLY ASKED QUESTIONS</span>
+            <h2 className="font-serif text-3xl font-normal text-[#252525] mt-2">
+              Everything you need to know.
+            </h2>
+          </div>
+
+          <div className="divide-y divide-[#E8E8E5] border-y border-[#E8E8E5] bg-white rounded-lg shadow-subtle overflow-hidden">
+            {faqs.map((faq, index) => {
+              const isOpen = openFaq === index;
+              return (
+                <div key={index} className="p-5">
+                  <button
+                    onClick={() => setOpenFaq(isOpen ? null : index)}
+                    className="w-full flex items-center justify-between text-left gap-4"
+                  >
+                    <span className="text-xs md:text-sm font-semibold text-[#252525]">{faq.q}</span>
+                    <ChevronDown className={`w-4 h-4 text-[#777777] shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {isOpen && (
+                    <p className="text-xs text-[#777777] mt-3 leading-relaxed">
+                      {faq.a}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Final Call to Action */}
+      <section className="py-20 bg-white text-center">
+        <div className="max-w-3xl mx-auto px-6 space-y-6">
+          <h2 className="font-serif text-3xl md:text-5xl font-normal text-[#252525] tracking-tight">
+            Elevate your wedding agency experience today.
+          </h2>
+          <p className="text-xs md:text-sm text-[#777777] max-w-lg mx-auto leading-relaxed">
+            Join hundreds of premier studios delivering bespoke digital stationery and seamless celebration moderation.
+          </p>
+          <div className="pt-2">
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => navigate('/login')}
+              rightIcon={<ArrowRight className="w-4 h-4" />}
+            >
+              Start Free Agency Trial
+            </Button>
+          </div>
+        </div>
+      </section>
+    </MarketingLayout>
   );
 }

@@ -123,18 +123,18 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (isLoadingUser) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFCF0]">
-        <div className="w-8 h-8 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-[#C5A059] font-serif animate-pulse">Checking authentication...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F7F7F5]">
+        <div className="w-6 h-6 border-2 border-[#252525] border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-xs text-[#777777]">Checking authentication...</p>
       </div>
     );
   }
 
   if (loadingWorkspaces) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFCF0]">
-        <div className="w-8 h-8 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-[#C5A059] font-serif animate-pulse">Syncing your workspaces...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F7F7F5]">
+        <div className="w-6 h-6 border-2 border-[#252525] border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-xs text-[#777777]">Syncing workspace...</p>
       </div>
     );
   }

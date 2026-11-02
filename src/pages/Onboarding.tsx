@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Layout, Globe, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Layout, Globe, ArrowRight, CheckCircle2, Building2, Heart, ArrowLeft } from 'lucide-react';
 import { getSupabase } from '../lib/supabase';
 import { API_BASE } from '../lib/config';
 import { authenticatedFetch } from '../lib/auth';
 import { useUser } from '../lib/UserContext';
+import Button from '../design-system/components/Button';
+import Input from '../design-system/components/Input';
 
 export default function Onboarding() {
   const { user } = useUser();
@@ -31,7 +33,6 @@ export default function Onboarding() {
           .maybeSingle();
 
         if (existingAgency) {
-          // Already onboarded, redirect to correct place
           const protocol = window.location.protocol;
           const hostParts = window.location.host.split('.');
           const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -57,10 +58,10 @@ export default function Onboarding() {
     setLoading(true);
     setError(null);
 
-    const slug = subdomain.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const slug = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
     
     if (slug.length < 3) {
-      setError('Subdomain must be at least 3 characters');
+      setError('Subdomain must be at least 3 characters.');
       setLoading(false);
       return;
     }
@@ -85,7 +86,6 @@ export default function Onboarding() {
 
       const { createdProjectId } = await response.json();
 
-      // Redirect to workspace
       const protocol = window.location.protocol;
       const hostParts = window.location.host.split('.');
       const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -99,181 +99,158 @@ export default function Onboarding() {
       }
 
     } catch (err: any) {
-      setError(err.message || 'Failed to create workspace');
+      setError(err.message || 'Failed to configure workspace');
       setLoading(false);
     }
   };
 
-  if (!role) {
-    return (
-      <div className="min-h-screen bg-[#FDFCF0] flex flex-col items-center justify-center p-4">
-        <div className="max-w-4xl w-full text-center mb-12">
-          <h1 className="text-5xl font-serif text-[#2C1810] mb-4">How will you use EventFrame?</h1>
-          <p className="text-[#2C1810]/60 text-lg">Select the path that fits you best.</p>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-8 max-w-4xl w-full">
-          <button 
-            onClick={() => {
-              setRole('couple');
-              setName('');
-            }}
-            className="bg-white p-10 rounded-[3rem] shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all text-left border border-black/5 group"
-          >
-            <div className="w-16 h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform">
-              <CheckCircle2 className="w-8 h-8 text-[#C5A059]" />
-            </div>
-            <h2 className="text-3xl font-serif text-[#2C1810] mb-4">I'm a Couple</h2>
-            <p className="text-[#2C1810]/60 leading-relaxed mb-8">
-              Planning your own special day. Create a beautiful digital guestbook and manage your RSVPs in one place.
-            </p>
-            <div className="flex items-center gap-2 text-[#C5A059] font-black uppercase tracking-widest text-[10px]">
-              Individual Plan <ArrowRight className="w-4 h-4" />
-            </div>
-          </button>
-
-          <button 
-            onClick={() => {
-              setRole('agency');
-              setName('');
-            }}
-            className="bg-[#2D2424] p-10 rounded-[3rem] shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all text-left border border-white/5 group text-white"
-          >
-            <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform">
-              <Layout className="w-8 h-8 text-[#C5A059]" />
-            </div>
-            <h2 className="text-3xl font-serif mb-4">I'm an Agency</h2>
-            <p className="opacity-60 leading-relaxed mb-8">
-              Managing weddings for multiple clients. Professional white-label tools to elevate your agency's service.
-            </p>
-            <div className="flex items-center gap-2 text-[#C5A059] font-black uppercase tracking-widest text-[10px]">
-              Agency Pro Plan <ArrowRight className="w-4 h-4" />
-            </div>
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-[#FDFCF0] flex flex-col items-center justify-center p-4">
-      <button 
-        onClick={() => setRole(null)}
-        className="mb-8 text-[#2C1810]/40 hover:text-[#C5A059] text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
-      >
-        ← Back to selection
-      </button>
-
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl shadow-black/5 p-8 border border-black/5">
-        <div className="flex flex-col items-center text-center mb-8">
-          <div className="w-16 h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center mb-4">
-            {role === 'agency' ? <Layout className="w-8 h-8 text-[#C5A059]" /> : <CheckCircle2 className="w-8 h-8 text-[#C5A059]" />}
+    <div className="min-h-screen bg-[#F7F7F5] flex flex-col justify-center items-center p-6 font-sans">
+      <div className="w-full max-w-xl">
+        {/* Brand header */}
+        <div className="text-center mb-8">
+          <div className="text-base font-semibold tracking-tight text-[#252525]">
+            EventFrame<span className="text-[#8B806F]">.io</span>
           </div>
-          <h1 className="text-3xl font-serif text-[#2C1810] mb-2">
-            {role === 'agency' ? 'Your Agency Space' : 'Your Wedding Space'}
-          </h1>
-          <p className="text-[#2C1810]/60">
-            {role === 'agency' ? 'Name your agency and claim your domain.' : 'Name your wedding and claim your guest URL.'}
-          </p>
+          <p className="text-xs text-[#777777] mt-1">Set up your workspace in less than 60 seconds</p>
         </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {role === 'couple' ? (
-              <div className="grid grid-cols-2 gap-4">
+        {!role ? (
+          <div className="space-y-6">
+            <div className="text-center">
+              <h1 className="text-xl font-semibold text-[#252525] tracking-tight">Select your account type</h1>
+              <p className="text-xs text-[#777777] mt-1">Choose how you plan to use EventFrame</p>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div 
+                onClick={() => {
+                  setRole('agency');
+                  setName('');
+                }}
+                className="bg-white border border-[#E8E8E5] hover:border-[#252525] rounded-lg p-6 cursor-pointer transition-all shadow-subtle group flex flex-col justify-between text-left"
+              >
                 <div>
-                  <label className="block text-sm font-medium text-[#2C1810]/70 mb-2">
-                    Groom's Name
-                  </label>
-                  <input
-                    type="text"
+                  <div className="w-9 h-9 rounded-md bg-[#FAF9F7] border border-[#E8E8E5] text-[#252525] flex items-center justify-center mb-4">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-[#252525]">Event Agency / Studio</h3>
+                  <p className="text-xs text-[#777777] mt-1.5 leading-relaxed">
+                    For planners and photographers managing multiple weddings under their own agency brand and subdomain.
+                  </p>
+                </div>
+                <div className="mt-6 flex items-center gap-1 text-xs font-medium text-[#252525] group-hover:translate-x-0.5 transition-transform">
+                  <span>Continue as Agency</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </div>
+
+              <div 
+                onClick={() => {
+                  setRole('couple');
+                  setName('');
+                }}
+                className="bg-white border border-[#E8E8E5] hover:border-[#252525] rounded-lg p-6 cursor-pointer transition-all shadow-subtle group flex flex-col justify-between text-left"
+              >
+                <div>
+                  <div className="w-9 h-9 rounded-md bg-[#FAF9F7] border border-[#E8E8E5] text-[#8B806F] flex items-center justify-center mb-4">
+                    <Heart className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-[#252525]">Bride & Groom</h3>
+                  <p className="text-xs text-[#777777] mt-1.5 leading-relaxed">
+                    Planning your own celebration. Create invitations, manage RSVPs, and stream live guest messages.
+                  </p>
+                </div>
+                <div className="mt-6 flex items-center gap-1 text-xs font-medium text-[#252525] group-hover:translate-x-0.5 transition-transform">
+                  <span>Continue as Couple</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white border border-[#E8E8E5] rounded-lg p-6 sm:p-8 shadow-card">
+            <button
+              onClick={() => { setRole(null); setError(null); }}
+              className="inline-flex items-center gap-1 text-xs text-[#777777] hover:text-[#252525] mb-5 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to account selection</span>
+            </button>
+
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold text-[#252525] tracking-tight">
+                {role === 'agency' ? 'Configure Agency Workspace' : 'Configure Wedding Space'}
+              </h2>
+              <p className="text-xs text-[#777777] mt-1">
+                {role === 'agency' 
+                  ? 'Set your agency brand name and claim your custom subdomain' 
+                  : 'Enter your names and create your wedding guest URL'}
+              </p>
+            </div>
+
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-xs">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {role === 'couple' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Groom's Name"
+                    placeholder="e.g. Lucas"
                     value={groomName}
                     onChange={(e) => setGroomName(e.target.value)}
-                    placeholder="e.g. Lucas"
                     required
-                    className="w-full px-4 py-3 bg-[#FDFCF0] border border-black/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C5A059]/30 focus:border-[#C5A059] transition-all"
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[#2C1810]/70 mb-2">
-                    Bride's Name
-                  </label>
-                  <input
-                    type="text"
+                  <Input
+                    label="Bride's Name"
+                    placeholder="e.g. Sofia"
                     value={brideName}
                     onChange={(e) => setBrideName(e.target.value)}
-                    placeholder="e.g. Sofia"
                     required
-                    className="w-full px-4 py-3 bg-[#FDFCF0] border border-black/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C5A059]/30 focus:border-[#C5A059] transition-all"
                   />
                 </div>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-sm font-medium text-[#2C1810]/70 mb-2">
-                  Agency Name
-                </label>
-                <input
-                  type="text"
+              ) : (
+                <Input
+                  label="Agency / Studio Name"
+                  placeholder="e.g. Atelier Blanc Events"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Elegant Events Co."
                   required
-                  className="w-full px-4 py-3 bg-[#FDFCF0] border border-black/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C5A059]/30 focus:border-[#C5A059] transition-all"
+                />
+              )}
+
+              <div>
+                <Input
+                  label={role === 'agency' ? 'Agency Subdomain' : 'Event URL Slug'}
+                  placeholder={role === 'agency' ? 'atelier-blanc' : 'lucas-and-sofia'}
+                  value={subdomain}
+                  onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  required
+                  hint={
+                    role === 'agency'
+                      ? `Your workspace will live at: ${subdomain || 'your-agency'}.eventframe.io`
+                      : `Guest link: eventframe.io/${subdomain || 'your-wedding'}`
+                  }
                 />
               </div>
-            )}
 
-          <div>
-            <label className="block text-sm font-medium text-[#2C1810]/70 mb-2">
-              {role === 'agency' ? 'Custom Subdomain' : 'Your Wedding URL'}
-            </label>
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                <Globe className="w-4 h-4 text-[#2C1810]/30 group-focus-within:text-[#C5A059] transition-colors" />
-              </div>
-              <input
-                type="text"
-                value={subdomain}
-                onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
-                placeholder={role === 'agency' ? "your-agency" : "lucas-sofia"}
-                required
-                className={`w-full py-3 bg-[#FDFCF0] border border-black/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C5A059]/30 focus:border-[#C5A059] transition-all font-medium ${
-                  role === 'agency' ? 'pl-11 pr-32' : 'pl-11 pr-4'
-                }`}
-              />
-              {role === 'agency' && (
-                <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
-                  <span className="text-sm font-medium text-[#2C1810]/40">.eventframe.io</span>
-                </div>
-              )}
-            </div>
-            <p className="mt-2 text-xs text-[#2C1810]/50 flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-              Public URL: {role === 'agency' ? `${subdomain || 'name'}.eventframe.io` : `eventframe.io/${subdomain || 'name'}`}
-            </p>
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                isLoading={loading}
+                className="w-full mt-2"
+                rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
+              >
+                {role === 'agency' ? 'Create Agency Workspace' : 'Launch Wedding Suite'}
+              </Button>
+            </form>
           </div>
-
-          {error && (
-            <div className="p-4 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#C5A059] hover:bg-[#B38D46] text-white py-4 rounded-xl font-medium shadow-lg shadow-[#C5A059]/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed group"
-          >
-            {loading ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <>
-                {role === 'agency' ? 'Create Agency' : 'Start Planning'}
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </>
-            )}
-          </button>
-        </form>
+        )}
       </div>
     </div>
   );

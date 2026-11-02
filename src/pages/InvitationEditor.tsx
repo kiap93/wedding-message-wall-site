@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ChevronLeft, 
+  ArrowLeft, 
   Save, 
   Smartphone, 
   Monitor, 
-  Share2,
-  Undo2,
-  Redo2,
-  Loader2
+  ExternalLink,
+  Undo2, 
+  Redo2, 
+  Loader2,
+  ZoomIn,
+  ZoomOut,
+  Maximize2
 } from 'lucide-react';
 import { Sidebar } from '../editor/components/Sidebar';
 import { EditorCanvas } from '../editor/components/EditorCanvas';
@@ -16,6 +19,7 @@ import { PropertiesPanel } from '../editor/components/PropertiesPanel';
 import { useEditorStore } from '../editor/store';
 import { getSupabase } from '../lib/supabase';
 import { WeddingEvent } from '../types';
+import Button from '../design-system/components/Button';
 
 export default function InvitationEditor() {
   const { projectId } = useParams();
@@ -29,7 +33,6 @@ export default function InvitationEditor() {
   const { undo, redo, pastStates, futureStates } = useEditorStore.temporal.getState();
   const { clear: clearHistory } = useEditorStore.temporal.getState();
 
-  // Reset viewport to fit
   const handleResetViewport = () => {
     const container = document.querySelector('main');
     if (container) {
@@ -46,19 +49,17 @@ export default function InvitationEditor() {
 
   useEffect(() => {
     if (!isLoading) {
-      // Small delay to ensure container is rendered
       setTimeout(handleResetViewport, 100);
     }
   }, [previewMode, isLoading]);
 
-  // Load design on mount
   useEffect(() => {
     async function load() {
       if (!projectId) return;
       setIsLoading(true);
       try {
         const supabase = getSupabase();
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('projects')
           .select('*')
           .eq('id', projectId)
@@ -73,7 +74,6 @@ export default function InvitationEditor() {
             setElements(config.elements || []);
             if (config.canvasHeight) setCanvasHeight(config.canvasHeight);
             
-            // Clear history after load so user doesn't undo to empty state
             setTimeout(() => {
               clearHistory();
             }, 200);
@@ -108,7 +108,7 @@ export default function InvitationEditor() {
       });
 
       if (!response.ok) throw new Error('Failed to save');
-      alert('Design saved successfully!');
+      alert('Invitation design saved successfully!');
     } catch (err) {
       console.error('Error saving:', err);
       alert('Failed to save design.');
@@ -119,119 +119,149 @@ export default function InvitationEditor() {
 
   if (isLoading) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#FDFCF0] gap-4">
-        <Loader2 className="w-8 h-8 text-[#C5A059] animate-spin" />
-        <p className="text-[10px] uppercase tracking-widest font-black text-[#C5A059]">Initialising Canvas...</p>
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#F7F7F5] gap-3">
+        <Loader2 className="w-6 h-6 text-[#252525] animate-spin" />
+        <p className="text-xs text-[#777777]">Loading invitation studio...</p>
       </div>
     );
   }
 
+  const coupleTitle = project?.groom_name && project?.bride_name 
+    ? `${project.groom_name} & ${project.bride_name}` 
+    : project?.name || 'Wedding Stationery';
+
   return (
-    <div className="h-screen w-screen bg-[#FDFCF0] flex flex-col font-sans overflow-hidden">
-      {/* Header Bar */}
-      <header className="h-16 bg-white border-b border-[#C5A059]/20 flex items-center justify-between px-6 z-50 shadow-sm shrink-0">
-        <div className="flex items-center gap-4">
+    <div className="h-screen w-screen bg-[#F7F7F5] flex flex-col font-sans overflow-hidden select-none">
+      {/* Studio Top Navigation Bar */}
+      <header className="h-12 bg-white border-b border-[#E8E8E5] px-4 flex items-center justify-between shrink-0 z-30">
+        {/* Left: Back & Project Info */}
+        <div className="flex items-center gap-3">
           <button 
-            onClick={() => navigate(-1)}
-            className="p-2 hover:bg-[#C5A059]/10 rounded-xl transition-colors"
+            onClick={() => navigate('/workspace')}
+            className="p-1.5 text-[#777777] hover:text-[#252525] hover:bg-[#FAF9F7] rounded transition-colors"
+            title="Return to Workspace"
           >
-            <ChevronLeft className="w-5 h-5 text-[#2D2424]" />
+            <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
-            <h1 className="text-sm font-bold uppercase tracking-widest text-[#2D2424]">Designer v2</h1>
-            <p className="text-[10px] text-[#C5A059] font-medium">{project?.groom_name} & {project?.bride_name}</p>
+          
+          <div className="h-4 w-px bg-[#E8E8E5]" />
+          
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-[#252525] tracking-tight">{coupleTitle}</span>
+            <span className="text-[10px] text-[#777777] bg-[#FAF9F7] px-1.5 py-0.5 rounded border border-[#E8E8E5]">
+              Invitation Studio
+            </span>
           </div>
         </div>
 
-        {/* Center: Viewport Controls & Undo/Redo */}
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => setScale(s => s / 1.2)}
-                className="p-1 px-2 hover:bg-gray-100 rounded text-xs font-bold text-gray-500"
-              >
-                -
-              </button>
-              <span className="text-[10px] font-black w-10 text-center text-[#C5A059] tabular-nums">
-                {Math.round(scale * 100)}%
-              </span>
-              <button 
-                onClick={() => setScale(s => s * 1.2)}
-                className="p-1 px-2 hover:bg-gray-100 rounded text-xs font-bold text-gray-500"
-              >
-                +
-              </button>
-            </div>
+        {/* Center: Canvas Controls & Device Mode */}
+        <div className="flex items-center gap-3">
+          {/* Zoom controls */}
+          <div className="flex items-center bg-[#FAF9F7] border border-[#E8E8E5] rounded p-0.5 gap-1 text-xs">
+            <button
+              onClick={() => setScale(s => Math.max(0.2, s / 1.15))}
+              className="p-1 text-[#777777] hover:text-[#252525] rounded"
+              title="Zoom Out"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-[11px] font-mono tabular-nums text-[#252525] w-10 text-center select-none">
+              {Math.round(scale * 100)}%
+            </span>
+            <button
+              onClick={() => setScale(s => Math.min(3, s * 1.15))}
+              className="p-1 text-[#777777] hover:text-[#252525] rounded"
+              title="Zoom In"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+          </div>
 
-            <div className="flex items-center bg-gray-50 rounded-2xl p-1 gap-1 border border-gray-200">
+          {/* Device Preview Toggle */}
+          <div className="flex items-center bg-[#F2EFE9] p-0.5 rounded border border-[#E8E8E5]">
             <button 
               onClick={() => setPreviewMode('desktop')}
-              className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 ${previewMode === 'desktop' ? 'bg-white shadow-sm text-[#C5A059]' : 'text-gray-400 opacity-60'}`}
+              className={`p-1 px-2 rounded text-xs transition-colors flex items-center gap-1.5 ${
+                previewMode === 'desktop' ? 'bg-white text-[#252525] shadow-subtle' : 'text-[#777777] hover:text-[#252525]'
+              }`}
             >
-              <Monitor className="w-4 h-4" />
-              <span className="text-[9px] font-black uppercase tracking-widest">Desktop</span>
+              <Monitor className="w-3.5 h-3.5" />
+              <span className="text-[11px] font-medium hidden sm:inline">Desktop</span>
             </button>
             <button 
               onClick={() => setPreviewMode('mobile')}
-              className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 ${previewMode === 'mobile' ? 'bg-white shadow-sm text-[#C5A059]' : 'text-gray-400 opacity-60'}`}
+              className={`p-1 px-2 rounded text-xs transition-colors flex items-center gap-1.5 ${
+                previewMode === 'mobile' ? 'bg-white text-[#252525] shadow-subtle' : 'text-[#777777] hover:text-[#252525]'
+              }`}
             >
-              <Smartphone className="w-4 h-4" />
-              <span className="text-[9px] font-black uppercase tracking-widest">Mobile</span>
+              <Smartphone className="w-3.5 h-3.5" />
+              <span className="text-[11px] font-medium hidden sm:inline">Mobile</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-1">
-             <button 
-               onClick={() => undo()}
-               disabled={pastStates.length === 0}
-               className={`p-2 transition-colors ${pastStates.length > 0 ? 'text-[#C5A059] hover:bg-[#C5A059]/10' : 'text-gray-300 opacity-50 cursor-not-allowed'}`}
-               title="Undo (Ctrl+Z)"
-             >
-               <Undo2 className="w-4 h-4" />
-             </button>
-             <button 
-               onClick={() => redo()}
-               disabled={futureStates.length === 0}
-               className={`p-2 transition-colors ${futureStates.length > 0 ? 'text-[#C5A059] hover:bg-[#C5A059]/10' : 'text-gray-300 opacity-50 cursor-not-allowed'}`}
-               title="Redo (Ctrl+Shift+Z)"
-             >
-               <Redo2 className="w-4 h-4" />
-             </button>
+          <div className="h-4 w-px bg-[#E8E8E5]" />
+
+          {/* Undo / Redo */}
+          <div className="flex items-center gap-0.5">
+            <button 
+              onClick={() => undo()}
+              disabled={pastStates.length === 0}
+              className="p-1.5 text-[#777777] hover:text-[#252525] hover:bg-[#FAF9F7] rounded disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+            </button>
+            <button 
+              onClick={() => redo()}
+              disabled={futureStates.length === 0}
+              className="p-1.5 text-[#777777] hover:text-[#252525] hover:bg-[#FAF9F7] rounded disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              title="Redo (Ctrl+Shift+Z)"
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => window.open(`/${project?.slug}/invitation`, '_blank')}
-            className="p-2.5 text-[#C5A059] hover:bg-[#C5A059]/10 rounded-xl transition-colors"
-            title="Preview Live"
-          >
-            <Share2 className="w-4 h-4" />
-          </button>
-          <button 
+        {/* Right: Actions */}
+        <div className="flex items-center gap-2">
+          {project?.slug && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open(`/${project.slug}/invitation`, '_blank')}
+              rightIcon={<ExternalLink className="w-3 h-3" />}
+            >
+              Preview
+            </Button>
+          )}
+
+          <Button
+            variant="primary"
+            size="sm"
             onClick={handleSave}
-            disabled={isSaving}
-            className="px-6 py-2.5 bg-[#2D2424] text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black transition-all shadow-lg shadow-[#2D2424]/20 disabled:opacity-50 min-w-[140px] justify-center"
+            isLoading={isSaving}
+            leftIcon={<Save className="w-3.5 h-3.5" />}
           >
-            {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            Save Changes
-          </button>
+            Save Design
+          </Button>
         </div>
       </header>
 
-      {/* Main Workspace */}
+      {/* Main Studio Viewport */}
       <div className="flex-1 flex overflow-hidden">
+        {/* Left Elements & Materials Toolbar */}
         <Sidebar />
         
-        {/* Responsive Canvas Container */}
-        <main className="flex-1 bg-[#F0F0EE] overflow-hidden flex items-center justify-center p-8 transition-all duration-500">
-           <div className={`shadow-2xl transition-all duration-500 bg-white ${
-              previewMode === 'mobile' ? 'w-[375px] h-[667px]' : 'w-full h-full max-w-[1000px] max-h-[1414px]'
-           }`}>
-             <EditorCanvas />
-           </div>
+        {/* Center Canvas Viewport */}
+        <main className="flex-1 bg-[#F7F7F5] overflow-hidden flex items-center justify-center p-6 relative">
+          <div className={`transition-all duration-300 bg-white border border-[#E8E8E5] shadow-card ${
+            previewMode === 'mobile' ? 'w-[375px] h-[667px] rounded-lg' : 'w-full h-full max-w-[1000px] max-h-[1414px] rounded-md'
+          }`}>
+            <EditorCanvas />
+          </div>
         </main>
 
+        {/* Right Properties Panel */}
         <PropertiesPanel />
       </div>
     </div>

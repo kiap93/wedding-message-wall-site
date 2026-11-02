@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { Check, Zap, Shield, CreditCard, ArrowRight, Loader2 } from 'lucide-react';
+import { Check, Shield, CreditCard, ArrowRight, Loader2, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { useUser } from '../lib/UserContext';
 import { getSupabase } from '../lib/supabase';
 import { Agency } from '../types';
 import { authenticatedFetch } from '../lib/auth';
+import DashboardLayout from '../layouts/DashboardLayout';
+import Button from '../design-system/components/Button';
+import PageHeader from '../design-system/components/PageHeader';
+import Badge from '../design-system/components/Badge';
 
 export default function Subscription() {
   const { workspace, isLoading } = useWorkspace();
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const navigate = useNavigate();
 
   const { user } = useUser();
   const [userAgency, setUserAgency] = useState<Agency | null>(null);
@@ -18,7 +23,6 @@ export default function Subscription() {
   useEffect(() => {
     const fetchUserAgency = async () => {
       if (!workspace && user) {
-        // Already initialized to true if we enters here
         try {
           const supabase = getSupabase();
           const userId = user.id || user.sub;
@@ -70,8 +74,8 @@ export default function Subscription() {
 
   if (isLoading || isLoadingUserAgency) {
     return (
-      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-[#C5A059] animate-spin" />
+      <div className="min-h-screen bg-[#F7F7F5] flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-[#252525] animate-spin" />
       </div>
     );
   }
@@ -81,197 +85,189 @@ export default function Subscription() {
   const isCouple = activeWorkspace?.user_role === 'couple';
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] py-32 px-6">
-      <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-16">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <h1 className="text-4xl md:text-6xl font-serif text-[#2D2424] mb-4">
-              {isSubscribed ? 'Everything is Ready' : isCouple ? 'Build First, Pay to Publish' : 'Try Pro Free for 30 Days'}
-            </h1>
-            <p className="text-gray-500 font-medium max-w-xl mx-auto">
-              {isSubscribed 
-                ? "You're all set! You have full access to your wedding features."
-                : isCouple 
-                  ? "Create, customize, and preview your entire wedding experience for free. Pay once when you're ready to share with guests."
-                  : "Start your 30-day free trial today. Cancel anytime if you're not satisfied."
-              }
-            </p>
-          </motion.div>
-        </div>
+    <DashboardLayout activeItem="subscription">
+      <div className="max-w-4xl mx-auto space-y-8">
+        <PageHeader
+          title="Billing & Subscription"
+          description="Manage your studio license, billing cycle, and event limits."
+          breadcrumbs={[
+            { label: 'Workspace', onClick: () => navigate('/workspace') },
+            { label: 'Billing' },
+          ]}
+        />
 
         {isSubscribed ? (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white p-12 rounded-[3rem] border border-[#C5A059]/10 shadow-2xl text-center max-w-2xl mx-auto"
-          >
-            <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-8">
-              <Check className="w-10 h-10 text-green-500" />
+          <div className="bg-white p-8 rounded-lg border border-[#E8E8E5] shadow-subtle text-center max-w-lg mx-auto space-y-5">
+            <div className="w-12 h-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center mx-auto">
+              <Check className="w-6 h-6" />
             </div>
-            <h2 className="text-2xl font-serif mb-2">
-              {workspace?.is_demo || user?.email === 'buildsiteasia@gmail.com' ? 'Full Access Active' : isCouple ? 'Wedding Paid' : 'Agency Pro Active'}
-            </h2>
-            <p className="text-gray-500 mb-8">
-              {workspace?.is_demo || user?.email === 'buildsiteasia@gmail.com' 
-                ? 'Your account has special access to create unlimited events.' 
-                : isCouple 
-                  ? 'Your wedding site is live and all premium features are unlocked.'
-                  : 'Next billing date: Coming soon'}
-            </p>
+            <div>
+              <div className="inline-block mb-2">
+                <Badge variant="success" size="md">Subscription Active</Badge>
+              </div>
+              <h3 className="text-lg font-semibold text-[#252525]">
+                {workspace?.is_demo || user?.email === 'buildsiteasia@gmail.com' 
+                  ? 'Unlimited Platform Access' 
+                  : isCouple 
+                    ? 'Wedding Suite Published' 
+                    : 'Agency Pro Active'}
+              </h3>
+              <p className="text-xs text-[#777777] mt-1 max-w-sm mx-auto leading-relaxed">
+                {workspace?.is_demo || user?.email === 'buildsiteasia@gmail.com' 
+                  ? 'Your account has full administrative permission to create and manage unlimited weddings.' 
+                  : isCouple 
+                    ? 'Your wedding site is active and all guest moderation features are unlocked.'
+                    : 'Your agency pro plan is active with unlimited events and custom subdomain.'}
+              </p>
+            </div>
             
-            <button 
-              onClick={() => isCouple ? window.history.back() : handleSubscribe('manage')} 
-              className="px-10 py-5 bg-gray-100 text-[#2D2424] rounded-2xl font-black uppercase tracking-widest hover:bg-gray-200 transition-all flex items-center justify-center gap-3 mx-auto"
-            >
-              {isCouple ? 'Go Back' : <><CreditCard className="w-5 h-5" /> Manage Subscription</>}
-            </button>
-          </motion.div>
+            <div className="pt-2">
+              <Button
+                variant="outline"
+                size="md"
+                onClick={() => isCouple ? navigate('/workspace') : handleSubscribe('manage')}
+                leftIcon={<CreditCard className="w-4 h-4" />}
+                isLoading={isRedirecting}
+              >
+                {isCouple ? 'Back to Wedding Hub' : 'Manage Stripe Billing'}
+              </Button>
+            </div>
+          </div>
         ) : isCouple ? (
           /* Couple Plan */
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white p-12 rounded-[3rem] border border-[#C5A059]/10 shadow-2xl text-center max-w-xl mx-auto"
-          >
-            <div className="w-16 h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center mx-auto mb-8">
-              <Zap className="w-8 h-8 text-[#C5A059]" />
-            </div>
-            <h3 className="text-3xl font-serif mb-2">Single Event License</h3>
-            <div className="flex items-baseline justify-center gap-1 mb-8">
-              <span className="text-5xl font-serif">$19</span>
-              <span className="text-gray-400 text-sm">one-time payment</span>
+          <div className="bg-white p-8 rounded-lg border border-[#E8E8E5] shadow-card text-center max-w-md mx-auto space-y-6">
+            <div>
+              <span className="text-xs font-semibold text-[#8B806F]">INDIVIDUAL WEDDING</span>
+              <h3 className="text-xl font-semibold text-[#252525] mt-1">Single Wedding License</h3>
+              <div className="my-4">
+                <span className="text-4xl font-semibold font-mono text-[#252525] tabular-nums">$19</span>
+                <span className="text-xs text-[#777777]"> / one-time</span>
+              </div>
+              <p className="text-xs text-[#777777] leading-relaxed">
+                Publish your wedding page, unlock live guest messages, and accept unlimited RSVPs.
+              </p>
             </div>
 
-            <ul className="space-y-4 mb-10 text-left max-w-sm mx-auto">
+            <div className="border-t border-b border-[#E8E8E5] py-4 space-y-2.5 text-xs text-[#555555] text-left">
               {[
-                "Full Digital Wedding Site",
-                "Unlimited Live Guest Messages",
-                "RSVP & Dietary Tracking",
-                "Event Background Photo",
-                "Lifetime Access to Guestbook"
+                "Full Digital Wedding Site & URL",
+                "Unlimited Live Guest Message Wall",
+                "Custom RSVP & Dietary Questionnaire",
+                "Photo Uploads & Memory Gallery",
+                "Lifetime Access to Guestbook Records"
               ].map((feature, i) => (
-                <li key={i} className="flex items-center gap-3 text-sm font-medium text-gray-500">
-                  <Check className="w-4 h-4 text-[#C5A059]" />
-                  {feature}
-                </li>
-              ))}
-            </ul>
-
-            <button 
-              disabled={isRedirecting}
-              onClick={() => handleSubscribe('price_one_time')}
-              className="w-full py-5 bg-[#C5A059] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
-            >
-              {isRedirecting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Activate License"}
-              <ArrowRight className="w-5 h-5" />
-            </button>
-          </motion.div>
-        ) : (
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            {/* Monthly Plan */}
-            <motion.div 
-              whileHover={{ y: -10 }}
-              className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-xl flex flex-col"
-            >
-              <div className="mb-8">
-                <div className="w-12 h-12 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center mb-6">
-                  <Zap className="w-6 h-6 text-[#C5A059]" />
+                <div key={i} className="flex items-center gap-2.5">
+                  <Check className="w-3.5 h-3.5 text-[#8B806F] shrink-0" />
+                  <span>{feature}</span>
                 </div>
-                <h3 className="text-2xl font-serif mb-2">Monthly Pro</h3>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-serif">RM49</span>
-                  <span className="text-gray-400 text-sm">/month</span>
+              ))}
+            </div>
+
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full"
+              isLoading={isRedirecting}
+              onClick={() => handleSubscribe('price_one_time')}
+              rightIcon={<ArrowRight className="w-4 h-4" />}
+            >
+              Activate Wedding License
+            </Button>
+          </div>
+        ) : (
+          /* Agency Plans */
+          <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+            {/* Monthly Plan */}
+            <div className="bg-white p-6 sm:p-8 rounded-lg border border-[#E8E8E5] shadow-subtle flex flex-col justify-between">
+              <div>
+                <span className="text-xs font-semibold text-[#777777]">MONTHLY BILLING</span>
+                <h3 className="text-lg font-semibold text-[#252525] mt-1">Agency Monthly Pro</h3>
+                <div className="my-4">
+                  <span className="text-3xl font-semibold font-mono text-[#252525] tabular-nums">$49</span>
+                  <span className="text-xs text-[#777777]"> / month</span>
+                </div>
+                <div className="p-2.5 bg-[#FAF9F7] rounded border border-[#E8E8E5] text-xs font-medium text-[#736959] mb-6">
+                  Includes 30-day free trial. Cancel anytime.
+                </div>
+
+                <div className="space-y-2.5 text-xs text-[#555555] mb-8">
+                  {[
+                    "Unlimited Wedding Events",
+                    "White-label Subdomain",
+                    "Custom Client Portals",
+                    "Invitation Template Designer",
+                    "Export CSV Guest Records"
+                  ].map((feature, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-[#8B806F] shrink-0" />
+                      <span>{feature}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <ul className="space-y-4 mb-10 flex-1">
-                <li className="flex items-center gap-3 text-sm font-bold text-[#C5A059] bg-[#C5A059]/5 p-2 rounded-lg">
-                  <Zap className="w-4 h-4" />
-                  30-Day Free Trial
-                </li>
-                {[
-                  "Unlimited Event Creation",
-                  "White-label Dashboard",
-                  "Custom Domain Support",
-                  "Premium Templates",
-                  "Priority Support"
-                ].map((feature, i) => (
-                  <li key={i} className="flex items-center gap-3 text-sm font-medium text-gray-500">
-                    <Check className="w-4 h-4 text-[#C5A059]" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-
-              <button 
-                disabled={isRedirecting}
+              <Button
+                variant="outline"
+                size="md"
+                className="w-full"
+                isLoading={isRedirecting}
                 onClick={() => handleSubscribe('price_monthly')}
-                className="w-full py-5 bg-[#C5A059] text-white rounded-2xl font-black uppercase tracking-widest hover:bg-[#B38D45] transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
+                rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
               >
-                {isRedirecting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Subscribe Monthly"}
-                <ArrowRight className="w-5 h-5" />
-              </button>
-            </motion.div>
+                Start 30-Day Free Trial
+              </Button>
+            </div>
 
             {/* Yearly Plan */}
-            <motion.div 
-              whileHover={{ y: -10 }}
-              className="bg-[#2D2424] p-10 rounded-[3rem] shadow-2xl text-white flex flex-col relative overflow-hidden"
-            >
-              <div className="absolute top-6 right-6 px-3 py-1 bg-white/10 rounded-full text-[8px] font-black uppercase tracking-widest">
+            <div className="bg-[#252525] text-white p-6 sm:p-8 rounded-lg border border-[#252525] shadow-card flex flex-col justify-between relative">
+              <div className="absolute top-4 right-4 bg-white/10 text-white text-[10px] font-medium px-2 py-0.5 rounded">
                 Save 20%
               </div>
-              <div className="mb-8">
-                <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-6">
-                  <Shield className="w-6 h-6 text-[#C5A059]" />
+              <div>
+                <span className="text-xs font-semibold text-[#C5BDAC]">ANNUAL BILLING</span>
+                <h3 className="text-lg font-semibold text-white mt-1">Agency Annual Pro</h3>
+                <div className="my-4">
+                  <span className="text-3xl font-semibold font-mono text-white tabular-nums">$470</span>
+                  <span className="text-xs text-white/60"> / year</span>
                 </div>
-                <h3 className="text-2xl font-serif mb-2">Yearly Pro</h3>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-serif">RM470</span>
-                  <span className="opacity-40 text-sm">/year</span>
+                <div className="p-2.5 bg-white/5 rounded border border-white/10 text-xs text-[#C5BDAC] mb-6">
+                  2 months free compared to monthly billing.
+                </div>
+
+                <div className="space-y-2.5 text-xs text-white/80 mb-8">
+                  {[
+                    "Everything in Monthly Plan",
+                    "Custom CSS & Styling Support",
+                    "Priority Studio Concierge",
+                    "Multi-Team Seat Access",
+                    "Early Beta Studio Tools"
+                  ].map((feature, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-[#C5BDAC] shrink-0" />
+                      <span>{feature}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <ul className="space-y-4 mb-10 flex-1">
-                <li className="flex items-center gap-3 text-sm font-bold text-[#C5A059] bg-white/5 p-2 rounded-lg">
-                  <Zap className="w-4 h-4" />
-                  30-Day Free Trial
-                </li>
-                {[
-                  "Everything in Monthly",
-                  "2 Months Free",
-                  "Custom CSS Editor",
-                  "API Access",
-                  "Early Beta Access"
-                ].map((feature, i) => (
-                  <li key={i} className="flex items-center gap-3 text-sm font-medium opacity-60">
-                    <Check className="w-4 h-4 text-[#C5A059]" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-
-              <button 
-                disabled={isRedirecting}
+              <Button
+                variant="secondary"
+                size="md"
+                className="w-full !bg-white !text-[#252525] hover:!bg-[#F2EFE9]"
+                isLoading={isRedirecting}
                 onClick={() => handleSubscribe('price_yearly')}
-                className="w-full py-5 bg-white text-[#2D2424] rounded-2xl font-black uppercase tracking-widest hover:bg-gray-100 transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
+                rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
               >
-                {isRedirecting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Subscribe Yearly"}
-                <ArrowRight className="w-5 h-5" />
-              </button>
-            </motion.div>
+                Subscribe Annually
+              </Button>
+            </div>
           </div>
         )}
 
-        <div className="mt-16 text-center">
-          <p className="text-gray-400 text-xs font-medium">
-            Secure payments processed by Stripe. Cancel anytime.
-          </p>
+        <div className="text-center text-xs text-[#777777]">
+          Secure billing processed by Stripe. All transactions encrypted.
         </div>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }

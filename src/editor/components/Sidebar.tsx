@@ -343,43 +343,43 @@ export const Sidebar: React.FC = () => {
   });
 
   return (
-    <aside className="w-80 bg-white border-r border-[#C5A059]/20 flex flex-col h-full overflow-hidden select-none">
-      {/* Premium Tab Bar Selector */}
-      <div className="flex border-b border-[#C5A059]/10 bg-gray-50/50 p-2 gap-1 shrink-0">
+    <aside className="w-72 bg-white border-r border-[#E8E8E5] flex flex-col h-full overflow-hidden select-none">
+      {/* Studio Tab Bar */}
+      <div className="flex border-b border-[#E8E8E5] bg-[#FAF9F7] p-1.5 gap-1 shrink-0">
         <button
           onClick={() => setActiveTab('materials')}
-          className={`flex-1 py-2.5 px-3 rounded-xl flex flex-col items-center gap-1 transition-all text-center ${
+          className={`flex-1 py-1.5 px-2 rounded-md flex items-center justify-center gap-1.5 transition-colors text-xs font-medium ${
             activeTab === 'materials'
-              ? 'bg-white shadow-sm border border-[#C5A059]/30 text-[#2D2424] font-black'
-              : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100/50'
+              ? 'bg-white shadow-subtle border border-[#E8E8E5] text-[#252525]'
+              : 'text-[#777777] hover:text-[#252525]'
           }`}
         >
-          <Sparkles className={`w-4 h-4 ${activeTab === 'materials' ? 'text-[#C5A059]' : 'text-gray-400'}`} />
-          <span className="text-[9px] uppercase tracking-widest font-bold">Materials</span>
+          <Sparkles className="w-3.5 h-3.5 text-[#8B806F]" />
+          <span>Library</span>
         </button>
 
         <button
           onClick={() => setActiveTab('basic')}
-          className={`flex-1 py-2.5 px-3 rounded-xl flex flex-col items-center gap-1 transition-all text-center ${
+          className={`flex-1 py-1.5 px-2 rounded-md flex items-center justify-center gap-1.5 transition-colors text-xs font-medium ${
             activeTab === 'basic'
-              ? 'bg-white shadow-sm border border-[#C5A059]/30 text-[#2D2424] font-black'
-              : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100/50'
+              ? 'bg-white shadow-subtle border border-[#E8E8E5] text-[#252525]'
+              : 'text-[#777777] hover:text-[#252525]'
           }`}
         >
-          <Layers className={`w-4 h-4 ${activeTab === 'basic' ? 'text-[#C5A059]' : 'text-gray-400'}`} />
-          <span className="text-[9px] uppercase tracking-widest font-bold">Basic</span>
+          <Layers className="w-3.5 h-3.5 text-[#8B806F]" />
+          <span>Elements</span>
         </button>
 
         <button
           onClick={() => setActiveTab('layout')}
-          className={`flex-1 py-2.5 px-3 rounded-xl flex flex-col items-center gap-1 transition-all text-center ${
+          className={`flex-1 py-1.5 px-2 rounded-md flex items-center justify-center gap-1.5 transition-colors text-xs font-medium ${
             activeTab === 'layout'
-              ? 'bg-white shadow-sm border border-[#C5A059]/30 text-[#2D2424] font-black'
-              : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100/50'
+              ? 'bg-white shadow-subtle border border-[#E8E8E5] text-[#252525]'
+              : 'text-[#777777] hover:text-[#252525]'
           }`}
         >
-          <Settings className={`w-4 h-4 ${activeTab === 'layout' ? 'text-[#C5A059]' : 'text-gray-400'}`} />
-          <span className="text-[9px] uppercase tracking-widest font-bold">Canvas</span>
+          <Settings className="w-3.5 h-3.5 text-[#8B806F]" />
+          <span>Canvas</span>
         </button>
       </div>
 
@@ -401,23 +401,19 @@ export const Sidebar: React.FC = () => {
               />
             </div>
 
-            {/* Elegant Horizontal Category Pill Selectors */}
-            <div className="flex gap-1.5 overflow-x-auto pb-1 shrink-0 -mx-1 px-1 scrollbar-none">
+            {/* Category Segmented Filter */}
+            <div className="flex gap-1 overflow-x-auto pb-1 shrink-0 scrollbar-none">
               {(['all', 'botanicals', 'frames', 'borders', 'badges'] as const).map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-wider transition-all border whitespace-nowrap ${
+                  className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors whitespace-nowrap capitalize ${
                     selectedCategory === cat
-                      ? 'bg-[#C5A059] border-[#C5A059] text-white'
-                      : 'bg-white border-gray-100 text-gray-400 hover:border-[#C5A059]/30 hover:text-gray-600'
+                      ? 'bg-[#252525] text-white'
+                      : 'bg-[#FAF9F7] text-[#777777] hover:text-[#252525] border border-[#E8E8E5]'
                   }`}
                 >
-                  {cat === 'all' && '✨ All'}
-                  {cat === 'botanicals' && '🌸 Florals'}
-                  {cat === 'frames' && '🖼️ Frames'}
-                  {cat === 'borders' && '⚜️ Lines'}
-                  {cat === 'badges' && '📜 Seals'}
+                  {cat === 'all' ? 'All' : cat}
                 </button>
               ))}
             </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useParams } from 'react-router-dom';
+import { useSearchParams, useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower, Users, Zap } from 'lucide-react';
+import { CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower, Users, Zap, Calendar, MapPin } from 'lucide-react';
 import RSVPForm from '../components/RSVPForm';
 import { WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
@@ -20,7 +20,7 @@ export default function RSVPPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [rsvpCount, setRsvpCount] = useState(0);
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
-  
+
   const [searchParams] = useSearchParams();
   const isPreviewParam = searchParams.get('preview') === 'true';
 
@@ -31,11 +31,11 @@ export default function RSVPPage() {
     }
     load();
   }, []);
-  
+
   const templateIdFromUrl = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
-  
-  const activeTemplateId = isPreviewParam && searchParams.get('template') 
-    ? (searchParams.get('template') as TemplateId) 
+
+  const activeTemplateId = isPreviewParam && searchParams.get('template')
+    ? (searchParams.get('template') as TemplateId)
     : (project?.theme_id || templateIdFromUrl);
 
   const template = templates.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES[0];
@@ -74,13 +74,13 @@ export default function RSVPPage() {
         if (typeof projectData.rsvp_fields === 'string') {
           try {
             projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
-          } catch(e) {
+          } catch (e) {
             projectData.rsvp_fields = [];
           }
         }
         setProject(projectData);
         if (!agency) setAgency(workspace);
-        
+
         const { count: rsvpCountVal } = await supabase
           .from('rsvps')
           .select('*', { count: 'exact', head: true })
@@ -96,8 +96,7 @@ export default function RSVPPage() {
 
   const loadProject = async (id?: string, slugName?: string) => {
     if (id === 'demo' || slugName === 'demo') {
-       // Demo logic similar to Guest.tsx
-       const demoAgency: Agency = {
+      const demoAgency: Agency = {
         id: 'demo-agency',
         name: 'EventFrame Demo',
         slug: 'demo',
@@ -106,7 +105,7 @@ export default function RSVPPage() {
         subscription_status: 'active',
         is_demo: true,
         logo_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=100&h=100',
-        theme_config: { primaryColor: '#C5A059', accentColor: '#2D2424' },
+        theme_config: { primaryColor: '#8B806F', accentColor: '#252525' },
         created_at: new Date().toISOString()
       };
       const demoProject: WeddingEvent = {
@@ -126,7 +125,7 @@ export default function RSVPPage() {
       };
       setAgency(demoAgency);
       setProject(demoProject);
-      setRsvpCount(2); 
+      setRsvpCount(2);
       setIsLoading(false);
       return;
     }
@@ -134,31 +133,31 @@ export default function RSVPPage() {
     try {
       const supabase = getSupabase();
       let projectData: WeddingEvent | null = null;
-      
+
       if (id) {
         const { data } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
         projectData = data;
       } else if (slugName) {
-         let query = supabase.from('projects').select('*').eq('slug', slugName);
-         if (workspace) query = query.eq('agency_id', workspace.id);
-         let { data } = await query.maybeSingle();
-         projectData = data;
+        let query = supabase.from('projects').select('*').eq('slug', slugName);
+        if (workspace) query = query.eq('agency_id', workspace.id);
+        let { data } = await query.maybeSingle();
+        projectData = data;
 
-         if (!projectData && !workspace) {
-           const { data: agencyData } = await supabase.from('agencies').select('*').eq('slug', slugName).maybeSingle();
-           if (agencyData) {
-             setAgency(agencyData);
-             const { data: events } = await supabase.from('projects').select('*').eq('agency_id', agencyData.id).order('created_at', { ascending: true }).limit(1);
-             if (events && events.length > 0) projectData = events[0];
-           }
-         }
+        if (!projectData && !workspace) {
+          const { data: agencyData } = await supabase.from('agencies').select('*').eq('slug', slugName).maybeSingle();
+          if (agencyData) {
+            setAgency(agencyData);
+            const { data: events } = await supabase.from('projects').select('*').eq('agency_id', agencyData.id).order('created_at', { ascending: true }).limit(1);
+            if (events && events.length > 0) projectData = events[0];
+          }
+        }
       }
 
       if (projectData) {
         if (typeof projectData.rsvp_fields === 'string') {
           try {
             projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
-          } catch(e) {
+          } catch (e) {
             projectData.rsvp_fields = [];
           }
         }
@@ -185,74 +184,101 @@ export default function RSVPPage() {
   const isCoupleLogic = agency?.user_role === 'couple';
   const isPreview = isCoupleLogic && !isSubscribed && !isPreviewParam;
 
-  const Icon = template.iconType === 'leaf' ? Leaf :
-               template.iconType === 'star' ? Star :
-               template.iconType === 'mail' ? Mail :
-               template.iconType === 'camera' ? Camera :
-               template.iconType === 'flower' ? Flower : Heart;
-
   if (isLoading) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${template.colors.background}`}>
-        <div className="w-12 h-12 border-4 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin opacity-50" />
       </div>
     );
   }
 
+  const guestUrl = (slug ? `/${slug}` : project?.slug ? `/${project.slug}` : '') + '/guest' + window.location.search;
+
   return (
-    <div className={`min-h-screen flex flex-col items-center p-4 sm:p-6 ${template.colors.background} transition-colors duration-700 relative overflow-x-hidden ${template.fontSans} ${template.colors.text}`}>
+    <div className={`min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 ${template.colors.background} transition-colors duration-500 relative overflow-x-hidden ${template.fontSans} ${template.colors.text}`}>
+      {/* Top Banner for Previews */}
       {isPreview && (
-        <div className="absolute top-0 left-0 right-0 bg-[#2D2424] text-white py-2 px-4 shadow-2xl z-50 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-           <Zap className="w-3.5 h-3.5 text-[#C5A059]" />
-           <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-             Preview Mode: {rsvpCount}/5 RSVPs
-           </span>
+        <div className="fixed top-0 left-0 right-0 bg-[#252525] text-white py-2 px-4 shadow-sm z-50 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <Zap className="w-3.5 h-3.5 text-[#8B806F]" />
+            <span className="font-mono text-[11px]">
+              Preview Mode: {rsvpCount}/5 RSVPs
+            </span>
           </div>
-          <button 
-            onClick={() => window.open('/subscription', '_blank')}
-            className="bg-[#C5A059] text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-[#C5A059]/20"
+          <a
+            href="/subscription"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] font-medium underline hover:text-[#8B806F] transition-colors"
           >
             Upgrade to Publish
-          </button>
+          </a>
         </div>
       )}
-      
+
       {/* Agency Branding */}
       {agency && (
-        <div className={`absolute ${isPreview ? 'top-14' : 'top-8'} left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-white/20 backdrop-blur-md px-6 py-2 rounded-full border border-white/30 whitespace-nowrap`}>
-          {agency.logo_url && <img src={agency.logo_url} alt={agency.name} className="h-4 w-auto" />}
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Created by {agency.name}</span>
+        <div className={`fixed ${isPreview ? 'top-12' : 'top-5'} left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-white/70 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-black/5 text-[11px] text-[#252525] shadow-xs`}>
+          {agency.logo_url && <img src={agency.logo_url} alt={agency.name} className="h-3.5 w-auto rounded" />}
+          <span className="font-medium opacity-80">{agency.name}</span>
         </div>
       )}
 
-      {/* Decorative Background Elements */}
-      <div className={`absolute top-[-10%] right-[-10%] w-64 h-64 rounded-full blur-3xl opacity-20 ${template.id === 'starry' ? 'bg-blue-500' : 'bg-pink-300'}`} />
-      <div className={`absolute bottom-[-10%] left-[-10%] w-96 h-96 rounded-full blur-3xl opacity-10 ${template.id === 'starry' ? 'bg-indigo-500' : 'bg-yellow-200'}`} />
-
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
+      {/* RSVP Container */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-lg relative z-10 pt-16 pb-12 sm:my-auto"
+        transition={{ duration: 0.4 }}
+        className="w-full max-w-md relative z-10 my-auto pt-10 pb-8"
       >
-        <div className={`${template.colors.card} backdrop-blur-xl p-6 xs:p-8 md:p-12 rounded-[2rem] sm:rounded-[2.5rem] border ${template.colors.border} shadow-2xl`}>
-          <div className="text-center mb-8 sm:mb-10">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: "spring", stiffness: 260, damping: 20 }}
-              className={`inline-block p-3 sm:p-4 rounded-full ${template.colors.accent} bg-opacity-10 mb-4 sm:mb-6`}
-            >
-              <Users className={`w-8 h-8 sm:w-10 sm:h-10 fill-current bg-opacity-20`} />
-            </motion.div>
-            <h1 className={`text-3xl sm:text-5xl ${template.fontSerif} ${template.colors.headerText} mb-2 sm:mb-4 tracking-tight`}>
+        <div className={`${template.colors.card} rounded-2xl border ${template.colors.border} shadow-lg p-6 sm:p-8 backdrop-blur-md relative overflow-hidden`}>
+          {/* Cover photo if present */}
+          {project?.image_url && (
+            <div className="w-full h-36 rounded-xl overflow-hidden mb-6 border border-black/5 relative">
+              <img
+                src={project.image_url}
+                alt="Couple"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+            </div>
+          )}
+
+          {/* Header */}
+          <div className="text-center mb-6">
+            <div className={`inline-flex p-2.5 rounded-full ${template.colors.accent} bg-current/10 mb-3`}>
+              <Users className="w-5 h-5" />
+            </div>
+            <h1 className={`text-2xl sm:text-3xl ${template.fontSerif} ${template.colors.headerText} tracking-tight font-normal leading-tight mb-2`}>
               {groom} & {bride}
             </h1>
-            <p className={`text-sm sm:text-base ${template.colors.subtleText} tracking-wide font-medium uppercase tracking-widest`}>Wedding RSVP</p>
+
+            {/* Event details */}
+            {(project?.wedding_date || project?.location) && (
+              <div className="flex flex-wrap items-center justify-center gap-3 text-xs opacity-75 mb-2">
+                {project.wedding_date && (
+                  <span className="inline-flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5" />
+                    {new Date(project.wedding_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                )}
+                {project.location && (
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5" />
+                    {project.location}
+                  </span>
+                )}
+              </div>
+            )}
+
+            <p className={`text-xs ${template.colors.subtleText}`}>
+              Please let us know if you can attend our wedding celebration.
+            </p>
           </div>
 
-          <RSVPForm 
-            projectId={project?.id || ''} 
+          {/* RSVP Form */}
+          <RSVPForm
+            projectId={project?.id || ''}
             template={template}
             isPreview={isPreview}
             currentCount={rsvpCount}
@@ -263,64 +289,76 @@ export default function RSVPPage() {
             }}
           />
 
+          {/* Secondary link: Guestbook */}
+          <div className="mt-5 pt-4 border-t border-black/5 flex items-center justify-between text-xs">
+            <span className={`opacity-60 text-[11px]`}>Want to send congratulations?</span>
+            <Link
+              to={guestUrl}
+              className={`font-medium underline hover:opacity-100 opacity-80 transition-opacity`}
+            >
+              Sign Guestbook &rarr;
+            </Link>
+          </div>
+
+          {/* Success Dialog */}
           <AnimatePresence>
             {showSuccess && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
+                initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 1.1 }}
-                className={`absolute inset-0 flex items-center justify-center rounded-[2.5rem] ${template.colors.card} backdrop-blur-2xl z-20`}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className={`absolute inset-0 flex flex-col items-center justify-center p-8 rounded-2xl ${template.colors.card} backdrop-blur-xl z-20 text-center`}
               >
-                <div className="text-center p-8">
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", delay: 0.1 }}
-                  >
-                    <CheckCircle2 className={`w-20 h-20 ${template.colors.accent} mx-auto mb-6`} />
-                  </motion.div>
-                  <h3 className={`text-4xl ${template.fontSerif} ${template.colors.headerText} mb-2`}>Thank You</h3>
-                  <p className={`${template.colors.subtleText} font-medium tracking-wide`}>Your response has been received.</p>
-                  <button 
-                    onClick={() => setShowSuccess(false)}
-                    className="mt-8 text-xs font-bold uppercase tracking-widest opacity-60 hover:opacity-100"
-                  >
-                    Close
-                  </button>
-                </div>
+                <CheckCircle2 className={`w-12 h-12 ${template.colors.accent} mb-3`} />
+                <h3 className={`text-2xl ${template.fontSerif} ${template.colors.headerText} mb-1.5`}>
+                  Response Received
+                </h3>
+                <p className={`text-xs ${template.colors.subtleText} max-w-xs mb-4`}>
+                  Thank you for letting us know. We look forward to celebrating together.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowSuccess(false)}
+                  className="text-xs font-medium underline opacity-70 hover:opacity-100"
+                >
+                  Close
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       </motion.div>
-      
-      <div className={`absolute bottom-8 text-[12px] uppercase tracking-[0.4em] ${template.colors.subtleText} font-bold opacity-30`}>
-        Our Story • {new Date().getFullYear()}
-      </div>
 
-      <div className="fixed bottom-8 right-8 z-[100]">
+      {/* Subtle Footer */}
+      <footer className={`text-[11px] ${template.colors.subtleText} opacity-50 text-center pb-4`}>
+        {groom} & {bride} • RSVP Portal
+      </footer>
+
+      {/* Floating QR Code */}
+      <div className="fixed bottom-5 right-5 z-40">
         <button
           onClick={() => setShowQR(!showQR)}
-          className={`p-4 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 flex items-center justify-center backdrop-blur-md
-            ${template.id === 'digital' ? 'bg-[#00FF41] text-black' : template.id === 'starry' ? 'bg-[#38BDF8] text-white' : 'bg-[#C5A059] text-white'}
-          `}
+          className={`p-3 rounded-full shadow-md transition-transform hover:scale-105 active:scale-95 flex items-center justify-center backdrop-blur-sm ${
+            template.id === 'digital' ? 'bg-[#00FF41] text-black' : template.id === 'starry' ? 'bg-[#38BDF8] text-white' : 'bg-[#252525] text-white'
+          }`}
+          title="Share RSVP QR Code"
         >
-          <QrCode className="w-6 h-6" />
+          <QrCode className="w-4 h-4" />
         </button>
 
         <AnimatePresence>
           {showQR && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.8, y: 20 }}
+              initial={{ opacity: 0, scale: 0.9, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.8, y: 20 }}
-              className={`absolute bottom-20 right-0 p-6 rounded-3xl ${template.colors.card} border ${template.colors.border} shadow-2xl backdrop-blur-2xl w-64 text-center`}
+              exit={{ opacity: 0, scale: 0.9, y: 8 }}
+              className={`absolute bottom-14 right-0 p-4 rounded-xl ${template.colors.card} border ${template.colors.border} shadow-xl backdrop-blur-xl w-56 text-center`}
             >
-              <div className="bg-white p-4 rounded-2xl mb-4 inline-block">
-                <QRCodeSVG value={currentUrl} size={160} />
+              <div className="bg-white p-3 rounded-lg mb-2 inline-block shadow-xs">
+                <QRCodeSVG value={currentUrl} size={140} />
               </div>
-              <p className={`text-sm font-bold ${template.colors.text} mb-1`}>RSVP QR Code</p>
-              <p className={`text-[10px] ${template.colors.subtleText} uppercase tracking-widest`}>Scan to RSVP</p>
+              <p className={`text-xs font-medium ${template.colors.text}`}>RSVP QR Code</p>
+              <p className={`text-[10px] ${template.colors.subtleText}`}>Scan to submit RSVP</p>
             </motion.div>
           )}
         </AnimatePresence>

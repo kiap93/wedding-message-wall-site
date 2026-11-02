@@ -67,8 +67,8 @@ export default function InvitationViewer() {
 
   if (isLoading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-[#FDFCF0]">
-        <Loader2 className="w-8 h-8 text-[#C5A059] animate-spin" />
+      <div className="h-screen w-screen flex items-center justify-center bg-[#F7F7F5]">
+        <Loader2 className="w-6 h-6 text-[#8B806F] animate-spin" />
       </div>
     );
   }

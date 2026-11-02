@@ -154,17 +154,17 @@ export const UploadDropzone: React.FC<UploadDropzoneProps> = ({
   };
 
   return (
-    <div className={`flex flex-col gap-3 w-full ${className}`}>
+    <div className={`flex flex-col gap-2.5 w-full ${className}`}>
       {/* Upload Zone */}
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={triggerSelect}
-        className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer flex flex-col items-center justify-center min-h-[160px] transition-all relative overflow-hidden select-none ${
+        className={`border border-dashed rounded-lg p-5 text-center cursor-pointer flex flex-col items-center justify-center min-h-[140px] transition-colors relative overflow-hidden select-none ${
           isDragging
-            ? 'border-[#C5A059] bg-[#C5A059]/5'
-            : 'border-gray-200 hover:border-[#C5A059]/40 hover:bg-gray-50/40 bg-white'
+            ? 'border-[#252525] bg-[#FAF9F7]'
+            : 'border-[#E8E8E5] hover:border-[#8B806F] bg-[#FAF9F7]/50 hover:bg-[#FAF9F7]'
         }`}
       >
         <input
@@ -177,54 +177,52 @@ export const UploadDropzone: React.FC<UploadDropzoneProps> = ({
 
         {/* Upload States */}
         {isUploading ? (
-          <div className="flex flex-col items-center gap-3 w-full max-w-[200px]">
+          <div className="flex flex-col items-center gap-2.5 w-full max-w-[200px]">
             {previewUrl ? (
-              <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-gray-100 shadow-sm mb-1 animate-pulse">
-                <img src={previewUrl} alt="Uploading preview" className="w-full h-full object-cover" />
+              <div className="relative w-12 h-12 rounded overflow-hidden border border-[#E8E8E5] mb-1">
+                <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                  <Loader2 className="w-4 h-4 text-white animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
                 </div>
               </div>
             ) : (
-              <Loader2 className="w-8 h-8 text-[#C5A059] animate-spin mb-1" />
+              <Loader2 className="w-6 h-6 text-[#252525] animate-spin mb-1" />
             )}
-            <p className="text-[10px] uppercase tracking-widest font-black text-gray-400">Optimizing Photo...</p>
+            <p className="text-xs text-[#777777]">Uploading image...</p>
             
-            {/* Progress Bar Container */}
-            <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden mt-1 relative">
+            <div className="w-full h-1 bg-[#E8E8E5] rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-[#C5A059] to-[#b38e4a] transition-all duration-300"
+                className="h-full bg-[#252525] transition-all duration-200"
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <span className="text-[9px] font-bold text-[#C5A059] font-mono leading-none">{progress}%</span>
+            <span className="text-[10px] font-mono tabular-nums text-[#777777]">{progress}%</span>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-10 h-10 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center text-gray-400 group-hover:text-[#C5A059] transition-colors mb-1">
-              <Upload className="w-5 h-5 text-gray-400" />
+          <div className="flex flex-col items-center gap-1.5">
+            <div className="w-8 h-8 bg-white border border-[#E8E8E5] rounded-md flex items-center justify-center text-[#777777] mb-1">
+              <Upload className="w-4 h-4 text-[#777777]" />
             </div>
-            <p className="text-xs font-bold text-gray-700">Drag & drop your invitation photo</p>
-            <p className="text-[9px] uppercase tracking-wider text-gray-400 mt-0.5">
-              or <span className="text-[#C5A059] font-bold underline">click to browse</span> files
+            <p className="text-xs font-medium text-[#252525]">Click or drag image to upload</p>
+            <p className="text-[11px] text-[#777777]">
+              JPG, PNG, or WEBP · Max 5MB
             </p>
-            <p className="text-[8px] text-gray-300 mt-2 italic">Supports JPG, PNG, WEBP — Max 5MB</p>
           </div>
         )}
       </div>
 
-      {/* Message Notifications */}
+      {/* Notifications */}
       {errorMessage && (
-        <div className="flex items-start gap-2 p-3 bg-red-50 text-red-600 rounded-xl border border-red-100 animate-fadeIn">
-          <AlertCircle className="w-3.5 h-3.5 transform translate-y-0.5 shrink-0" />
-          <span className="text-[10px] leading-relaxed font-bold">{errorMessage}</span>
+        <div className="flex items-start gap-2 p-2.5 bg-red-50 text-red-700 rounded-md border border-red-200 text-xs">
+          <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0 mt-0.5" />
+          <span>{errorMessage}</span>
         </div>
       )}
 
       {successMessage && (
-        <div className="flex items-start gap-2 p-3 bg-green-50 text-green-700 rounded-xl border border-green-100 animate-fadeIn">
-          <CheckCircle className="w-3.5 h-3.5 transform translate-y-0.5 shrink-0" />
-          <span className="text-[10px] leading-relaxed font-bold">{successMessage}</span>
+        <div className="flex items-start gap-2 p-2.5 bg-green-50 text-green-700 rounded-md border border-green-200 text-xs">
+          <CheckCircle className="w-3.5 h-3.5 text-green-600 shrink-0 mt-0.5" />
+          <span>{successMessage}</span>
         </div>
       )}
     </div>

@@ -1,7 +1,10 @@
 import React from 'react';
 import { Plus, Trash2, GripVertical, Check, X, ToggleLeft, ToggleRight } from 'lucide-react';
 import { RSVPField } from '../types';
-import { motion, Reorder } from 'motion/react';
+import { Reorder } from 'motion/react';
+import Button from '../design-system/components/Button';
+import Input from '../design-system/components/Input';
+import Select from '../design-system/components/Select';
 
 interface RSVPFieldEditorProps {
   fields: RSVPField[];
@@ -17,7 +20,6 @@ const DEFAULT_FIELDS: RSVPField[] = [
 ];
 
 export default function RSVPFieldEditor({ fields, onChange }: RSVPFieldEditorProps) {
-  // Ensure fields is always an array
   let safeFields: RSVPField[] = [];
   if (Array.isArray(fields)) {
     safeFields = fields;
@@ -43,8 +45,6 @@ export default function RSVPFieldEditor({ fields, onChange }: RSVPFieldEditorPro
   };
 
   const handleRemoveField = (id: string) => {
-    // Basic fields (name, email etc) can't be TRULY removed from the schema but we can skip them in rendering
-    // For now allow removing anything
     onChange(currentFields.filter(f => f.id !== id));
   };
 
@@ -55,101 +55,106 @@ export default function RSVPFieldEditor({ fields, onChange }: RSVPFieldEditorPro
   const toggleField = (id: string) => {
     const field = currentFields.find(f => f.id === id);
     if (field) {
-        // If it exists, remove it. If it doesn't, add it back from defaults?
-        // Actually, let's use a "hidden" flag or just filter them.
-        handleRemoveField(id);
+      handleRemoveField(id);
     } else {
-        const defaultF = DEFAULT_FIELDS.find(df => df.id === id);
-        if (defaultF) onChange([...currentFields, defaultF]);
+      const defaultF = DEFAULT_FIELDS.find(df => df.id === id);
+      if (defaultF) onChange([...currentFields, defaultF]);
     }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xl font-serif">Form Questions</h3>
-        <button
+      {/* Header bar */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-[#252525]">RSVP Form Schema</h3>
+          <p className="text-xs text-[#777777]">Customize the questions and options guests answer during confirmation</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
           onClick={handleAddField}
-          className="flex items-center gap-2 px-4 py-2 bg-[#C5A059] text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[#B38D45] transition-all"
+          leftIcon={<Plus className="w-3.5 h-3.5" />}
         >
-          <Plus className="w-4 h-4" /> Add Field
-        </button>
+          Add Custom Question
+        </Button>
       </div>
 
-      <div className="bg-white rounded-[2rem] border border-[#C5A059]/10 shadow-sm p-6">
-        <div className="mb-6 space-y-4">
-            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2">Standard Fields</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {DEFAULT_FIELDS.map(df => {
-                    const isActive = Array.isArray(currentFields) && currentFields.some(f => f.id === df.id);
-                    return (
-                        <button
-                            key={df.id}
-                            onClick={() => toggleField(df.id)}
-                            className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                                isActive 
-                                    ? 'border-[#C5A059] bg-[#C5A059]/5 text-[#C5A059]' 
-                                    : 'border-gray-100 bg-gray-50 text-gray-400 opacity-60'
-                            }`}
-                        >
-                            <span className="text-sm font-bold">{df.label}</span>
-                            {isActive ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
-                        </button>
-                    );
-                })}
-            </div>
+      {/* Standard Fields Toggle Strip */}
+      <div className="bg-white rounded-lg border border-[#E8E8E5] p-5 shadow-subtle">
+        <div className="text-xs font-medium text-[#777777] mb-3">Core Attendance Fields</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+          {DEFAULT_FIELDS.map(df => {
+            const isActive = Array.isArray(currentFields) && currentFields.some(f => f.id === df.id);
+            return (
+              <button
+                key={df.id}
+                onClick={() => toggleField(df.id)}
+                className={`flex items-center justify-between p-2.5 rounded-md border text-xs font-medium transition-colors ${
+                  isActive 
+                    ? 'border-[#252525] bg-[#FAF9F7] text-[#252525]' 
+                    : 'border-[#E8E8E5] bg-white text-[#999999] hover:border-[#D4D4CE]'
+                }`}
+              >
+                <span>{df.label}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                  isActive ? 'bg-[#252525] text-white' : 'bg-[#EFEFEA] text-[#777777]'
+                }`}>
+                  {isActive ? 'Active' : 'Off'}
+                </span>
+              </button>
+            );
+          })}
         </div>
+      </div>
 
-        <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-4">Custom Questions</h4>
+      {/* Reorderable Fields List */}
+      <div className="space-y-3">
+        <div className="text-xs font-medium text-[#777777]">Questions & Conditional Logic</div>
         
-        <Reorder.Group axis="y" values={currentFields} onReorder={onChange} className="space-y-4">
+        <Reorder.Group axis="y" values={currentFields} onReorder={onChange} className="space-y-3">
           {Array.isArray(currentFields) && currentFields.map((field) => {
             const isStandard = DEFAULT_FIELDS.some(df => df.id === field.id);
             return (
               <Reorder.Item 
                 key={field.id} 
                 value={field}
-                className="bg-white border border-gray-100 p-6 rounded-[2rem] shadow-sm flex items-start gap-4 group hover:border-[#C5A059]/30 transition-all"
+                className="bg-white border border-[#E8E8E5] p-4 rounded-lg shadow-subtle flex items-start gap-3 hover:border-[#D4D4CE] transition-colors"
               >
-                <div className="mt-2 cursor-grab active:cursor-grabbing text-gray-300 group-hover:text-[#C5A059] transition-colors p-2">
-                  <GripVertical className="w-5 h-5" />
+                <div className="mt-2.5 cursor-grab active:cursor-grabbing text-[#B0ADA8] hover:text-[#252525] transition-colors">
+                  <GripVertical className="w-4 h-4" />
                 </div>
                 
-                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-1">
-                    <label className="text-[8px] font-black uppercase tracking-widest text-[#C5A059]">
-                      {isStandard ? 'Standard Label' : 'Custom Question'}
-                    </label>
-                    <input
-                      type="text"
-                      value={field.label}
-                      onChange={(e) => handleUpdateField(field.id, { label: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-transparent focus:border-[#C5A059] focus:bg-white outline-none transition-all text-[#2D2424] text-sm font-medium"
-                      placeholder="Enter question label..."
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[8px] font-black uppercase tracking-widest text-gray-400">Field Type</label>
-                    <select
-                      value={field.type}
-                      onChange={(e) => handleUpdateField(field.id, { type: e.target.value as any })}
-                      disabled={isStandard && field.id !== 'meal_preference'} // Keep meal preference choice-based
-                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-transparent focus:border-[#C5A059] focus:bg-white outline-none transition-all text-[#2D2424] text-sm disabled:opacity-50 cursor-pointer"
-                    >
-                      <option value="text">Short Text</option>
-                      <option value="textarea">Long Text</option>
-                      <option value="number">Number</option>
-                      <option value="select">Dropdown Choice</option>
-                      <option value="radio">Single Choice (Radio)</option>
-                      <option value="checkbox">Multi Choice (Checkbox)</option>
-                    </select>
-                  </div>
+                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input
+                    label={isStandard ? 'Standard Label' : 'Question Label'}
+                    value={field.label}
+                    onChange={(e) => handleUpdateField(field.id, { label: e.target.value })}
+                    placeholder="Enter question text..."
+                  />
+
+                  <Select
+                    label="Field Type"
+                    value={field.type}
+                    onChange={(e) => handleUpdateField(field.id, { type: e.target.value as any })}
+                    disabled={isStandard && field.id !== 'meal_preference'}
+                    options={[
+                      { value: 'text', label: 'Short Text' },
+                      { value: 'textarea', label: 'Long Text / Notes' },
+                      { value: 'number', label: 'Numeric Quantity' },
+                      { value: 'select', label: 'Dropdown Selection' },
+                      { value: 'radio', label: 'Single Choice (Radio)' },
+                      { value: 'checkbox', label: 'Multi Choice (Checkbox)' },
+                    ]}
+                  />
+
+                  {/* Choice options for dropdowns/radios */}
                   {(field.type === 'select' || field.type === 'radio' || field.type === 'checkbox') && (
-                    <div className="md:col-span-2 space-y-4 bg-gray-50/50 p-6 rounded-2xl border border-dashed border-gray-100">
-                      <label className="text-[8px] font-black uppercase tracking-widest text-gray-400">Options</label>
-                      <div className="space-y-3">
+                    <div className="md:col-span-2 p-3 bg-[#FAF9F7] rounded-md border border-[#E8E8E5] space-y-2">
+                      <div className="text-xs font-medium text-[#777777]">Selection Options</div>
+                      <div className="space-y-2">
                         {(field.options || []).map((option, index) => (
-                          <div key={index} className="flex gap-3">
+                          <div key={index} className="flex gap-2">
                             <input
                               type="text"
                               value={option}
@@ -158,7 +163,7 @@ export default function RSVPFieldEditor({ fields, onChange }: RSVPFieldEditorPro
                                 newOptions[index] = e.target.value;
                                 handleUpdateField(field.id, { options: newOptions });
                               }}
-                              className="flex-1 px-4 py-2 rounded-xl bg-white border border-gray-100 focus:border-[#C5A059] outline-none transition-all text-sm"
+                              className="flex-1 h-8 px-3 text-xs bg-white text-[#252525] border border-[#E8E8E5] rounded-md focus:outline-none focus:ring-1 focus:ring-[#8B806F]"
                               placeholder={`Option ${index + 1}`}
                             />
                             <button
@@ -167,75 +172,62 @@ export default function RSVPFieldEditor({ fields, onChange }: RSVPFieldEditorPro
                                 const newOptions = (field.options || []).filter((_, i) => i !== index);
                                 handleUpdateField(field.id, { options: newOptions });
                               }}
-                              className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                              className="p-1.5 text-[#777777] hover:text-red-600 rounded transition-colors"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         ))}
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => {
                             const newOptions = [...(field.options || []), ''];
                             handleUpdateField(field.id, { options: newOptions });
                           }}
-                          className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#C5A059] hover:text-[#B38D45] transition-colors mt-2"
+                          leftIcon={<Plus className="w-3 h-3" />}
                         >
-                          <Plus className="w-3.5 h-3.5" /> Add Choice
-                        </button>
+                          Add Option Choice
+                        </Button>
                       </div>
                     </div>
                   )}
-                  <div className="md:col-span-2 flex flex-wrap items-center gap-8 py-2">
-                     <div className="flex items-center gap-3">
-                       <input 
-                          type="checkbox" 
-                          id={`req-${field.id}`}
-                          checked={field.required}
-                          onChange={(e) => handleUpdateField(field.id, { required: e.target.checked })}
-                          className="w-5 h-5 rounded-lg border-gray-200 text-[#C5A059] focus:ring-[#C5A059] transition-all cursor-pointer"
-                       />
-                       <label htmlFor={`req-${field.id}`} className="text-[10px] font-bold text-gray-500 uppercase tracking-wider cursor-pointer select-none">Required</label>
-                     </div>
-                     <div className="flex items-center gap-3">
-                       <input 
-                          type="checkbox" 
-                          id={`att-${field.id}`}
-                          checked={field.showIfAttending}
-                          onChange={(e) => handleUpdateField(field.id, { showIfAttending: e.target.checked })}
-                          className="w-5 h-5 rounded-lg border-gray-200 text-[#C5A059] focus:ring-[#C5A059] transition-all cursor-pointer"
-                       />
-                       <label htmlFor={`att-${field.id}`} className="text-[10px] font-bold text-gray-500 uppercase tracking-wider cursor-pointer select-none">Show only if Attending</label>
-                     </div>
+
+                  {/* Checkbox settings */}
+                  <div className="md:col-span-2 flex flex-wrap items-center gap-6 pt-1 text-xs text-[#555555]">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        checked={field.required}
+                        onChange={(e) => handleUpdateField(field.id, { required: e.target.checked })}
+                        className="rounded border-[#E8E8E5] text-[#252525] focus:ring-[#8B806F]"
+                      />
+                      <span>Required field</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        checked={field.showIfAttending}
+                        onChange={(e) => handleUpdateField(field.id, { showIfAttending: e.target.checked })}
+                        className="rounded border-[#E8E8E5] text-[#252525] focus:ring-[#8B806F]"
+                      />
+                      <span>Only show if attending</span>
+                    </label>
                   </div>
                 </div>
-  
+
                 <button
                   onClick={() => handleRemoveField(field.id)}
-                  className="mt-6 p-2 text-gray-200 hover:text-red-500 transition-colors"
-                  title="Remove Question"
+                  className="mt-2 text-[#B0ADA8] hover:text-red-600 p-1.5 rounded transition-colors"
+                  title="Delete Question"
                 >
-                  <Trash2 className="w-5 h-5" />
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </Reorder.Item>
             );
           })}
         </Reorder.Group>
-
-        <div className="mt-6 flex justify-center">
-          <button
-            onClick={handleAddField}
-            className="flex items-center gap-2 px-6 py-3 bg-[#C5A059]/10 text-[#C5A059] border border-dashed border-[#C5A059]/30 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#C5A059]/20 transition-all w-full justify-center"
-          >
-            <Plus className="w-4 h-4" /> Add Another Question
-          </button>
-        </div>
-
-        {Array.isArray(currentFields) && currentFields.filter(f => !DEFAULT_FIELDS.some(df => df.id === f.id)).length === 0 && (
-            <div className="py-8 text-center border-2 border-dashed border-gray-100 rounded-3xl mt-4">
-                <p className="text-sm text-gray-400">No custom questions added yet. Click "Add Field" to start customizing your RSVP form.</p>
-            </div>
-        )}
       </div>
     </div>
   );
