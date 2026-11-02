@@ -3,12 +3,19 @@ main = "worker/index.ts"
 compatibility_date = "2024-04-01"
 account_id = "4c4c40d838a6dcea0783b300a9718180"
 
+# Cloudflare Workers Static Assets Configuration
+# Serves the compiled React frontend directly from ./dist
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = [
+  "/api/*"
+]
+
 [vars]
 GOOGLE_CLIENT_ID = "946837250683-434o0vtdrkoe2092vghh65md9nfr8hpu.apps.googleusercontent.com"
 APP_URL = "https://eventframe.io"
-# FRONTEND_URL MUST be your actual server origin (e.g. Cloud Run URL)
-# NOT the public eventframe.io domain, to avoid proxy loops.
-FRONTEND_URL = "https://eventframe.io"
 
 # Secrets (Set these using 'wrangler secret put')
 # GOOGLE_CLIENT_SECRET
@@ -17,3 +24,10 @@ FRONTEND_URL = "https://eventframe.io"
 # STRIPE_WEBHOOK_SECRET
 # SUPABASE_URL
 # SUPABASE_SERVICE_ROLE_KEY
+# RESEND_API_KEY
+# GEMINI_API_KEY
+# R2_ENDPOINT
+# R2_ACCESS_KEY_ID
+# R2_SECRET_ACCESS_KEY
+# R2_BUCKET_NAME
+# R2_PUBLIC_URL

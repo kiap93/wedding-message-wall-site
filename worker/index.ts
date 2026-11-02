@@ -7,11 +7,12 @@ import Stripe from 'stripe';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 type Bindings = {
+  ASSETS?: { fetch: typeof fetch };
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   JWT_SECRET: string;
   APP_URL: string;      // The Worker URL (for Google callback)
-  FRONTEND_URL: string; // The Website URL (for final redirect)
+  FRONTEND_URL?: string; // Optional Website URL
   SUPABASE_URL: string;
   VITE_SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
@@ -64,39 +65,6 @@ app.use('*', async (c, next) => {
   await next();
 });
 
-// Helper to proxy requests to backend (used when R2 is not configured in worker environment)
-async function proxyToBackend(c: any) {
-  const url = new URL(c.req.url);
-  const targetUrl = new URL(url.pathname + url.search, c.env.FRONTEND_URL || 'https://eventframe.io');
-  
-  console.log(`[PROXY-BACKEND] Delegating API ${url.pathname} -> ${targetUrl.toString()}`);
-
-  const headers = new Headers(c.req.raw.headers);
-  headers.delete('Host');
-  headers.set('X-Forwarded-Host', url.hostname);
-  headers.set('X-Forwarded-Proto', url.protocol.replace(':', ''));
-
-  const proxyRequest = new Request(targetUrl.toString(), {
-    method: c.req.method,
-    headers: headers,
-    body: c.req.method !== 'GET' && c.req.method !== 'HEAD' ? c.req.raw.body : undefined,
-    redirect: 'manual'
-  });
-
-  try {
-    const response = await fetch(proxyRequest);
-    const newHeaders = new Headers(response.headers);
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: newHeaders
-    });
-  } catch (e: any) {
-    console.error('[PROXY-BACKEND] Fetch error:', e);
-    return c.text(`Proxy Error: Failed to reach origin backend at ${c.env.FRONTEND_URL}.`, 502);
-  }
-}
-
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
 
@@ -117,7 +85,7 @@ app.get('/api/auth/google', async (c) => {
   }
 
   // Capture the origin to redirect back to the correct area
-  const origin = originQuery || c.req.header('Origin') || c.req.header('Referer') || c.env.FRONTEND_URL || `${protocol}://${host}`;
+  const origin = originQuery || c.req.header('Origin') || c.req.header('Referer') || c.env.FRONTEND_URL || c.env.APP_URL || `${protocol}://${host}`;
   const state = btoa(JSON.stringify({ origin }));
 
   const params = new URLSearchParams({
@@ -146,7 +114,7 @@ app.get('/api/auth/callback', async (c) => {
   const code = c.req.query('code');
   const stateParam = c.req.query('state');
   
-  let targetOrigin = c.env.FRONTEND_URL;
+  let targetOrigin = c.env.FRONTEND_URL || c.env.APP_URL || 'https://eventframe.io';
   if (stateParam) {
     try {
       const decoded = JSON.parse(atob(stateParam));
@@ -269,7 +237,7 @@ app.get('/api/auth/callback', async (c) => {
   } catch (error) {
     console.error('Worker Auth Error:', error);
     // Use the dynamic targetOrigin for error redirect too
-    const fallbackOrigin = c.env.FRONTEND_URL || 'https://eventframe.io';
+    const fallbackOrigin = c.env.FRONTEND_URL || c.env.APP_URL || 'https://eventframe.io';
     return c.redirect(`${fallbackOrigin}/login?error=auth_failed`);
   }
 });
@@ -752,7 +720,10 @@ const getSupabase = (c: any) => {
 // 5.4 Image Upload and Management API (Dual Architecture Support)
 app.post('/api/upload', async (c) => {
   if (!isR2Configured(c.env)) {
-    return proxyToBackend(c);
+    return c.json({
+      error: 'Cloudflare R2 storage is not configured in Worker environment.',
+      details: 'Please set R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME in your Cloudflare Worker.'
+    }, 503);
   }
   const tokenHeader = c.req.header('Authorization');
   const cookieToken = getCookie(c, 'wedding_session');
@@ -859,9 +830,6 @@ app.post('/api/upload', async (c) => {
 });
 
 app.get('/api/images', async (c) => {
-  if (!isR2Configured(c.env)) {
-    return proxyToBackend(c);
-  }
   const tokenHeader = c.req.header('Authorization');
   const cookieToken = getCookie(c, 'wedding_session');
   let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
@@ -899,9 +867,6 @@ app.get('/api/images', async (c) => {
 });
 
 app.delete('/api/images/:id', async (c) => {
-  if (!isR2Configured(c.env)) {
-    return proxyToBackend(c);
-  }
   const tokenHeader = c.req.header('Authorization');
   const cookieToken = getCookie(c, 'wedding_session');
   let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
@@ -1609,75 +1574,34 @@ app.post('/api/webhook', async (c) => {
   return c.json({ received: true });
 });
 
-// 8. Proxy all other requests to the Frontend App (White Label Logic)
+// 8. Strict 404 for any unmatched API routes (prevents accidentally serving index.html)
+app.all('/api/*', (c) => {
+  return c.json({ error: `API route not found: ${c.req.method} ${c.req.path}` }, 404);
+});
+
+// 9. Static Assets & Single-Page Application (SPA) Routing Fallback
 app.all('*', async (c) => {
-  const url = new URL(c.req.url);
-  
-  // If it's a request to the main application (not an API route already handled)
-  // we proxy it to the FRONTEND_URL but preserve the hostname logic
-  const targetUrl = new URL(url.pathname + url.search, c.env.FRONTEND_URL);
-  
-  console.log(`Proxying ${url.hostname}${url.pathname} -> ${targetUrl.toString()}`);
+  // If Cloudflare Workers Static Assets binding is present
+  if (c.env.ASSETS) {
+    const response = await c.env.ASSETS.fetch(c.req.raw);
 
-  const headers = new Headers(c.req.raw.headers);
-  headers.delete('Host'); // Ensure the destination host is used instead of the client's host
-  
-  // Pass original host and proto so the app can handle logic if needed
-  headers.set('X-Forwarded-Host', url.hostname);
-  headers.set('X-Forwarded-Proto', url.protocol.replace(':', ''));
-
-  const proxyRequest = new Request(targetUrl.toString(), {
-    method: c.req.method,
-    headers: headers,
-    body: c.req.method !== 'GET' && c.req.method !== 'HEAD' ? c.req.raw.body : undefined,
-    redirect: 'manual'
-  });
-
-  try {
-    const response = await fetch(proxyRequest);
-    
-    // Create a new set of headers to modify
-    const newHeaders = new Headers(response.headers);
-    
-    // Rewrite redirects that point to the internal origin
-    const location = newHeaders.get('Location');
-    if (location) {
-      try {
-        const locationUrl = new URL(location, targetUrl.toString());
-        const frontendUrl = new URL(c.env.FRONTEND_URL);
-        
-        // If the redirect points to our internal origin, rewrite it to the public origin
-        if (locationUrl.hostname === frontendUrl.hostname) {
-          const rewrittenUrl = new URL(locationUrl.pathname + locationUrl.search, url.origin);
-          newHeaders.set('Location', rewrittenUrl.toString());
-        }
-      } catch (err) {
-        // If location is not a valid URL (and not relative), just cross our fingers or leave it
-      }
+    // Revalidate HTML so new frontend releases are immediately picked up
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('text/html')) {
+      const newHeaders = new Headers(response.headers);
+      newHeaders.set('Cache-Control', 'public, max-age=0, must-revalidate');
+      newHeaders.set('Pragma', 'no-cache');
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: newHeaders
+      });
     }
 
-    // Also rewrite cookies to the public domain
-    const setCookie = newHeaders.get('Set-Cookie');
-    if (setCookie) {
-      // Very simple domain rewrite for cookies if they specify the internal domain
-      const frontendUrl = new URL(c.env.FRONTEND_URL);
-      const publicUrl = new URL(url.origin);
-      const rewrittenCookie = setCookie.replace(new RegExp(frontendUrl.hostname, 'g'), publicUrl.hostname);
-      newHeaders.set('Set-Cookie', rewrittenCookie);
-    }
-
-    // Proxy must not return double CORS or other conflicting headers if already present
-    // but usually fetch/response handling in Workers is transparent enough.
-    
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: newHeaders
-    });
-  } catch (e) {
-    console.error('Proxy Fetch Error:', e);
-    return c.text(`Proxy Error: Failed to reach origin at ${c.env.FRONTEND_URL}.`, 502);
+    return response;
   }
+
+  return c.text('Not found', 404);
 });
 
 export default app;
