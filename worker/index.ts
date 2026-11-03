@@ -19,6 +19,7 @@ type Bindings = {
   SUPABASE_SERVICE_KEY: string;
   SUPABASE_SECRET_KEY: string;
   VITE_SUPABASE_ANON_KEY: string;
+  SUPABASE_ANON_KEY?: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   GMAIL_USER: string;
@@ -67,6 +68,12 @@ app.use('*', async (c, next) => {
 
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
+
+// Public client config (Safe: only exposes public project URL and anon key, never service-role secrets)
+app.get('/api/config', (c) => c.json({
+  supabaseUrl: c.env.VITE_SUPABASE_URL || c.env.SUPABASE_URL || '',
+  supabaseAnonKey: c.env.VITE_SUPABASE_ANON_KEY || c.env.SUPABASE_ANON_KEY || '',
+}));
 
 // 1. Redirect to Google
 app.get('/api/auth/google', async (c) => {
@@ -1588,10 +1595,29 @@ app.all('*', async (c) => {
     // Revalidate HTML so new frontend releases are immediately picked up
     const contentType = response.headers.get('content-type') || '';
     if (contentType.includes('text/html')) {
+      let body: BodyInit = response.body as any;
+      const supabaseUrl = c.env.VITE_SUPABASE_URL || c.env.SUPABASE_URL;
+      const supabaseAnonKey = c.env.VITE_SUPABASE_ANON_KEY || c.env.SUPABASE_ANON_KEY;
+
+      // If public Supabase variables exist in Worker runtime environment, inject into HTML <head>
+      if (supabaseUrl && supabaseAnonKey) {
+        try {
+          const html = await response.text();
+          const safeConfig = JSON.stringify({
+            VITE_SUPABASE_URL: supabaseUrl,
+            VITE_SUPABASE_ANON_KEY: supabaseAnonKey,
+          });
+          const injection = `<script>window.__ENV__=Object.assign(window.__ENV__||{},${safeConfig});</script>`;
+          body = html.replace('<head>', `<head>${injection}`);
+        } catch (e) {
+          body = response.body as any;
+        }
+      }
+
       const newHeaders = new Headers(response.headers);
       newHeaders.set('Cache-Control', 'public, max-age=0, must-revalidate');
       newHeaders.set('Pragma', 'no-cache');
-      return new Response(response.body, {
+      return new Response(body, {
         status: response.status,
         statusText: response.statusText,
         headers: newHeaders
