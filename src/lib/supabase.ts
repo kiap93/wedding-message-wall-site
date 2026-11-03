@@ -1,18 +1,26 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+declare const __SUPABASE_URL__: string | undefined;
+declare const __SUPABASE_ANON_KEY__: string | undefined;
+
 let supabaseInstance: SupabaseClient | null = null;
 
 export function getSupabase(): SupabaseClient {
   if (!supabaseInstance) {
     const envObj = (typeof window !== 'undefined' ? window.__ENV__ : undefined) || {};
 
+    // 1. Direct constant replacement (__SUPABASE_URL__ defined via Vite config)
+    // 2. Vite standard import.meta.env
+    // 3. Runtime window.__ENV__ fallback
     const url = 
+      (typeof __SUPABASE_URL__ !== 'undefined' && __SUPABASE_URL__) ||
       import.meta.env.VITE_SUPABASE_URL ||
       import.meta.env.SUPABASE_URL ||
       envObj.VITE_SUPABASE_URL ||
       envObj.SUPABASE_URL;
 
     const key = 
+      (typeof __SUPABASE_ANON_KEY__ !== 'undefined' && __SUPABASE_ANON_KEY__) ||
       import.meta.env.VITE_SUPABASE_ANON_KEY ||
       import.meta.env.SUPABASE_ANON_KEY ||
       envObj.VITE_SUPABASE_ANON_KEY ||

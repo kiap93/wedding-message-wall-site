@@ -1,5 +1,8 @@
 /// <reference types="vite/client" />
 
+declare const __SUPABASE_URL__: string | undefined;
+declare const __SUPABASE_ANON_KEY__: string | undefined;
+
 interface Window {
   __ENV__?: {
     VITE_SUPABASE_URL?: string;
