@@ -263,7 +263,7 @@ export default function CoupleDashboard() {
                 onClick={() => window.open(`/${event.slug}/display`, '_blank')}
                 rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
               >
-                Open Live Display
+                Live Display
               </Button>
               <Button
                 variant="outline"
@@ -272,6 +272,14 @@ export default function CoupleDashboard() {
                 rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
               >
                 Guest Hub
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(`/${event.slug}/rsvp`, '_blank')}
+                rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
+              >
+                RSVP
               </Button>
             </div>
           }

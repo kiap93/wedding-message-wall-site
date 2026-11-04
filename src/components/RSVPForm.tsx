@@ -1,27 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Check, X, Users, Utensils, MessageSquare, Mail } from 'lucide-react';
-import { WeddingTemplate, RSVP, RSVPField } from '../types';
+import { Check, X } from 'lucide-react';
+import { WeddingTemplate, RSVPField } from '../types';
+import { ResolvedEventTheme, resolveEventTheme } from '../lib/eventTheme';
 import { postRSVP } from '../lib/api';
 import { useUser } from '../lib/UserContext';
 
 interface RSVPFormProps {
   projectId: string;
-  template: WeddingTemplate;
+  template?: WeddingTemplate;
+  resolvedTheme?: ResolvedEventTheme;
   onSuccess: () => void;
   isPreview?: boolean;
   currentCount?: number;
   rsvpFields?: RSVPField[];
 }
 
-export default function RSVPForm({ projectId, template, onSuccess, isPreview, currentCount = 0, rsvpFields }: RSVPFormProps) {
+export default function RSVPForm({ 
+  projectId, 
+  template, 
+  resolvedTheme: providedTheme, 
+  onSuccess, 
+  isPreview, 
+  currentCount = 0, 
+  rsvpFields 
+}: RSVPFormProps) {
   const { user } = useUser();
+  const theme = providedTheme || resolveEventTheme(template?.id, template ? [template] : []);
+
   const [formData, setFormData] = useState<Record<string, any>>({
     name: '',
     email: '',
     attending: true,
     guest_count: 1,
-    meal_preference: 'standard',
+    meal_preference: 'Standard',
     dietary_requirements: ''
   });
 
@@ -52,7 +64,7 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
     }
   }
 
-  const activeFields = (safeRsvpFields && safeRsvpFields.length > 0) ? safeRsvpFields : [
+  const activeFields: RSVPField[] = (safeRsvpFields && safeRsvpFields.length > 0) ? safeRsvpFields : [
     { id: 'name', label: 'Full Name', type: 'text', required: true },
     { id: 'email', label: 'Email Address', type: 'text', required: false },
     { id: 'guest_count', label: 'Number of Guests', type: 'number', required: true, showIfAttending: true },
@@ -78,7 +90,6 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
     }
 
     try {
-      // Split responses into core fields and custom responses
       const coreFields = ['name', 'email', 'attending', 'guest_count', 'meal_preference', 'dietary_requirements'];
       const payload: any = {
         project_id: projectId,
@@ -104,29 +115,22 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
     }
   };
 
-  const getButtonBg = () => {
-    switch(template.id) {
-      case 'digital': return 'bg-[#00FF41] text-black hover:bg-[#00DD31]';
-      case 'starry': return 'bg-[#38BDF8] text-white hover:bg-[#0EA5E9]';
-      case 'garden': return 'bg-[#829D82] text-white hover:bg-[#6B856B]';
-      case 'romantic': return 'bg-[#FF8585] text-white hover:bg-[#FF6B6B]';
-      default: return 'bg-[#C5A059] text-white hover:bg-[#B38D45]';
-    }
-  };
-
   if (isSuccess) {
+    const Icon = theme.IconComponent;
     return (
       <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
+        initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="flex flex-col items-center justify-center py-12 text-center"
+        className="flex flex-col items-center justify-center py-10 text-center"
       >
-        <div className={`w-20 h-20 rounded-full ${template.colors.accent} bg-opacity-20 flex items-center justify-center mb-6`}>
-          <Check className={`w-10 h-10 ${template.colors.text}`} />
+        <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${theme.colors.accent} bg-current/10`}>
+          <Icon className="w-8 h-8 fill-current" />
         </div>
-        <h3 className={`text-2xl font-serif mb-2 ${template.colors.text}`}>Thank You!</h3>
-        <p className={`opacity-70 max-w-xs mx-auto ${template.colors.text}`}>
-          Your RSVP has been successfully submitted. We can't wait to celebrate with you!
+        <h3 className={`text-2xl ${theme.fontHeading} ${theme.colors.headerText} mb-2`}>
+          Response Received
+        </h3>
+        <p className={`text-xs ${theme.colors.subtleText} max-w-xs mx-auto leading-relaxed`}>
+          Your RSVP has been recorded. We look forward to celebrating together.
         </p>
       </motion.div>
     );
@@ -136,50 +140,48 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
     const isHidden = field.showIfAttending && !formData.attending;
     if (isHidden) return null;
 
-    const commonClasses = `w-full px-6 py-4 rounded-2xl border ${template.colors.border} bg-white/5 focus:outline-none focus:ring-2 ${template.colors.accent} ring-opacity-30 transition-all font-medium text-sm`;
+    const inputClasses = `w-full px-3.5 py-2.5 text-xs sm:text-sm border transition-colors outline-none ${theme.input.base} ${theme.input.radius}`;
 
     return (
-      <div key={field.id} className="space-y-2">
-        <label className={`text-xs uppercase tracking-[0.2em] font-bold ${template.colors.subtleText} ml-1`}>
-          {field.label} {field.required && <span className="text-red-400">*</span>}
+      <div key={field.id} className="space-y-1.5 text-left">
+        <label className={`block text-xs font-medium ${theme.colors.subtleText}`}>
+          {field.label} {field.required && <span className="text-red-500">*</span>}
         </label>
         
         {field.type === 'text' && (
-          <div className="relative">
-            <input
-              required={field.required}
-              type="text"
-              placeholder={field.placeholder}
-              value={formData[field.id] || ''}
-              onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
-              className={commonClasses}
-            />
-          </div>
+          <input
+            required={field.required}
+            type="text"
+            placeholder={field.placeholder || `Enter your ${field.label.toLowerCase()}`}
+            value={formData[field.id] || ''}
+            onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
+            className={inputClasses}
+          />
         )}
 
         {field.type === 'textarea' && (
           <textarea
             required={field.required}
-            placeholder={field.placeholder}
+            placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}...`}
             value={formData[field.id] || ''}
             onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
             rows={3}
-            className={`${commonClasses} resize-none`}
+            className={`${inputClasses} resize-none`}
           />
         )}
 
         {field.type === 'number' && (
           field.id === 'guest_count' ? (
-            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+            <div className="flex flex-wrap items-center gap-2 pt-1">
               {[1, 2, 3, 4, 5].map(num => (
                 <button
                   key={num}
                   type="button"
                   onClick={() => setFormData({ ...formData, guest_count: num })}
-                  className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full font-bold transition-all border text-sm ${
+                  className={`w-9 h-9 sm:w-10 sm:h-10 text-xs sm:text-sm transition-all border ${theme.input.radius} flex items-center justify-center ${
                     formData.guest_count === num 
-                      ? template.colors.accent + ' border-current'
-                      : 'border-white/10 opacity-50 hover:opacity-100'
+                      ? theme.button.pillActive
+                      : theme.button.pillInactive
                   }`}
                 >
                   {num}
@@ -190,31 +192,40 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
             <input
               required={field.required}
               type="number"
+              min={1}
               value={formData[field.id] || ''}
-              onChange={(e) => setFormData({ ...formData, [field.id]: parseInt(e.target.value) })}
-              className={commonClasses}
+              onChange={(e) => setFormData({ ...formData, [field.id]: parseInt(e.target.value) || 1 })}
+              className={inputClasses}
             />
           )
         )}
 
         {field.type === 'select' && (
-          <select
-            required={field.required}
-            value={formData[field.id] || ''}
-            onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
-            className={`${commonClasses} appearance-none`}
-          >
-            <option value="" disabled className="text-black">Select an option...</option>
-            {Array.isArray(field.options) && field.options.filter(s => s.trim()).map(opt => (
-              <option key={opt} value={opt} className="text-black">{opt}</option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              required={field.required}
+              value={formData[field.id] || ''}
+              onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
+              className={`${inputClasses} appearance-none cursor-pointer pr-8`}
+            >
+              <option value="" disabled className="text-gray-900 bg-white">Select an option...</option>
+              {Array.isArray(field.options) && field.options.filter(s => s.trim()).map(opt => (
+                <option key={opt} value={opt} className="text-gray-900 bg-white">{opt}</option>
+              ))}
+            </select>
+            <div className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs ${theme.colors.subtleText}`}>
+              ▼
+            </div>
+          </div>
         )}
 
         {field.type === 'radio' && (
-          <div className="flex flex-col gap-2">
+          <div className="space-y-2 pt-1">
             {Array.isArray(field.options) && field.options.filter(s => s.trim()).map(opt => (
-              <label key={opt} className="flex items-center gap-3 cursor-pointer p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-colors">
+              <label 
+                key={opt} 
+                className={`flex items-center gap-3 p-3 border transition-colors cursor-pointer ${theme.card.surface} ${theme.card.border} ${theme.input.radius}`}
+              >
                 <input
                   type="radio"
                   name={field.id}
@@ -222,33 +233,36 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
                   value={opt}
                   checked={formData[field.id] === opt}
                   onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
-                  className="w-4 h-4 text-[#C5A059] border-white/20 bg-transparent focus:ring-0"
+                  className="w-4 h-4 text-current cursor-pointer"
                 />
-                <span className="text-sm font-medium">{opt}</span>
+                <span className={`text-xs font-medium ${theme.colors.text}`}>{opt}</span>
               </label>
             ))}
           </div>
         )}
 
         {field.type === 'checkbox' && (
-           <div className="flex flex-col gap-2">
+          <div className="space-y-2 pt-1">
             {Array.isArray(field.options) && field.options.filter(s => s.trim()).map(opt => {
               const currentValues = Array.isArray(formData[field.id]) ? formData[field.id] : [];
               const isChecked = currentValues.includes(opt);
               return (
-                <label key={opt} className="flex items-center gap-3 cursor-pointer p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-colors">
+                <label 
+                  key={opt} 
+                  className={`flex items-center gap-3 p-3 border transition-colors cursor-pointer ${theme.card.surface} ${theme.card.border} ${theme.input.radius}`}
+                >
                   <input
                     type="checkbox"
                     checked={isChecked}
-                    onChange={(e) => {
+                    onChange={() => {
                       const newValues = isChecked 
                         ? currentValues.filter((v: string) => v !== opt)
                         : [...currentValues, opt];
                       setFormData({ ...formData, [field.id]: newValues });
                     }}
-                    className="w-4 h-4 rounded border-white/20 bg-transparent focus:ring-0"
+                    className="w-4 h-4 rounded cursor-pointer"
                   />
-                  <span className="text-sm font-medium">{opt}</span>
+                  <span className={`text-xs font-medium ${theme.colors.text}`}>{opt}</span>
                 </label>
               );
             })}
@@ -259,46 +273,58 @@ export default function RSVPForm({ projectId, template, onSuccess, isPreview, cu
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-3 p-1 bg-black/5 rounded-2xl border border-white/10">
-        <button
-          type="button"
-          onClick={() => setFormData({ ...formData, attending: true })}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
-            formData.attending 
-              ? 'bg-white shadow-sm ' + template.colors.text
-              : 'opacity-50 hover:opacity-100'
-          }`}
-        >
-          <Check className="w-4 h-4" /> <span className="xs:hidden">Yes</span><span className="hidden xs:inline">Attending</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setFormData({ ...formData, attending: false, guest_count: 0 })}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
-            !formData.attending 
-              ? 'bg-white shadow-sm ' + template.colors.text
-              : 'opacity-50 hover:opacity-100'
-          }`}
-        >
-          <X className="w-4 h-4" /> Decline
-        </button>
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Attendance Toggle */}
+      <div>
+        <div className={`p-1 flex rounded-xl border ${theme.card.border} ${theme.isDark ? 'bg-white/5' : 'bg-black/5'}`}>
+          <button
+            type="button"
+            onClick={() => setFormData({ ...formData, attending: true, guest_count: Math.max(1, formData.guest_count || 1) })}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg text-xs sm:text-sm transition-all ${
+              formData.attending 
+                ? theme.button.toggleActive 
+                : theme.button.toggleInactive
+            }`}
+          >
+            <Check className="w-3.5 h-3.5" />
+            <span>Joyfully Accept</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFormData({ ...formData, attending: false, guest_count: 0 })}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg text-xs sm:text-sm transition-all ${
+              !formData.attending 
+                ? theme.button.toggleActive 
+                : theme.button.toggleInactive
+            }`}
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>Regretfully Decline</span>
+          </button>
+        </div>
       </div>
 
-      <div className="space-y-6">
+      {/* Dynamic Form Fields */}
+      <div className="space-y-4">
         {activeFields.map(field => renderField(field))}
       </div>
 
+      {/* Error Message */}
       {error && (
-        <p className="text-red-500 text-sm text-center font-bold bg-red-500/10 py-3 rounded-xl border border-red-500/20">{error}</p>
+        <div className="p-3 rounded-lg text-xs font-medium bg-red-500/10 text-red-600 border border-red-500/20 text-center">
+          {error}
+        </div>
       )}
 
+      {/* Submit Button */}
       <button
+        type="submit"
         disabled={isSubmitting}
-        className={`w-full py-5 rounded-2xl font-bold tracking-[0.1em] text-lg uppercase transition-all flex items-center justify-center gap-3 group shadow-xl
-          ${isSubmitting ? 'bg-gray-500/20 text-gray-400 cursor-not-allowed shadow-none' : getButtonBg()}`}
+        className={`w-full py-3 px-4 text-xs sm:text-sm transition-all flex items-center justify-center gap-2 ${
+          isSubmitting ? 'opacity-50 cursor-not-allowed' : theme.button.primary
+        }`}
       >
-        {isSubmitting ? 'Sending...' : 'Submit RSVP'}
+        {isSubmitting ? 'Submitting RSVP...' : formData.attending ? 'Confirm Attendance' : 'Send Decline Note'}
       </button>
     </form>
   );

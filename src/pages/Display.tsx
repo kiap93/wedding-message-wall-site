@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import ReactDOM from 'react-dom';
-import { Heart, QrCode, Leaf, Star, Mail, Camera, Flower, Zap } from 'lucide-react';
+import { Heart, QrCode, Zap } from 'lucide-react';
 import { fetchMessages, Message } from '../lib/api';
 import { getSupabase } from '../lib/supabase';
-import { WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
+import { WeddingEvent, WeddingTemplate, Agency } from '../types';
+import { resolveEventTheme, ResolvedEventTheme } from '../lib/eventTheme';
+import { ThemeOverlay } from '../components/ThemeDecorations';
 import { QRCodeSVG } from 'qrcode.react';
 import { getAgencyById } from '../lib/agency';
 import { useWorkspace } from '../lib/WorkspaceContext';
@@ -40,7 +41,6 @@ export default function Display() {
     const urlProjectId = projectId || searchParams.get('id') || searchParams.get('projectId');
     const normalizedProjectId = (urlProjectId && urlProjectId !== 'undefined') ? urlProjectId : undefined;
 
-    // If on a subdomain and no project ID/slug specified, load the first project of the workspace
     if (!normalizedProjectId && !slug && workspace) {
       loadProjectByWorkspace(workspace.id);
     } else {
@@ -51,7 +51,7 @@ export default function Display() {
   const loadProjectByWorkspace = async (agencyId: string) => {
     try {
       const supabase = getSupabase();
-      const { data: projects, error } = await supabase
+      const { data: projects } = await supabase
         .from('projects')
         .select('*')
         .eq('agency_id', agencyId)
@@ -63,8 +63,7 @@ export default function Display() {
         if (typeof projectData.rsvp_fields === 'string') {
           try {
             projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
-          } catch(e) {
-            console.error('Failed to parse RSVP fields:', e);
+          } catch (e) {
             projectData.rsvp_fields = [];
           }
         }
@@ -113,9 +112,9 @@ export default function Display() {
       setAgency(demoAgency);
       setProject(demoProject);
       setMessages([
-        { id: '1', project_id: 'demo-project', name: 'James', message: 'Wishing you both a lifetime of happiness!', timestamp: Date.now() - 3600000, status: 'approved' },
-        { id: '2', project_id: 'demo-project', name: 'Emma', message: 'Such a beautiful wedding. Cheers to Lucas and Sofia!', timestamp: Date.now() - 7200000, status: 'approved' },
-        { id: '3', project_id: 'demo-project', name: 'Oliver', message: 'So happy to be here celebrating with you!', timestamp: Date.now() - 10800000, status: 'approved' }
+        { id: '1', project_id: 'demo-project', name: 'James & Clara', message: 'Wishing you both a lifetime of boundless love and happiness!', timestamp: Date.now() - 3600000, status: 'approved' },
+        { id: '2', project_id: 'demo-project', name: 'Emma Watson', message: 'Such an exquisitely beautiful celebration. Cheers to Lucas and Sofia!', timestamp: Date.now() - 7200000, status: 'approved' },
+        { id: '3', project_id: 'demo-project', name: 'Oliver & Mia', message: 'Honored to celebrate this unforgettable day with you both!', timestamp: Date.now() - 10800000, status: 'approved' }
       ]);
       setIsLoading(false);
       return;
@@ -129,7 +128,6 @@ export default function Display() {
         const { data } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
         projectData = data;
       } else if (slugName) {
-        // 1. Try to find project by slug (with agency context if on subdomain)
         let query = supabase.from('projects').select('*').eq('slug', slugName);
         if (workspace) {
           query = query.eq('agency_id', workspace.id);
@@ -138,7 +136,6 @@ export default function Display() {
         let { data } = await query.maybeSingle();
         projectData = data;
 
-        // 2. If not found and NOT on subdomain, try treating slugName as an Agency slug
         if (!projectData && !workspace) {
           const { data: agencyData } = await supabase
             .from('agencies')
@@ -148,7 +145,6 @@ export default function Display() {
 
           if (agencyData) {
             setAgency(agencyData);
-            // Fetch the first event for this agency
             const { data: events } = await supabase
               .from('projects')
               .select('*')
@@ -168,7 +164,6 @@ export default function Display() {
           try {
             projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
           } catch(e) {
-            console.error('Failed to parse RSVP fields:', e);
             projectData.rsvp_fields = [];
           }
         }
@@ -185,40 +180,36 @@ export default function Display() {
     }
   };
 
-  // Fallback defaults if no event loaded
-  const templateIdFromUrl = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
-  
-  const activeTemplateId = isPreviewParam && searchParams.get('template') 
-    ? (searchParams.get('template') as TemplateId) 
-    : (project?.theme_id || templateIdFromUrl);
-  const template = templates.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES[0];
+  // Resolve aesthetic: URL template preview override or project.theme_id
+  const targetThemeId = (isPreviewParam && searchParams.get('template')) 
+    ? searchParams.get('template') 
+    : (project?.theme_id || searchParams.get('template') || 'minimal_luxury');
 
-  const groom = project?.groom_name || searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
-  const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
+  const theme: ResolvedEventTheme = resolveEventTheme(targetThemeId, templates);
+  const Icon = theme.IconComponent;
 
-  // Derive URLs
+  const groom = project?.groom_name || searchParams.get('groom') || 'Alex';
+  const bride = project?.bride_name || searchParams.get('bride') || 'Sam';
+
   const baseUrl = window.location.origin + (slug ? `/${slug}` : project?.slug ? `/${project.slug}` : '');
   const guestUrl = baseUrl + '/guest' + window.location.search;
-  const rsvpUrl = baseUrl + '/rsvp' + window.location.search;
 
   useEffect(() => {
     const targetId = project?.id || projectId;
     if (!targetId) return;
 
-    // Initial fetch
     const loadInitialMessages = async () => {
       try {
         const data = await fetchMessages(targetId);
         let processed = isPreview ? data.slice(0, 5) : data;
         
-        // Inject mock data for previews if needed
         if (isPreviewParam && processed.length < 5) {
           const mockData = [
-            { id: 'm1', name: 'Sophia & James', message: 'Wishing you both a lifetime of love and happiness!', timestamp: Date.now(), status: 'approved' },
-            { id: 'm2', name: 'Grandma Betty', message: 'So proud of you both. A beautiful day for a beautiful couple.', timestamp: Date.now() - 1000, status: 'approved' },
-            { id: 'm3', name: 'The Miller Family', message: 'Cheers to the new Mr. & Mrs.! Let the celebration begin!', timestamp: Date.now() - 2000, status: 'approved' },
-            { id: 'm4', name: 'Best Man Chris', message: 'Heres to the happy couple! Best wedding ever!', timestamp: Date.now() - 3000, status: 'approved' },
-            { id: 'm5', name: 'Aunt Sarah', message: 'May your journey together be filled with joy and adventure.', timestamp: Date.now() - 4000, status: 'approved' }
+            { id: 'm1', name: 'Sophia & James', message: 'Wishing you both a lifetime of deep love, joy, and adventure!', timestamp: Date.now(), status: 'approved' },
+            { id: 'm2', name: 'Grandma Betty', message: 'So proud of you both. A beautiful wedding day for a truly wonderful couple.', timestamp: Date.now() - 1000, status: 'approved' },
+            { id: 'm3', name: 'The Miller Family', message: 'Warmest congratulations to the newlyweds! Let the celebration begin!', timestamp: Date.now() - 2000, status: 'approved' },
+            { id: 'm4', name: 'Best Man Chris', message: 'To the happiest couple in the room! Cheers to unforgettable memories!', timestamp: Date.now() - 3000, status: 'approved' },
+            { id: 'm5', name: 'Aunt Sarah', message: 'May your journey together be illuminated by endless love and laughter.', timestamp: Date.now() - 4000, status: 'approved' }
           ];
           processed = [...processed, ...mockData.slice(0, 5 - processed.length)] as Message[];
         }
@@ -231,18 +222,15 @@ export default function Display() {
 
     loadInitialMessages();
 
-    // Subscribe to Realtime changes
     let channel: any = null;
     try {
       const supabase = getSupabase();
-      
-      // Use a unique channel name per project to avoid leaks
       channel = supabase
         .channel(`messages-realtime-${targetId}`)
         .on(
           'postgres_changes',
           {
-            event: '*', // Listen to INSERT, UPDATE, DELETE
+            event: '*',
             schema: 'public',
             table: 'messages',
             filter: `project_id=eq.${targetId}`
@@ -255,22 +243,16 @@ export default function Display() {
               setMessages((prev) => {
                 const filtered = prev.filter(m => m.id !== newMessage.id);
                 const updated = [newMessage, ...filtered];
-                // Keep only unique and sort
                 const unique = Array.from(new Map(updated.map(m => [m.id, m])).values());
                 const sorted = unique.sort((a, b) => b.timestamp - a.timestamp);
                 return isPreview ? sorted.slice(0, 5) : sorted.slice(0, 50);
               });
             } else if (eventType === 'UPDATE' || eventType === 'DELETE') {
-              // If it's no longer approved or was deleted, remove it immediately
               setMessages((prev) => prev.filter(m => m.id !== (newMessage.id || payload.old.id)));
             }
           }
         )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            console.log('Successfully subscribed to real-time messages for', targetId);
-          }
-        });
+        .subscribe();
     } catch (err) {
       console.error('Realtime subscription error:', err);
     }
@@ -281,25 +263,29 @@ export default function Display() {
         supabase.removeChannel(channel);
       }
     };
-  }, [project?.id, projectId, isPreview]);
+  }, [project?.id, projectId, isPreview, isPreviewParam]);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F7F7F5]">
-        <div className="w-8 h-8 border-2 border-[#8B806F] border-t-transparent rounded-full animate-spin" />
+      <div className={`min-h-screen flex items-center justify-center ${theme.colors.background}`}>
+        <div className={`w-8 h-8 border-2 ${theme.colors.accent} border-t-transparent rounded-full animate-spin opacity-60`} />
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen ${template.colors.background} transition-colors duration-700 relative ${template.fontSans} ${template.colors.text}`}>
+    <div className={`min-h-screen ${theme.colors.background} transition-colors duration-700 relative overflow-x-hidden ${theme.fontBody} ${theme.colors.text}`}>
+      {/* Background Decorative Overlay */}
+      <ThemeOverlay themeId={theme.id} mode="fullscreen" />
+
+      {/* Preview Warning Banner */}
       {isPreview && (
-        <div className="absolute top-0 left-0 right-0 bg-[#252525]/90 backdrop-blur-md text-white py-2 px-6 shadow-sm z-[100] flex items-center justify-between gap-4 text-xs">
+        <div className="fixed top-0 left-0 right-0 bg-[#252525]/95 backdrop-blur-md text-white py-2 px-6 shadow-sm z-[100] flex items-center justify-between gap-4 text-xs">
           <div className="flex items-center gap-2">
-           <Zap className="w-3.5 h-3.5 text-[#8B806F]" />
-           <span className="font-mono text-[11px]">
-             Preview Mode • Guestbook Limited to 5 Messages
-           </span>
+            <Zap className="w-3.5 h-3.5 text-[#8B806F]" />
+            <span className="font-mono text-[11px]">
+              Preview Mode • Guestbook Limited to 5 Messages
+            </span>
           </div>
           <button 
             onClick={() => window.open('/subscription', '_blank')}
@@ -312,9 +298,9 @@ export default function Display() {
       
       {/* Agency Branding Overlay */}
       {agency && (
-        <div className="absolute top-8 left-8 z-40 flex items-center gap-3 bg-white/20 backdrop-blur-md px-4 py-2 rounded-full border border-white/30">
-          {agency.logo_url && <img src={agency.logo_url} alt={agency.name} className="h-6 w-auto" />}
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Hosted by {agency.name}</span>
+        <div className={`fixed top-8 left-8 z-40 flex items-center gap-2.5 px-3.5 py-1.5 rounded-full text-[11px] backdrop-blur-md ${theme.agencyBadgeClass}`}>
+          {agency.logo_url && <img src={agency.logo_url} alt={agency.name} className="h-4 w-auto rounded" />}
+          <span className="font-medium opacity-85">Hosted by {agency.name}</span>
         </div>
       )}
 
@@ -322,97 +308,102 @@ export default function Display() {
       <div className="fixed bottom-8 right-8 z-[100]">
         <button
           onClick={() => setShowQR(!showQR)}
-          className={`p-4 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 flex items-center justify-center backdrop-blur-md
-            ${template.id === 'digital' ? 'bg-[#00FF41] text-black' : template.id === 'starry' ? 'bg-[#38BDF8] text-white' : 'bg-[#C5A059] text-white'}
-          `}
+          className={`p-3.5 sm:p-4 rounded-full shadow-2xl transition-all hover:scale-105 active:scale-95 flex items-center justify-center backdrop-blur-md ${theme.qrButton.buttonClass}`}
+          title="Scan to Send Wishes"
         >
-          <QrCode className="w-6 h-6" />
+          <QrCode className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
 
         <AnimatePresence>
           {showQR && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.8, x: 20 }}
+              initial={{ opacity: 0, scale: 0.85, x: 20 }}
               animate={{ opacity: 1, scale: 1, x: 0 }}
-              exit={{ opacity: 0, scale: 0.8, x: 20 }}
-              className={`absolute bottom-0 right-20 p-8 rounded-[2.5rem] ${template.colors.card} border ${template.colors.border} shadow-2xl backdrop-blur-2xl w-80 text-center`}
+              exit={{ opacity: 0, scale: 0.85, x: 20 }}
+              className={`absolute bottom-0 right-16 sm:right-20 p-6 sm:p-8 ${theme.qrButton.modalCardClass} shadow-2xl backdrop-blur-2xl w-72 sm:w-80 text-center`}
             >
-              <h3 className={`text-2xl ${template.fontSerif} ${template.colors.headerText} mb-6`}>Leave a Message</h3>
-              <div className="bg-white p-4 rounded-3xl mb-6 inline-block shadow-inner ring-8 ring-white/10">
-                <QRCodeSVG value={guestUrl} size={200} />
+              <h3 className={`text-xl sm:text-2xl ${theme.fontHeading} ${theme.colors.headerText} mb-4`}>
+                Leave a Note
+              </h3>
+              <div className="bg-white p-3.5 rounded-2xl mb-4 inline-block shadow-inner ring-4 ring-black/5">
+                <QRCodeSVG value={guestUrl} size={180} />
               </div>
-              <p className={`text-base font-bold ${template.colors.text} mb-2`}>Scan to Send Wishes</p>
-              <p className={`text-xs ${template.colors.subtleText} uppercase tracking-[0.2em]`}>Your message will appear here</p>
+              <p className={`text-sm font-semibold ${theme.colors.text} mb-1`}>
+                Scan to Send Wishes
+              </p>
+              <p className={`text-[11px] ${theme.colors.subtleText}`}>
+                Your message appears instantly on screen
+              </p>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Background decoration */}
-      <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden opacity-30">
-        <div className={`absolute top-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full opacity-20 blur-[100px] ${template.id === 'garden' ? 'bg-green-500' : template.id === 'romantic' ? 'bg-pink-400' : 'bg-wedding-gold'}`} />
-      </div>
-
-      {/* Wedding Photo Background */}
+      {/* Optional Wedding Background Photo */}
       {project?.image_url && (
         <div className="absolute inset-0 z-0 pointer-events-none flex items-center justify-center overflow-hidden">
           <motion.img 
-            initial={{ opacity: 0, scale: 1.1 }}
-            animate={{ opacity: 0.15, scale: 1 }}
-            transition={{ duration: 3, ease: "easeOut" }}
+            initial={{ opacity: 0, scale: 1.05 }}
+            animate={{ opacity: 0.12, scale: 1 }}
+            transition={{ duration: 2.5, ease: "easeOut" }}
             src={project.image_url} 
             alt="Wedding Background" 
             className="w-full h-full object-cover filter blur-[2px] grayscale-[20%]"
           />
-          <div className={`absolute inset-0 bg-gradient-to-b ${template.colors.background} opacity-40`} />
+          <div className={`absolute inset-0 bg-gradient-to-b ${theme.colors.background} opacity-50`} />
         </div>
       )}
 
-      {/* Theme-specific Overlays */}
-      {template.id === 'garden' && <FoliageOverlay />}
-      {template.id === 'starry' && <CelestialOverlay />}
-
-      <div className="relative z-10 min-h-screen flex flex-col p-8 md:p-16">
-        <header className="flex flex-col md:flex-row items-center justify-between mb-16 gap-6">
-          <div className="space-y-2 text-center md:text-left">
-            <h1 className={`text-6xl md:text-7xl ${template.fontSerif} tracking-tight ${template.colors.headerText}`}>
+      {/* Main Container */}
+      <div className="relative z-10 min-h-screen flex flex-col p-6 sm:p-10 md:p-16">
+        <header className="flex flex-col md:flex-row items-center justify-between mb-12 md:mb-16 gap-6">
+          <div className="space-y-1.5 text-center md:text-left">
+            <h1 className={`text-4xl sm:text-6xl md:text-7xl ${theme.fontHeading} tracking-tight ${theme.colors.headerText}`}>
               {groom} & {bride}
             </h1>
-            <p className={`text-sm uppercase tracking-[0.4em] ${template.colors.accent} font-medium`}>
-              The Wedding Wall
+            <p className={`text-xs sm:text-sm tracking-widest ${theme.colors.accent} font-medium`}>
+              {theme.display.headerSubtitle}
             </p>
           </div>
           <div className="hidden md:flex flex-col items-end">
-             <div className={`flex items-center gap-2 ${template.colors.accent}`}>
-               <Heart className={`w-5 h-5 fill-current animate-pulse`} />
-               <span className={`${template.fontSerif} italic text-2xl`}>Forever & Always</span>
-             </div>
-             <p className={`text-xs ${template.colors.subtleText} mt-1 uppercase tracking-widest`}>Celebrating Our Love</p>
+            <div className={`flex items-center gap-2 ${theme.colors.accent}`}>
+              <Icon className="w-5 h-5 fill-current animate-pulse" />
+              <span className={`${theme.fontHeading} italic text-2xl`}>Forever & Always</span>
+            </div>
+            <p className={`text-xs ${theme.colors.subtleText} mt-1 tracking-wider`}>Celebrating Our Love</p>
           </div>
         </header>
 
-        <main className="flex-1 relative px-4 md:px-8">
+        <main className="flex-1 relative px-2 sm:px-4 md:px-8">
           <AnimatePresence mode="wait">
-            {template.variant === 'hanging' ? (
-              <HangingLayout key="hanging" messages={messages} template={template} />
-            ) : template.variant === 'floating' ? (
-              <FloatingLayout key="floating" messages={messages} template={template} />
-            ) : template.variant === 'custom' ? (
-              <CustomLayout key="custom" messages={messages} template={template} project={project} />
+            {theme.display.layoutVariant === 'hanging' ? (
+              <HangingLayout key="hanging" messages={messages} theme={theme} />
+            ) : theme.display.layoutVariant === 'floating' ? (
+              <FloatingLayout key="floating" messages={messages} theme={theme} />
+            ) : theme.display.layoutVariant === 'custom' ? (
+              <CustomLayout key="custom" messages={messages} template={theme.rawTemplate} project={project} />
+            ) : theme.display.layoutVariant === 'grid' ? (
+              <GridLayout key="grid" messages={messages} theme={theme} />
             ) : (
-              <MasonryLayout key="masonry" messages={messages} template={template} />
+              <MasonryLayout key="masonry" messages={messages} theme={theme} />
             )}
           </AnimatePresence>
 
+          {/* Empty State */}
           {messages.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="text-center"
+                className="text-center p-8 max-w-sm"
               >
-                <Heart className={`w-16 h-16 ${template.colors.accent} opacity-20 mx-auto mb-4`} />
-                <p className={`${template.colors.subtleText} ${template.fontSerif} italic text-xl`}>Waiting for the first wish...</p>
+                <Icon className={`w-14 h-14 ${theme.colors.accent} opacity-30 mx-auto mb-3 fill-current`} />
+                <p className={`${theme.colors.subtleText} ${theme.fontHeading} italic text-lg sm:text-xl`}>
+                  {theme.display.emptyStateText}
+                </p>
+                <p className={`text-xs ${theme.colors.subtleText} opacity-70 mt-2`}>
+                  Scan the QR code in the bottom corner to share your congratulations.
+                </p>
               </motion.div>
             </div>
           )}
@@ -422,10 +413,10 @@ export default function Display() {
       <style dangerouslySetInnerHTML={{ __html: `
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(212, 175, 55, 0.2); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(139, 128, 111, 0.3); border-radius: 10px; }
         .polaroid-frame {
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-          padding-bottom: 24px !important;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+          padding-bottom: 28px !important;
         }
         .wood-texture {
           background-image: url('https://www.transparenttextures.com/patterns/wood-pattern.png');
@@ -435,27 +426,23 @@ export default function Display() {
           display: block !important;
           min-height: 10px;
         }
-        ${template.css || ''}
+        ${theme.rawTemplate.css || ''}
       `}} />
     </div>
   );
 }
 
 function renderCard(cardHtml: string, msg: any, index: number) {
-  const template = cardHtml || '<div class="p-6 bg-white rounded-3xl shadow-lg"><h3>{{name}}</h3><p>{{message}}</p></div>';
-  return template
+  const tpl = cardHtml || '<div class="p-6 bg-white rounded-2xl shadow-lg"><h3>{{name}}</h3><p>{{message}}</p></div>';
+  return tpl
     .replace(/\{\{name\}\}/g, msg.name || 'Guest')
     .replace(/\{\{message\}\}/g, msg.message)
     .replace(/\{\{index\}\}/g, index.toString())
     .replace(/\{\{timestamp\}\}/g, new Date(msg.timestamp).toLocaleTimeString());
 }
 
-function CustomLayout({ messages, template, project }: { messages: Message[], template: WeddingTemplate, project: WeddingEvent | null, key?: any }) {
-  const isCustom = template.variant === 'custom';
-  
+function CustomLayout({ messages, template, project }: { messages: Message[], template: WeddingTemplate, project: WeddingEvent | null }) {
   const finalHtml = React.useMemo(() => {
-    if (!isCustom) return '';
-    
     const cardsHtml = messages.map((msg, index) => {
       const cardInner = renderCard(template.card_html || '', msg, index);
       const row = index % 5;
@@ -465,7 +452,6 @@ function CustomLayout({ messages, template, project }: { messages: Message[], te
     
     let baseHtml = template.html || '<div id="messages-container"></div>';
     
-    // Replace dynamic placeholders for the event
     if (project) {
       baseHtml = baseHtml
         .replace(/\{\{bride\}\}/g, project.bride_name || 'Bride')
@@ -478,7 +464,7 @@ function CustomLayout({ messages, template, project }: { messages: Message[], te
     } else {
       return `${baseHtml}<div id="messages-container">${cardsHtml}</div>`;
     }
-  }, [template.html, template.card_html, messages, isCustom, project]);
+  }, [template.html, template.card_html, messages, project]);
 
   return (
     <motion.div 
@@ -490,18 +476,18 @@ function CustomLayout({ messages, template, project }: { messages: Message[], te
   );
 }
 
-function MasonryLayout({ messages, template }: { messages: Message[], template: WeddingTemplate, key?: React.Key }) {
+function MasonryLayout({ messages, theme }: { messages: Message[], theme: ResolvedEventTheme }) {
   return (
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-12 space-y-12 pr-4 pb-64 pt-12 max-w-7xl mx-auto w-full"
+      className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-8 space-y-8 pr-4 pb-48 pt-6 max-w-7xl mx-auto w-full"
     >
       <AnimatePresence mode="popLayout">
         {messages.map((msg) => (
           <div key={msg.id} className="break-inside-avoid block">
-            <MessageCard msg={msg} template={template} />
+            <MessageCard msg={msg} theme={theme} />
           </div>
         ))}
       </AnimatePresence>
@@ -509,34 +495,53 @@ function MasonryLayout({ messages, template }: { messages: Message[], template: 
   );
 }
 
-function HangingLayout({ messages, template }: { messages: Message[], template: WeddingTemplate, key?: React.Key }) {
+function GridLayout({ messages, theme }: { messages: Message[], theme: ResolvedEventTheme }) {
   return (
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="relative min-h-[70vh] flex flex-wrap justify-center gap-x-12 gap-y-24 pb-64 pt-24 max-w-7xl mx-auto wood-texture rounded-3xl p-12 bg-[#F5F2EF]/50 shadow-inner"
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-48 pt-6 max-w-7xl mx-auto w-full"
     >
-      {/* Decorative Tree Branch */}
-      <div className="absolute top-0 left-0 w-full h-32 overflow-hidden opacity-20 pointer-events-none">
+      <AnimatePresence mode="popLayout">
+        {messages.map((msg) => (
+          <div key={msg.id}>
+            <MessageCard msg={msg} theme={theme} />
+          </div>
+        ))}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+function HangingLayout({ messages, theme }: { messages: Message[], theme: ResolvedEventTheme }) {
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="relative min-h-[70vh] flex flex-wrap justify-center gap-x-10 gap-y-20 pb-48 pt-20 max-w-7xl mx-auto rounded-3xl p-8 sm:p-12 shadow-inner bg-white/20 backdrop-blur-sm"
+    >
+      {/* Decorative Botanical Branch Wire */}
+      <div className="absolute top-0 left-0 w-full h-24 overflow-hidden opacity-25 pointer-events-none">
         <svg viewBox="0 0 1000 100" preserveAspectRatio="none" className="w-full h-full text-[#4E614E]">
-          <path d="M0,50 Q250,10 500,50 T1000,50" stroke="currentColor" strokeWidth="8" fill="none" />
-          <path d="M100,45 Q120,20 150,45" stroke="currentColor" strokeWidth="4" fill="none" />
-          <path d="M300,55 Q320,80 350,55" stroke="currentColor" strokeWidth="4" fill="none" />
-          <path d="M700,45 Q720,20 750,45" stroke="currentColor" strokeWidth="4" fill="none" />
+          <path d="M0,45 Q250,15 500,45 T1000,45" stroke="currentColor" strokeWidth="6" fill="none" />
+          <path d="M120,40 Q140,15 170,40" stroke="currentColor" strokeWidth="3" fill="none" />
+          <path d="M400,48 Q420,70 450,48" stroke="currentColor" strokeWidth="3" fill="none" />
+          <path d="M720,40 Q740,18 770,40" stroke="currentColor" strokeWidth="3" fill="none" />
         </svg>
       </div>
 
-      {/* Visual Twine lines */}
-      <div className="absolute top-48 left-0 w-full h-[2px] bg-[#A68A64]/30" />
-      <div className="absolute top-[30rem] left-0 w-full h-[2px] bg-[#A68A64]/30" />
+      {/* Visual Twine line */}
+      <div className="absolute top-40 left-0 w-full h-[1.5px] bg-[#829D82]/30" />
+      <div className="absolute top-96 left-0 w-full h-[1.5px] bg-[#829D82]/30" />
 
       <AnimatePresence mode="popLayout">
-        {messages.map((msg, idx) => (
+        {messages.map((msg) => (
           <div key={msg.id} className="relative">
-             {/* The "Twine" string attached to each card */}
-            <div className="absolute top-[-80px] left-1/2 w-[2px] h-20 bg-[#A68A64]/40 -translate-x-1/2" />
-            <MessageCard msg={msg} template={template} hanging />
+            {/* The Twine attached to card */}
+            <div className="absolute top-[-60px] left-1/2 w-[2px] h-16 bg-[#829D82]/40 -translate-x-1/2" />
+            <MessageCard msg={msg} theme={theme} hanging />
           </div>
         ))}
       </AnimatePresence>
@@ -544,34 +549,33 @@ function HangingLayout({ messages, template }: { messages: Message[], template: 
   );
 }
 
-function FloatingLayout({ messages, template }: { messages: Message[], template: WeddingTemplate, key?: React.Key }) {
+function FloatingLayout({ messages, theme }: { messages: Message[], theme: ResolvedEventTheme }) {
   return (
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="relative min-h-[80vh] w-full max-w-7xl mx-auto pt-12 pb-64"
+      className="relative min-h-[80vh] w-full max-w-7xl mx-auto pt-8 pb-48"
     >
       <AnimatePresence mode="popLayout">
         {messages.map((msg, idx) => {
-          // Semi-random positions for floating effect
-          const x = (idx * 313) % 80; // 0 to 80%
-          const y = (idx * 271) % 70; // 0 to 70%
+          const x = (idx * 313) % 80;
+          const y = (idx * 271) % 68;
           
           return (
             <motion.div
               key={msg.id}
               className="absolute"
-              initial={{ opacity: 0, scale: 0.5 }}
+              initial={{ opacity: 0, scale: 0.6 }}
               animate={{ 
                 opacity: 1, 
                 scale: 1,
                 top: `${y}%`,
                 left: `${x}%`,
               }}
-              transition={{ duration: 1, delay: idx * 0.1 }}
+              transition={{ duration: 0.8, delay: idx * 0.08 }}
             >
-              <MessageCard msg={msg} template={template} floating />
+              <MessageCard msg={msg} theme={theme} floating />
             </motion.div>
           );
         })}
@@ -580,40 +584,45 @@ function FloatingLayout({ messages, template }: { messages: Message[], template:
   );
 }
 
-function MessageCard({ msg, template, hanging, floating }: { msg: Message; template: WeddingTemplate, hanging?: boolean, floating?: boolean }) {
+function MessageCard({ 
+  msg, 
+  theme, 
+  hanging, 
+  floating 
+}: { 
+  msg: Message; 
+  theme: ResolvedEventTheme; 
+  hanging?: boolean; 
+  floating?: boolean; 
+}) {
   const seed = String(msg.id || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const rotation = (seed % 6) - 3;
   const xOffset = (seed % 10) - 5;
   const floatDuration = 6 + (seed % 6);
   const floatDelay = (seed % 5000) / 1000;
+  const Icon = theme.IconComponent;
 
-  const Icon = template.iconType === 'leaf' ? Leaf :
-               template.iconType === 'star' ? Star :
-               template.iconType === 'mail' ? Mail :
-               template.iconType === 'camera' ? Camera :
-               template.iconType === 'flower' ? Flower : Heart;
-
-  const cardBaseClass = template.id === 'polaroid' 
-    ? 'polaroid-frame bg-white grayscale-0 rounded-none' 
+  const cardBaseClass = theme.id === 'polaroid' 
+    ? 'polaroid-frame bg-white text-gray-900 rounded-none' 
     : hanging 
-      ? `bg-[#FEFBF5] border-[#A68A64]/30 shadow-md rounded-lg` 
-      : `${template.colors.card} border ${template.colors.border} rounded-[1.5rem]`;
+      ? `${theme.card.surface} ${theme.card.border} ${theme.card.radius} ${theme.card.shadow}`
+      : `${theme.display.messageCardBase}`;
 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, scale: 0.8, y: 30, rotate: rotation }}
+      initial={{ opacity: 0, scale: 0.85, y: 24, rotate: rotation }}
       animate={{ 
         opacity: 1, 
         scale: 1, 
         x: xOffset,
-        y: floating ? [0, -20, 0, 20, 0] : [0, -12, 0],
-        rotate: [rotation, rotation + 2, rotation - 2, rotation] 
+        y: floating ? [0, -18, 0, 18, 0] : [0, -8, 0],
+        rotate: [rotation, rotation + 1.5, rotation - 1.5, rotation] 
       }}
-      exit={{ opacity: 0, scale: 0.5, y: -30 }}
+      exit={{ opacity: 0, scale: 0.7, y: -24 }}
       transition={{
         y: {
-          duration: floating ? floatDuration * 2 : floatDuration,
+          duration: floating ? floatDuration * 1.8 : floatDuration,
           repeat: Infinity,
           ease: "easeInOut",
           delay: floatDelay
@@ -624,91 +633,43 @@ function MessageCard({ msg, template, hanging, floating }: { msg: Message; templ
           ease: "easeInOut",
           delay: floatDelay
         },
-        opacity: { duration: 0.6 },
+        opacity: { duration: 0.5 },
         scale: { type: "spring", damping: 20 }
       }}
-      className={`backdrop-blur-md p-6 sm:p-8 shadow-xl hover:shadow-2xl transition-all hover:z-20 group relative overflow-visible text-center ${cardBaseClass} ${floating ? 'w-64 scale-75 md:scale-100' : 'w-full'}`}
+      className={`p-6 sm:p-7 transition-all relative text-center ${cardBaseClass} ${
+        floating ? 'w-64 scale-80 md:scale-100' : 'w-full'
+      }`}
       style={{ transformOrigin: 'center center' }}
     >
-      {/* Hanging "Clip" or "Pin" */}
+      {/* Hanging Pin / Wooden Peg */}
       {hanging && (
-        <div className="absolute top-[-10px] left-1/2 w-4 h-4 bg-[#8E795E] rounded-full border-2 border-[#FEFBF5] shadow-sm -translate-x-1/2 z-10" />
+        <div className="absolute -top-2.5 left-1/2 w-4 h-4 bg-[#829D82] rounded-full border-2 border-white shadow-xs -translate-x-1/2 z-10" />
       )}
 
-      <div className="flex justify-center flex-col items-center mb-4">
-        <div className={`mb-3 ${template.colors.accent} transition-colors`}>
-          <Icon className={`w-6 h-6 ${template.id === 'polaroid' ? 'text-gray-400' : 'fill-current opacity-20'}`} />
+      <div className="flex flex-col items-center justify-center mb-3">
+        <div className={`mb-2.5 ${theme.colors.accent}`}>
+          <Icon className="w-5 h-5 fill-current opacity-30" />
         </div>
-        <h3 className={`text-xl ${template.fontSerif} ${template.colors.headerText} tracking-tight font-semibold`}>
+        <h3 className={`text-lg sm:text-xl ${theme.fontHeading} ${theme.id === 'polaroid' ? 'text-gray-900' : theme.colors.headerText} tracking-tight font-semibold`}>
           {msg.name || 'Anonymous Guest'}
         </h3>
       </div>
-      <p className={`${template.colors.text} ${template.fontSans} leading-relaxed text-lg italic mb-6 px-2`}>
+
+      <p className={`leading-relaxed text-base sm:text-lg italic mb-5 px-1 ${
+        theme.id === 'polaroid' ? 'text-gray-800' : theme.colors.text
+      }`}>
         "{msg.message}"
       </p>
-      <div className={`flex justify-center border-t ${template.colors.border} pt-4`}>
-        <span className={`text-[9px] uppercase font-bold tracking-[0.3em] ${template.colors.subtleText}`}>
+
+      <div className={`flex justify-center border-t ${
+        theme.id === 'polaroid' ? 'border-gray-200' : theme.colors.border
+      } pt-3`}>
+        <span className={`text-[10px] uppercase font-mono tracking-wider tabular-nums ${
+          theme.id === 'polaroid' ? 'text-gray-400' : theme.colors.subtleText
+        }`}>
           {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
       </div>
     </motion.div>
-  );
-}
-
-function FoliageOverlay() {
-  return (
-    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
-      {/* Top Left Eucalyptus */}
-      <motion.div 
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 0.6 }}
-        className="absolute top-[-20px] left-[-40px] w-80 h-80 opacity-60"
-      >
-        <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full text-[#4E614E]">
-          <path d="M100 20C100 20 80 50 80 80C80 110 100 140 100 140C100 140 120 110 120 80C120 50 100 20 100 20Z" fill="currentColor" fillOpacity="0.3" />
-          <path d="M60 40C60 40 40 70 40 100C40 130 60 160 60 160C60 160 80 130 80 100C80 70 60 40 60 40Z" fill="currentColor" fillOpacity="0.2" />
-          <path d="M140 60C140 60 160 90 160 120C160 150 140 180 140 180C140 180 120 150 120 120C120 90 140 60 140 60Z" fill="currentColor" fillOpacity="0.1" />
-        </svg>
-      </motion.div>
-
-      {/* Bottom Right Eucalyptus */}
-      <motion.div 
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 0.4 }}
-        className="absolute bottom-[-50px] right-[-50px] w-96 h-96 scale-x-[-1] opacity-40"
-      >
-        <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full text-[#384638]">
-           <path d="M100 20C100 20 80 50 80 80C80 110 100 140 100 140C100 140 120 110 120 80C120 50 100 20 100 20Z" fill="currentColor" fillOpacity="0.3" />
-           <path d="M60 40C60 40 40 70 40 100C40 130 60 160 60 160C60 160 80 130 80 100C80 70 60 40 60 40Z" fill="currentColor" fillOpacity="0.2" />
-        </svg>
-      </motion.div>
-    </div>
-  );
-}
-
-function CelestialOverlay() {
-  return (
-    <div className="fixed inset-0 pointer-events-none z-0">
-      {[...Array(50)].map((_, i) => (
-        <motion.div
-          key={i}
-          initial={{ opacity: 0 }}
-          animate={{ 
-            opacity: [0, 0.8, 0],
-            scale: [0, 1, 0]
-          }}
-          transition={{
-            duration: 2 + Math.random() * 4,
-            repeat: Infinity,
-            delay: Math.random() * 5
-          }}
-          className="absolute bg-white rounded-full w-1 h-1"
-          style={{
-            top: `${Math.random() * 100}%`,
-            left: `${Math.random() * 100}%`,
-          }}
-        />
-      ))}
-    </div>
   );
 }

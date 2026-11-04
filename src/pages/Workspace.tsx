@@ -344,31 +344,40 @@ export default function Workspace() {
     }
   };
 
-  const getEventUrl = (event: WeddingEvent, type: 'display' | 'guest' | 'rsvp' | 'couple_login' | 'invitation') => {
+  const getEventUrl = (event: WeddingEvent, type: 'display' | 'guest' | 'rsvp' | 'couple_login' | 'invitation', themeOverride?: string) => {
     const currentHost = window.location.host;
+    const currentOrigin = window.location.origin;
     const hostParts = currentHost.split('.');
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const isRunApp = window.location.hostname.includes('.run.app');
+    const query = themeOverride ? `?template=${themeOverride}` : '';
     
-    let baseDomain;
-    if (isLocalhost) {
-      baseDomain = currentHost;
-    } else {
-      baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
+    // In preview / development / run.app environments, keep on same origin
+    if (isLocalhost || isRunApp) {
+      const slugVal = event?.slug || agency?.slug || 'demo';
+      if (type === 'display') return `${currentOrigin}/${slugVal}/display${query}`;
+      if (type === 'guest') return `${currentOrigin}/${slugVal}/guest${query}`;
+      if (type === 'rsvp') return `${currentOrigin}/${slugVal}/rsvp${query}`;
+      if (type === 'invitation') return `${currentOrigin}/${slugVal}/invitation`;
+      return `${currentOrigin}/couple/login?slug=${slugVal}`;
     }
+
+    let baseDomain;
+    baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
     
     if (isCouple) {
-      const base = `https://${baseDomain}/${agency?.slug}`;
-      if (type === 'display') return base;
-      if (type === 'guest') return `${base}/guest`;
-      if (type === 'rsvp') return `${base}/rsvp`;
+      const base = `https://${baseDomain}/${agency?.slug || event.slug}`;
+      if (type === 'display') return `${base}${query}`;
+      if (type === 'guest') return `${base}/guest${query}`;
+      if (type === 'rsvp') return `${base}/rsvp${query}`;
       if (type === 'invitation') return `${base}/invitation`;
       return `https://${baseDomain}/couple/login?agency=${agency?.slug}`;
     }
 
     const base = agency?.domain ? `https://${agency.domain}` : `https://${agency?.slug}.${baseDomain}`;
-    if (type === 'display') return `${base}/${event.slug}/display`;
-    if (type === 'guest') return `${base}/${event.slug}/guest`;
-    if (type === 'rsvp') return `${base}/${event.slug}/rsvp`;
+    if (type === 'display') return `${base}/${event.slug}/display${query}`;
+    if (type === 'guest') return `${base}/${event.slug}/guest${query}`;
+    if (type === 'rsvp') return `${base}/${event.slug}/rsvp${query}`;
     if (type === 'invitation') return `${base}/${event.slug}/invitation`;
     return `${base}/couple/login?slug=${event.slug}`;
   };
@@ -973,20 +982,41 @@ export default function Workspace() {
 
                 {/* Theme Selection */}
                 <div className="bg-white p-6 rounded-lg border border-[#E8E8E5] shadow-subtle space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                       <h3 className="text-sm font-semibold text-[#252525]">Display Art Aesthetic</h3>
-                      <p className="text-xs text-[#777777]">Choose the visual styling and typography for reception screens</p>
+                      <p className="text-xs text-[#777777]">Choose the unified visual styling and typography for RSVP, Guest, and Display screens</p>
                     </div>
                     {editingEvent.id && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.open(getEventUrl(editingEvent as WeddingEvent, 'display'), '_blank')}
-                        rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
-                      >
-                        Preview Live Display
-                      </Button>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(getEventUrl(editingEvent as WeddingEvent, 'display', editingEvent.theme_id), '_blank')}
+                          rightIcon={<ExternalLink className="w-3 h-3" />}
+                          className="!h-7 !text-[11px]"
+                        >
+                          Display
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(getEventUrl(editingEvent as WeddingEvent, 'guest', editingEvent.theme_id), '_blank')}
+                          rightIcon={<ExternalLink className="w-3 h-3" />}
+                          className="!h-7 !text-[11px]"
+                        >
+                          Guest
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(getEventUrl(editingEvent as WeddingEvent, 'rsvp', editingEvent.theme_id), '_blank')}
+                          rightIcon={<ExternalLink className="w-3 h-3" />}
+                          className="!h-7 !text-[11px]"
+                        >
+                          RSVP
+                        </Button>
+                      </div>
                     )}
                   </div>
 
@@ -999,7 +1029,7 @@ export default function Workspace() {
                           onClick={() => setEditingEvent({ ...editingEvent, theme_id: tpl.id })}
                           className={`p-4 rounded-lg border cursor-pointer transition-colors text-left flex flex-col justify-between min-h-[110px] ${
                             isSelected 
-                              ? 'border-[#252525] bg-[#FAF9F7] shadow-subtle' 
+                              ? 'border-[#252525] bg-[#FAF9F7] shadow-subtle ring-1 ring-[#252525]' 
                               : 'border-[#E8E8E5] bg-white hover:border-[#D4D4CE]'
                           }`}
                         >
@@ -1012,10 +1042,15 @@ export default function Workspace() {
                               {tpl.description || 'Editorial layout tailored for digital wedding displays'}
                             </p>
                           </div>
-                          <div className="flex items-center gap-1.5 mt-3 pt-2 border-t border-[#EFEFEA]">
-                            <div className="w-2.5 h-2.5 rounded-full bg-[#8B806F]" />
-                            <div className="w-2.5 h-2.5 rounded-full bg-[#252525]" />
-                            <div className="w-2.5 h-2.5 rounded-full bg-[#E8E8E5]" />
+                          <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#EFEFEA]">
+                            <span className="text-[10px] text-[#999999] font-mono capitalize">
+                              {tpl.variant || 'masonry'}
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <div className={`w-2.5 h-2.5 rounded-full border border-black/10 ${tpl.colors?.background || 'bg-white'}`} />
+                              <div className={`w-2.5 h-2.5 rounded-full border border-black/10 ${tpl.colors?.accent ? 'bg-current ' + tpl.colors.accent : 'bg-[#8B806F]'}`} />
+                              <div className={`w-2.5 h-2.5 rounded-full border border-black/10 ${tpl.colors?.headerText ? 'bg-current ' + tpl.colors.headerText : 'bg-[#252525]'}`} />
+                            </div>
                           </div>
                         </div>
                       );

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, Send, CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower, Zap, Calendar, MapPin, MessageSquareHeart } from 'lucide-react';
+import { Send, CheckCircle2, QrCode, Zap, Calendar, MapPin } from 'lucide-react';
 import { postMessage } from '../lib/api';
 import confetti from 'canvas-confetti';
-import { WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
+import { WeddingEvent, WeddingTemplate, Agency } from '../types';
+import { resolveEventTheme, ResolvedEventTheme } from '../lib/eventTheme';
+import { ThemeOverlay } from '../components/ThemeDecorations';
 import { QRCodeSVG } from 'qrcode.react';
 import { getSupabase } from '../lib/supabase';
 import { getAgencyById } from '../lib/agency';
@@ -37,19 +39,6 @@ export default function Guest() {
     }
     load();
   }, []);
-
-  const templateIdFromUrl = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
-
-  const activeTemplateId = isPreviewParam && searchParams.get('template')
-    ? (searchParams.get('template') as TemplateId)
-    : (project?.theme_id || templateIdFromUrl);
-
-  const template = templates.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES[0];
-
-  const groom = project?.groom_name || searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
-  const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
-
-  const currentUrl = window.location.origin + window.location.pathname + window.location.search;
 
   useEffect(() => {
     if (isLoadingWorkspace) return;
@@ -217,16 +206,23 @@ export default function Guest() {
     }
   };
 
-  const Icon = template.iconType === 'leaf' ? Leaf :
-               template.iconType === 'star' ? Star :
-               template.iconType === 'mail' ? Mail :
-               template.iconType === 'camera' ? Camera :
-               template.iconType === 'flower' ? Flower : Heart;
+  // Resolve aesthetic: URL template preview param or project.theme_id
+  const targetThemeId = (isPreviewParam && searchParams.get('template')) 
+    ? searchParams.get('template') 
+    : (project?.theme_id || searchParams.get('template') || 'minimal_luxury');
+
+  const theme: ResolvedEventTheme = resolveEventTheme(targetThemeId, templates);
+  const Icon = theme.IconComponent;
+
+  const groom = project?.groom_name || searchParams.get('groom') || 'Alex';
+  const bride = project?.bride_name || searchParams.get('bride') || 'Sam';
+
+  const currentUrl = window.location.origin + window.location.pathname + window.location.search;
 
   if (isLoading) {
     return (
-      <div className={`min-h-screen flex items-center justify-center ${template.colors.background}`}>
-        <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin opacity-50" />
+      <div className={`min-h-screen flex items-center justify-center ${theme.colors.background}`}>
+        <div className={`w-8 h-8 border-2 ${theme.colors.accent} border-t-transparent rounded-full animate-spin opacity-60`} />
       </div>
     );
   }
@@ -251,39 +247,34 @@ export default function Guest() {
 
     try {
       await postMessage(name, message, project.id, !!project?.auto_approve_messages);
-      setMessages([...messages, { id: Date.now() }]);
+      setMessages(prev => [...prev, { id: Date.now() }]);
+      
+      // Fire theme-specific celebratory confetti
       confetti({
-        particleCount: 120,
-        spread: 60,
+        particleCount: 110,
+        spread: 65,
         origin: { y: 0.6 },
-        colors: template.id === 'digital' ? ['#00FF41', '#FFFFFF'] : template.id === 'starry' ? ['#38BDF8', '#FFFFFF'] : ['#8B806F', '#E8E8E5', '#FFFFFF']
+        colors: theme.confettiColors
       });
+
       setShowSuccess(true);
       setName('');
       setMessage('');
       setTimeout(() => setShowSuccess(false), 5000);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to post message');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const getButtonBg = () => {
-    switch (template.id) {
-      case 'digital': return 'bg-[#00FF41] text-black hover:bg-[#00DD31]';
-      case 'starry': return 'bg-[#38BDF8] text-white hover:bg-[#0EA5E9]';
-      case 'garden': return 'bg-[#6B856B] text-white hover:bg-[#5A725A]';
-      case 'romantic': return 'bg-[#E07A7A] text-white hover:bg-[#CF6A6A]';
-      case 'postal': return 'bg-[#6D4C41] text-white hover:bg-[#5D3F35]';
-      default: return 'bg-[#252525] text-white hover:bg-[#111111]';
     }
   };
 
   const rsvpUrl = (slug ? `/${slug}` : project?.slug ? `/${project.slug}` : '') + '/rsvp' + window.location.search;
 
   return (
-    <div className={`min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 ${template.colors.background} transition-colors duration-500 relative overflow-x-hidden ${template.fontSans} ${template.colors.text}`}>
+    <div className={`min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 ${theme.colors.background} transition-colors duration-500 relative overflow-x-hidden ${theme.fontBody} ${theme.colors.text}`}>
+      {/* Background Decorative Overlay */}
+      <ThemeOverlay themeId={theme.id} mode="ambient" />
+
       {/* Top Banner for Previews */}
       {isPreview && (
         <div className="fixed top-0 left-0 right-0 bg-[#252525] text-white py-2 px-4 shadow-sm z-50 flex items-center justify-between text-xs">
@@ -306,20 +297,20 @@ export default function Guest() {
 
       {/* Agency Branding */}
       {agency && (
-        <div className={`fixed ${isPreview ? 'top-12' : 'top-5'} left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-white/70 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-black/5 text-[11px] text-[#252525] shadow-xs`}>
+        <div className={`fixed ${isPreview ? 'top-12' : 'top-5'} left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[11px] backdrop-blur-md ${theme.agencyBadgeClass}`}>
           {agency.logo_url && <img src={agency.logo_url} alt={agency.name} className="h-3.5 w-auto rounded" />}
-          <span className="font-medium opacity-80">{agency.name}</span>
+          <span className="font-medium opacity-90">{agency.name}</span>
         </div>
       )}
 
-      {/* Guest Card Container */}
+      {/* Main Guest Card */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
         className="w-full max-w-md relative z-10 my-auto pt-10 pb-8"
       >
-        <div className={`${template.colors.card} rounded-2xl border ${template.colors.border} shadow-lg p-6 sm:p-8 backdrop-blur-md relative overflow-hidden`}>
+        <div className={`${theme.card.surface} ${theme.card.border} ${theme.card.radius} ${theme.card.shadow} p-6 sm:p-8 relative overflow-hidden`}>
           {/* Cover photo if present */}
           {project?.image_url && (
             <div className="w-full h-36 rounded-xl overflow-hidden mb-6 border border-black/5 relative">
@@ -334,14 +325,14 @@ export default function Guest() {
 
           {/* Heading */}
           <div className="text-center mb-6">
-            <div className={`inline-flex p-2.5 rounded-full ${template.colors.accent} bg-current/10 mb-3`}>
+            <div className={`inline-flex p-2.5 rounded-full ${theme.colors.accent} bg-current/10 mb-3`}>
               <Icon className="w-5 h-5 fill-current" />
             </div>
-            <h1 className={`text-2xl sm:text-3xl ${template.fontSerif} ${template.colors.headerText} tracking-tight font-normal leading-tight mb-2`}>
+            <h1 className={`text-2xl sm:text-3xl ${theme.fontHeading} ${theme.colors.headerText} tracking-tight font-normal leading-tight mb-2`}>
               {groom} & {bride}
             </h1>
 
-            {/* Event details */}
+            {/* Event details metadata */}
             {(project?.wedding_date || project?.location) && (
               <div className="flex flex-wrap items-center justify-center gap-3 text-xs opacity-75 mb-2">
                 {project.wedding_date && (
@@ -359,7 +350,7 @@ export default function Guest() {
               </div>
             )}
 
-            <p className={`text-xs ${template.colors.subtleText} max-w-xs mx-auto`}>
+            <p className={`text-xs ${theme.colors.subtleText} max-w-xs mx-auto`}>
               Leave a heartfelt wish or message for the couple's live wedding display.
             </p>
           </div>
@@ -367,7 +358,7 @@ export default function Guest() {
           {/* Message Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className={`block text-xs font-medium mb-1.5 ${template.colors.subtleText}`}>
+              <label className={`block text-xs font-medium mb-1.5 ${theme.colors.subtleText}`}>
                 Your Name
               </label>
               <input
@@ -376,16 +367,16 @@ export default function Guest() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                className={`w-full px-3.5 py-2.5 rounded-lg border ${template.colors.border} bg-white/40 focus:outline-none focus:ring-1 focus:ring-current text-sm transition-all ${template.colors.text} placeholder:opacity-40`}
+                className={`w-full px-3.5 py-2.5 text-xs sm:text-sm border transition-colors outline-none ${theme.input.base} ${theme.input.radius}`}
               />
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className={`text-xs font-medium ${template.colors.subtleText}`}>
+                <label className={`text-xs font-medium ${theme.colors.subtleText}`}>
                   Your Message
                 </label>
-                <span className={`text-[10px] ${template.colors.subtleText} font-mono`}>
+                <span className={`text-[10px] ${theme.colors.subtleText} font-mono tabular-nums`}>
                   {message.length}/150
                 </span>
               </div>
@@ -396,7 +387,7 @@ export default function Guest() {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 rows={4}
-                className={`w-full px-3.5 py-2.5 rounded-lg border ${template.colors.border} bg-white/40 focus:outline-none focus:ring-1 focus:ring-current text-sm transition-all ${template.colors.text} placeholder:opacity-40 resize-none`}
+                className={`w-full px-3.5 py-2.5 text-xs sm:text-sm border transition-colors outline-none resize-none ${theme.input.base} ${theme.input.radius}`}
               />
             </div>
 
@@ -409,17 +400,17 @@ export default function Guest() {
             <button
               disabled={isSubmitting}
               type="submit"
-              className={`w-full py-3 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-xs ${
-                isSubmitting ? 'opacity-50 cursor-not-allowed' : getButtonBg()
+              className={`w-full py-3 px-4 text-xs sm:text-sm transition-all flex items-center justify-center gap-2 ${
+                isSubmitting ? 'opacity-50 cursor-not-allowed' : theme.button.primary
               }`}
             >
-              {isSubmitting ? 'Posting...' : 'Send Wishes'}
+              <span>{isSubmitting ? 'Posting...' : 'Send Wishes'}</span>
               <Send className="w-3.5 h-3.5" />
             </button>
           </form>
 
-          {/* Secondary links: RSVP */}
-          <div className="mt-5 pt-4 border-t border-black/5 flex items-center justify-between text-xs">
+          {/* Secondary link: RSVP */}
+          <div className="mt-5 pt-4 border-t border-black/5 dark:border-white/10 flex items-center justify-between text-xs">
             <span className={`opacity-60 text-[11px]`}>Attending the celebration?</span>
             <Link
               to={rsvpUrl}
@@ -429,26 +420,26 @@ export default function Guest() {
             </Link>
           </div>
 
-          {/* Success overlay */}
+          {/* Success Overlay */}
           <AnimatePresence>
             {showSuccess && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className={`absolute inset-0 flex flex-col items-center justify-center p-8 rounded-2xl ${template.colors.card} backdrop-blur-xl z-20 text-center`}
+                className={`absolute inset-0 flex flex-col items-center justify-center p-8 ${theme.card.radius} ${theme.card.surface} z-20 text-center backdrop-blur-xl`}
               >
-                <CheckCircle2 className={`w-12 h-12 ${template.colors.accent} mb-3`} />
-                <h3 className={`text-2xl ${template.fontSerif} ${template.colors.headerText} mb-1.5`}>
+                <CheckCircle2 className={`w-12 h-12 ${theme.colors.accent} mb-3`} />
+                <h3 className={`text-2xl ${theme.fontHeading} ${theme.colors.headerText} mb-1.5`}>
                   With Gratitude
                 </h3>
-                <p className={`text-xs ${template.colors.subtleText} max-w-xs mb-4`}>
+                <p className={`text-xs ${theme.colors.subtleText} max-w-xs mb-4 leading-relaxed`}>
                   Your message has been sent and will appear on the wedding wall.
                 </p>
                 <button
                   type="button"
                   onClick={() => setShowSuccess(false)}
-                  className="text-xs font-medium underline opacity-70 hover:opacity-100"
+                  className={`text-xs font-medium underline opacity-80 hover:opacity-100 ${theme.colors.text}`}
                 >
                   Write Another Note
                 </button>
@@ -459,7 +450,7 @@ export default function Guest() {
       </motion.div>
 
       {/* Subtle Footer */}
-      <footer className={`text-[11px] ${template.colors.subtleText} opacity-50 text-center pb-4`}>
+      <footer className={`text-[11px] ${theme.colors.subtleText} opacity-50 text-center pb-4`}>
         {groom} & {bride} • Wedding Celebration
       </footer>
 
@@ -467,9 +458,7 @@ export default function Guest() {
       <div className="fixed bottom-5 right-5 z-40">
         <button
           onClick={() => setShowQR(!showQR)}
-          className={`p-3 rounded-full shadow-md transition-transform hover:scale-105 active:scale-95 flex items-center justify-center backdrop-blur-sm ${
-            template.id === 'digital' ? 'bg-[#00FF41] text-black' : template.id === 'starry' ? 'bg-[#38BDF8] text-white' : 'bg-[#252525] text-white'
-          }`}
+          className={`p-3 rounded-full transition-transform hover:scale-105 active:scale-95 flex items-center justify-center ${theme.qrButton.buttonClass}`}
           title="Share QR Code"
         >
           <QrCode className="w-4 h-4" />
@@ -481,13 +470,13 @@ export default function Guest() {
               initial={{ opacity: 0, scale: 0.9, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 8 }}
-              className={`absolute bottom-14 right-0 p-4 rounded-xl ${template.colors.card} border ${template.colors.border} shadow-xl backdrop-blur-xl w-56 text-center`}
+              className={`absolute bottom-14 right-0 p-4 ${theme.qrButton.modalCardClass} w-56 text-center z-50`}
             >
               <div className="bg-white p-3 rounded-lg mb-2 inline-block shadow-xs">
                 <QRCodeSVG value={currentUrl} size={140} />
               </div>
-              <p className={`text-xs font-medium ${template.colors.text}`}>Share Guestbook</p>
-              <p className={`text-[10px] ${template.colors.subtleText}`}>Scan to leave a note</p>
+              <p className={`text-xs font-medium ${theme.colors.text}`}>Share Guestbook</p>
+              <p className={`text-[10px] ${theme.colors.subtleText}`}>Scan to leave a note</p>
             </motion.div>
           )}
         </AnimatePresence>

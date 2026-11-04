@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, QrCode, Leaf, Star, Mail, Camera, Flower, Users, Zap, Calendar, MapPin } from 'lucide-react';
+import { CheckCircle2, QrCode, Zap, Calendar, MapPin } from 'lucide-react';
 import RSVPForm from '../components/RSVPForm';
-import { WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate, Agency } from '../types';
+import { WeddingEvent, WeddingTemplate, Agency } from '../types';
+import { resolveEventTheme, ResolvedEventTheme } from '../lib/eventTheme';
+import { ThemeOverlay } from '../components/ThemeDecorations';
 import { QRCodeSVG } from 'qrcode.react';
 import { getSupabase } from '../lib/supabase';
 import { getAgencyById } from '../lib/agency';
@@ -31,19 +33,6 @@ export default function RSVPPage() {
     }
     load();
   }, []);
-
-  const templateIdFromUrl = (searchParams.get('template') as TemplateId) || (localStorage.getItem('selectedTemplate') as TemplateId) || 'minimal_luxury';
-
-  const activeTemplateId = isPreviewParam && searchParams.get('template')
-    ? (searchParams.get('template') as TemplateId)
-    : (project?.theme_id || templateIdFromUrl);
-
-  const template = templates.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES.find(t => t.id === activeTemplateId) || DEFAULT_TEMPLATES[0];
-
-  const groom = project?.groom_name || searchParams.get('groom') || localStorage.getItem('groomName') || 'Alex';
-  const bride = project?.bride_name || searchParams.get('bride') || localStorage.getItem('brideName') || 'Sam';
-
-  const currentUrl = window.location.origin + window.location.pathname + window.location.search;
 
   useEffect(() => {
     if (isLoadingWorkspace) return;
@@ -180,14 +169,27 @@ export default function RSVPPage() {
     }
   };
 
+  // Resolve theme: URL preview param override or event's actual theme_id
+  const targetThemeId = (isPreviewParam && searchParams.get('template')) 
+    ? searchParams.get('template') 
+    : (project?.theme_id || searchParams.get('template') || 'minimal_luxury');
+
+  const theme: ResolvedEventTheme = resolveEventTheme(targetThemeId, templates);
+  const Icon = theme.IconComponent;
+
+  const groom = project?.groom_name || searchParams.get('groom') || 'Alex';
+  const bride = project?.bride_name || searchParams.get('bride') || 'Sam';
+
+  const currentUrl = window.location.origin + window.location.pathname + window.location.search;
+
   const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
   const isCoupleLogic = agency?.user_role === 'couple';
   const isPreview = isCoupleLogic && !isSubscribed && !isPreviewParam;
 
   if (isLoading) {
     return (
-      <div className={`min-h-screen flex items-center justify-center ${template.colors.background}`}>
-        <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin opacity-50" />
+      <div className={`min-h-screen flex items-center justify-center ${theme.colors.background}`}>
+        <div className={`w-8 h-8 border-2 ${theme.colors.accent} border-t-transparent rounded-full animate-spin opacity-60`} />
       </div>
     );
   }
@@ -195,7 +197,10 @@ export default function RSVPPage() {
   const guestUrl = (slug ? `/${slug}` : project?.slug ? `/${project.slug}` : '') + '/guest' + window.location.search;
 
   return (
-    <div className={`min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 ${template.colors.background} transition-colors duration-500 relative overflow-x-hidden ${template.fontSans} ${template.colors.text}`}>
+    <div className={`min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 ${theme.colors.background} transition-colors duration-500 relative overflow-x-hidden ${theme.fontBody} ${theme.colors.text}`}>
+      {/* Background Decorative Overlay */}
+      <ThemeOverlay themeId={theme.id} mode="ambient" />
+
       {/* Top Banner for Previews */}
       {isPreview && (
         <div className="fixed top-0 left-0 right-0 bg-[#252525] text-white py-2 px-4 shadow-sm z-50 flex items-center justify-between text-xs">
@@ -218,20 +223,20 @@ export default function RSVPPage() {
 
       {/* Agency Branding */}
       {agency && (
-        <div className={`fixed ${isPreview ? 'top-12' : 'top-5'} left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-white/70 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-black/5 text-[11px] text-[#252525] shadow-xs`}>
+        <div className={`fixed ${isPreview ? 'top-12' : 'top-5'} left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[11px] backdrop-blur-md ${theme.agencyBadgeClass}`}>
           {agency.logo_url && <img src={agency.logo_url} alt={agency.name} className="h-3.5 w-auto rounded" />}
-          <span className="font-medium opacity-80">{agency.name}</span>
+          <span className="font-medium opacity-90">{agency.name}</span>
         </div>
       )}
 
-      {/* RSVP Container */}
+      {/* Main RSVP Card */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
         className="w-full max-w-md relative z-10 my-auto pt-10 pb-8"
       >
-        <div className={`${template.colors.card} rounded-2xl border ${template.colors.border} shadow-lg p-6 sm:p-8 backdrop-blur-md relative overflow-hidden`}>
+        <div className={`${theme.card.surface} ${theme.card.border} ${theme.card.radius} ${theme.card.shadow} p-6 sm:p-8 relative overflow-hidden`}>
           {/* Cover photo if present */}
           {project?.image_url && (
             <div className="w-full h-36 rounded-xl overflow-hidden mb-6 border border-black/5 relative">
@@ -246,14 +251,15 @@ export default function RSVPPage() {
 
           {/* Header */}
           <div className="text-center mb-6">
-            <div className={`inline-flex p-2.5 rounded-full ${template.colors.accent} bg-current/10 mb-3`}>
-              <Users className="w-5 h-5" />
+            <div className={`inline-flex p-2.5 rounded-full ${theme.colors.accent} bg-current/10 mb-3`}>
+              <Icon className="w-5 h-5 fill-current" />
             </div>
-            <h1 className={`text-2xl sm:text-3xl ${template.fontSerif} ${template.colors.headerText} tracking-tight font-normal leading-tight mb-2`}>
+            
+            <h1 className={`text-2xl sm:text-3xl ${theme.fontHeading} ${theme.colors.headerText} tracking-tight font-normal leading-tight mb-2`}>
               {groom} & {bride}
             </h1>
 
-            {/* Event details */}
+            {/* Event details metadata */}
             {(project?.wedding_date || project?.location) && (
               <div className="flex flex-wrap items-center justify-center gap-3 text-xs opacity-75 mb-2">
                 {project.wedding_date && (
@@ -271,7 +277,7 @@ export default function RSVPPage() {
               </div>
             )}
 
-            <p className={`text-xs ${template.colors.subtleText}`}>
+            <p className={`text-xs ${theme.colors.subtleText}`}>
               Please let us know if you can attend our wedding celebration.
             </p>
           </div>
@@ -279,7 +285,7 @@ export default function RSVPPage() {
           {/* RSVP Form */}
           <RSVPForm
             projectId={project?.id || ''}
-            template={template}
+            resolvedTheme={theme}
             isPreview={isPreview}
             currentCount={rsvpCount}
             rsvpFields={project?.rsvp_fields}
@@ -290,7 +296,7 @@ export default function RSVPPage() {
           />
 
           {/* Secondary link: Guestbook */}
-          <div className="mt-5 pt-4 border-t border-black/5 flex items-center justify-between text-xs">
+          <div className="mt-5 pt-4 border-t border-black/5 dark:border-white/10 flex items-center justify-between text-xs">
             <span className={`opacity-60 text-[11px]`}>Want to send congratulations?</span>
             <Link
               to={guestUrl}
@@ -300,26 +306,26 @@ export default function RSVPPage() {
             </Link>
           </div>
 
-          {/* Success Dialog */}
+          {/* Success Dialog Overlay */}
           <AnimatePresence>
             {showSuccess && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className={`absolute inset-0 flex flex-col items-center justify-center p-8 rounded-2xl ${template.colors.card} backdrop-blur-xl z-20 text-center`}
+                className={`absolute inset-0 flex flex-col items-center justify-center p-8 ${theme.card.radius} ${theme.card.surface} z-20 text-center backdrop-blur-xl`}
               >
-                <CheckCircle2 className={`w-12 h-12 ${template.colors.accent} mb-3`} />
-                <h3 className={`text-2xl ${template.fontSerif} ${template.colors.headerText} mb-1.5`}>
+                <CheckCircle2 className={`w-12 h-12 ${theme.colors.accent} mb-3`} />
+                <h3 className={`text-2xl ${theme.fontHeading} ${theme.colors.headerText} mb-1.5`}>
                   Response Received
                 </h3>
-                <p className={`text-xs ${template.colors.subtleText} max-w-xs mb-4`}>
+                <p className={`text-xs ${theme.colors.subtleText} max-w-xs mb-4 leading-relaxed`}>
                   Thank you for letting us know. We look forward to celebrating together.
                 </p>
                 <button
                   type="button"
                   onClick={() => setShowSuccess(false)}
-                  className="text-xs font-medium underline opacity-70 hover:opacity-100"
+                  className={`text-xs font-medium underline opacity-80 hover:opacity-100 ${theme.colors.text}`}
                 >
                   Close
                 </button>
@@ -330,7 +336,7 @@ export default function RSVPPage() {
       </motion.div>
 
       {/* Subtle Footer */}
-      <footer className={`text-[11px] ${template.colors.subtleText} opacity-50 text-center pb-4`}>
+      <footer className={`text-[11px] ${theme.colors.subtleText} opacity-50 text-center pb-4`}>
         {groom} & {bride} • RSVP Portal
       </footer>
 
@@ -338,9 +344,7 @@ export default function RSVPPage() {
       <div className="fixed bottom-5 right-5 z-40">
         <button
           onClick={() => setShowQR(!showQR)}
-          className={`p-3 rounded-full shadow-md transition-transform hover:scale-105 active:scale-95 flex items-center justify-center backdrop-blur-sm ${
-            template.id === 'digital' ? 'bg-[#00FF41] text-black' : template.id === 'starry' ? 'bg-[#38BDF8] text-white' : 'bg-[#252525] text-white'
-          }`}
+          className={`p-3 rounded-full transition-transform hover:scale-105 active:scale-95 flex items-center justify-center ${theme.qrButton.buttonClass}`}
           title="Share RSVP QR Code"
         >
           <QrCode className="w-4 h-4" />
@@ -352,13 +356,13 @@ export default function RSVPPage() {
               initial={{ opacity: 0, scale: 0.9, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 8 }}
-              className={`absolute bottom-14 right-0 p-4 rounded-xl ${template.colors.card} border ${template.colors.border} shadow-xl backdrop-blur-xl w-56 text-center`}
+              className={`absolute bottom-14 right-0 p-4 ${theme.qrButton.modalCardClass} w-56 text-center z-50`}
             >
               <div className="bg-white p-3 rounded-lg mb-2 inline-block shadow-xs">
                 <QRCodeSVG value={currentUrl} size={140} />
               </div>
-              <p className={`text-xs font-medium ${template.colors.text}`}>RSVP QR Code</p>
-              <p className={`text-[10px] ${template.colors.subtleText}`}>Scan to submit RSVP</p>
+              <p className={`text-xs font-medium ${theme.colors.text}`}>RSVP QR Code</p>
+              <p className={`text-[10px] ${theme.colors.subtleText}`}>Scan to submit RSVP</p>
             </motion.div>
           )}
         </AnimatePresence>
