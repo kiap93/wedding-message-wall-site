@@ -1586,6 +1586,133 @@ app.all('/api/*', (c) => {
   return c.json({ error: `API route not found: ${c.req.method} ${c.req.path}` }, 404);
 });
 
+// Technical SEO Endpoints: robots.txt and sitemap.xml
+app.get('/robots.txt', async (c) => {
+  if (c.env.ASSETS) {
+    try {
+      const res = await c.env.ASSETS.fetch(c.req.raw);
+      if (res.status === 200) {
+        const headers = new Headers(res.headers);
+        headers.set('Content-Type', 'text/plain; charset=utf-8');
+        headers.set('Cache-Control', 'public, max-age=3600, must-revalidate');
+        return new Response(res.body, { status: 200, headers });
+      }
+    } catch (e) {
+      // Fallback below
+    }
+  }
+
+  const robots = `User-agent: *
+Allow: /
+Allow: /templates
+Allow: /pricing
+Allow: /wedding-planner-software
+Allow: /white-label-wedding-software
+Allow: /digital-wedding-invitations
+Allow: /wedding-rsvp-management
+Allow: /wedding-guest-management
+Allow: /wedding-reception-display
+
+Disallow: /login
+Disallow: /verify
+Disallow: /reset-password
+Disallow: /onboarding
+Disallow: /workspace
+Disallow: /workspace/
+Disallow: /editor
+Disallow: /editor/
+Disallow: /couple
+Disallow: /couple/
+Disallow: /templates/manage
+Disallow: /api/
+
+Sitemap: https://eventframe.io/sitemap.xml`;
+
+  return c.text(robots, 200, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Cache-Control': 'public, max-age=3600, must-revalidate',
+  });
+});
+
+app.get('/sitemap.xml', async (c) => {
+  if (c.env.ASSETS) {
+    try {
+      const res = await c.env.ASSETS.fetch(c.req.raw);
+      if (res.status === 200) {
+        const headers = new Headers(res.headers);
+        headers.set('Content-Type', 'application/xml; charset=utf-8');
+        headers.set('Cache-Control', 'public, max-age=3600, must-revalidate');
+        return new Response(res.body, { status: 200, headers });
+      }
+    } catch (e) {
+      // Fallback below
+    }
+  }
+
+  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://eventframe.io/</loc>
+    <lastmod>2026-11-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://eventframe.io/wedding-planner-software</loc>
+    <lastmod>2026-11-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://eventframe.io/white-label-wedding-software</loc>
+    <lastmod>2026-11-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://eventframe.io/digital-wedding-invitations</loc>
+    <lastmod>2026-11-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://eventframe.io/wedding-rsvp-management</loc>
+    <lastmod>2026-11-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://eventframe.io/wedding-guest-management</loc>
+    <lastmod>2026-11-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://eventframe.io/wedding-reception-display</loc>
+    <lastmod>2026-11-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://eventframe.io/templates</loc>
+    <lastmod>2026-11-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://eventframe.io/pricing</loc>
+    <lastmod>2026-11-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>`;
+
+  return c.text(sitemap, 200, {
+    'Content-Type': 'application/xml; charset=utf-8',
+    'Cache-Control': 'public, max-age=3600, must-revalidate',
+  });
+});
+
 // 9. Static Assets & Single-Page Application (SPA) Routing Fallback
 app.all('*', async (c) => {
   // If Cloudflare Workers Static Assets binding is present

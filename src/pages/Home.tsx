@@ -83,11 +83,11 @@ export default function Home() {
               </div>
 
               <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-normal tracking-tight text-[#252525] leading-[1.12]">
-                The editorial software platform for modern wedding studios.
+                Wedding Planning Software for Modern Wedding Studios
               </h1>
 
               <p className="text-sm md:text-base text-[#777777] max-w-xl leading-relaxed">
-                Empower your agency to provide digital stationery, real-time reception screens, and RSVP tracking under your own white-label brand.
+                Bring digital wedding invitations, guest RSVPs, guest experiences and live reception displays together in one platform.
               </p>
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -130,8 +130,13 @@ export default function Home() {
                 <div className="aspect-[4/3] overflow-hidden rounded">
                   <img
                     src={heroWeddingImage}
-                    alt="Editorial Wedding Couple"
+                    alt="Editorial wedding photography of bride and groom in Sonoma Valley"
                     className="w-full h-full object-cover"
+                    loading="eager"
+                    fetchPriority="high"
+                    decoding="async"
+                    width={800}
+                    height={600}
                     referrerPolicy="no-referrer"
                   />
                 </div>
@@ -146,6 +151,139 @@ export default function Home() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Integrated Product Ecosystem Grid (Phase 2 SEO Architecture) */}
+      <section className="py-16 md:py-20 border-b border-[#E8E8E5] bg-[#FAF9F7]">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-12">
+            <div>
+              <span className="text-xs font-medium text-[#8B806F] tracking-wide uppercase">Integrated Wedding Software</span>
+              <h2 className="font-serif text-3xl md:text-4xl font-normal tracking-tight text-[#252525] mt-1">
+                A unified ecosystem for modern studios and couples.
+              </h2>
+            </div>
+            <p className="text-xs md:text-sm text-[#777777] max-w-md">
+              Six dedicated tools engineered to work seamlessly together — from initial digital stationery to live ballroom displays.
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <a 
+              href="/wedding-planner-software" 
+              className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
+            >
+              <div className="space-y-3">
+                <span className="text-[10px] font-mono text-[#8B806F] uppercase">Studio Management</span>
+                <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
+                  Wedding Planner Software
+                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </h3>
+                <p className="text-xs text-[#777777] leading-relaxed">
+                  Coordinate multiple client weddings, schedule calendars, and manage guest experiences from one studio command center.
+                </p>
+              </div>
+              <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
+                Learn about planner software →
+              </div>
+            </a>
+
+            <a 
+              href="/white-label-wedding-software" 
+              className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
+            >
+              <div className="space-y-3">
+                <span className="text-[10px] font-mono text-[#8B806F] uppercase">Agency Branding</span>
+                <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
+                  White-Label Wedding Software
+                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </h3>
+                <p className="text-xs text-[#777777] leading-relaxed">
+                  Operate under your studio's custom subdomain with branded digital stationery and private client PIN logins.
+                </p>
+              </div>
+              <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
+                Explore white-label features →
+              </div>
+            </a>
+
+            <a 
+              href="/digital-wedding-invitations" 
+              className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
+            >
+              <div className="space-y-3">
+                <span className="text-[10px] font-mono text-[#8B806F] uppercase">Design Studio</span>
+                <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
+                  Digital Wedding Invitations
+                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </h3>
+                <p className="text-xs text-[#777777] leading-relaxed">
+                  Design bespoke online invitations with drag-and-drop coordinates, editorial typography, and integrated RSVP buttons.
+                </p>
+              </div>
+              <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
+                Design wedding invitations →
+              </div>
+            </a>
+
+            <a 
+              href="/wedding-rsvp-management" 
+              className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
+            >
+              <div className="space-y-3">
+                <span className="text-[10px] font-mono text-[#8B806F] uppercase">Guest Responses</span>
+                <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
+                  Wedding RSVP Management
+                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </h3>
+                <p className="text-xs text-[#777777] leading-relaxed">
+                  Collect attendance, meal choices, plus-one names, and dietary allergies with conditional questionnaire fields.
+                </p>
+              </div>
+              <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
+                Manage wedding RSVPs →
+              </div>
+            </a>
+
+            <a 
+              href="/wedding-guest-management" 
+              className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
+            >
+              <div className="space-y-3">
+                <span className="text-[10px] font-mono text-[#8B806F] uppercase">Operations</span>
+                <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
+                  Wedding Guest Management
+                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </h3>
+                <p className="text-xs text-[#777777] leading-relaxed">
+                  Maintain confirmed headcount records, review dietary needs, and moderate live reception messages and photo uploads.
+                </p>
+              </div>
+              <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
+                Explore guest operations →
+              </div>
+            </a>
+
+            <a 
+              href="/wedding-reception-display" 
+              className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
+            >
+              <div className="space-y-3">
+                <span className="text-[10px] font-mono text-[#8B806F] uppercase">Ballroom Experience</span>
+                <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
+                  Wedding Reception Displays
+                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </h3>
+                <p className="text-xs text-[#777777] leading-relaxed">
+                  Project live guest photo walls and well-wishes on ballroom screens with table QR code scanning and 8 curated themes.
+                </p>
+              </div>
+              <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
+                Set up reception display →
+              </div>
+            </a>
           </div>
         </div>
       </section>
@@ -167,8 +305,12 @@ export default function Home() {
             <div className="rounded-lg overflow-hidden border border-[#E8E8E5] shadow-subtle bg-[#FAF9F7]">
               <img
                 src={invitationCraftImage}
-                alt="Stationery Craft"
+                alt="Luxury wedding invitation stationery showcase with letterpress typography"
                 className="w-full h-auto object-cover"
+                loading="lazy"
+                decoding="async"
+                width={600}
+                height={400}
                 referrerPolicy="no-referrer"
               />
             </div>
@@ -219,8 +361,12 @@ export default function Home() {
                 <div className="aspect-[16/9] overflow-hidden rounded relative">
                   <img
                     src={celebrationVenueImage}
-                    alt="Evening Reception Dinner"
+                    alt="Evening wedding reception venue display showcasing live guest memories"
                     className="w-full h-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                    width={800}
+                    height={450}
                     referrerPolicy="no-referrer"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex items-end p-6">
@@ -259,7 +405,7 @@ export default function Home() {
                 <p className="text-xs text-[#777777] mt-1">For single couples managing their personal wedding.</p>
                 
                 <div className="my-6">
-                  <span className="text-3xl font-semibold font-mono text-[#252525] tabular-nums">$49</span>
+                  <span className="text-3xl font-semibold font-mono text-[#252525] tabular-nums">$19</span>
                   <span className="text-xs text-[#777777]"> / event lifetime</span>
                 </div>
 
@@ -306,7 +452,7 @@ export default function Home() {
                 <p className="text-xs text-[#777777] mt-1">For boutique wedding planners & photography studios.</p>
                 
                 <div className="my-6">
-                  <span className="text-3xl font-semibold font-mono text-[#252525] tabular-nums">$149</span>
+                  <span className="text-3xl font-semibold font-mono text-[#252525] tabular-nums">$49</span>
                   <span className="text-xs text-[#777777]"> / month</span>
                 </div>
 
@@ -355,7 +501,7 @@ export default function Home() {
                 
                 <div className="my-6">
                   <span className="text-3xl font-semibold font-mono text-[#252525] tabular-nums">$399</span>
-                  <span className="text-xs text-[#777777]"> / month</span>
+                  <span className="text-xs text-[#777777]"> / year</span>
                 </div>
 
                 <div className="space-y-2.5 text-xs text-[#555555]">

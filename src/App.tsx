@@ -24,6 +24,13 @@ import { getUserWorkspaces, getCurrentSubdomain } from './lib/workspace';
 
 import Home from './pages/Home';
 import Subscription from './pages/Subscription';
+import SEO from './components/SEO';
+import WeddingPlannerSoftware from './pages/marketing/WeddingPlannerSoftware';
+import WhiteLabelWeddingSoftware from './pages/marketing/WhiteLabelWeddingSoftware';
+import DigitalWeddingInvitations from './pages/marketing/DigitalWeddingInvitations';
+import WeddingRsvpManagement from './pages/marketing/WeddingRsvpManagement';
+import WeddingGuestManagement from './pages/marketing/WeddingGuestManagement';
+import WeddingReceptionDisplay from './pages/marketing/WeddingReceptionDisplay';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading: isLoadingUser } = useUser();
@@ -149,6 +156,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <SEO />
       <UserProvider>
         <WorkspaceProvider>
           <Routes>
@@ -158,6 +166,13 @@ export default function App() {
             <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
             <Route path="/templates/manage" element={<AuthGuard><StaffTemplates /></AuthGuard>} />
             <Route path="/templates" element={<TemplateSelector />} />
+            <Route path="/pricing" element={<Home />} />
+            <Route path="/wedding-planner-software" element={<WeddingPlannerSoftware />} />
+            <Route path="/white-label-wedding-software" element={<WhiteLabelWeddingSoftware />} />
+            <Route path="/digital-wedding-invitations" element={<DigitalWeddingInvitations />} />
+            <Route path="/wedding-rsvp-management" element={<WeddingRsvpManagement />} />
+            <Route path="/wedding-guest-management" element={<WeddingGuestManagement />} />
+            <Route path="/wedding-reception-display" element={<WeddingReceptionDisplay />} />
             <Route path="/workspace" element={<AuthGuard><Workspace /></AuthGuard>} />
             <Route path="/editor/:projectId" element={<AuthGuard><InvitationEditor /></AuthGuard>} />
             

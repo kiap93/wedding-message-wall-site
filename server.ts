@@ -1347,6 +1347,15 @@ function verifyPasswordNode(password: string, storedHash: string) {
     res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
   });
 
+  // Technical SEO Endpoints
+  app.get('/robots.txt', (req, res) => {
+    res.type('text/plain').sendFile(path.join(__dirname, 'public', 'robots.txt'));
+  });
+
+  app.get('/sitemap.xml', (req, res) => {
+    res.type('application/xml').sendFile(path.join(__dirname, 'public', 'sitemap.xml'));
+  });
+
   // --- End Auth Routes ---
 
   // Vite middleware for development

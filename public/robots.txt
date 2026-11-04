@@ -1,0 +1,27 @@
+User-agent: *
+Allow: /
+Allow: /templates
+Allow: /pricing
+Allow: /wedding-planner-software
+Allow: /white-label-wedding-software
+Allow: /digital-wedding-invitations
+Allow: /wedding-rsvp-management
+Allow: /wedding-guest-management
+Allow: /wedding-reception-display
+
+# Disallow private application and auth paths
+Disallow: /login
+Disallow: /verify
+Disallow: /reset-password
+Disallow: /onboarding
+Disallow: /workspace
+Disallow: /workspace/
+Disallow: /editor
+Disallow: /editor/
+Disallow: /couple
+Disallow: /couple/
+Disallow: /templates/manage
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://eventframe.io/sitemap.xml
