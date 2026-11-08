@@ -46,8 +46,101 @@ export interface WeddingEvent {
   music_url?: string;
   rsvp_fields?: RSVPField[];
   invitation_config?: any; // JSON configuration for the Canva-like editor
+  status?: 'draft' | 'active' | 'expired' | 'archived' | 'pending_payment';
+  payment_status?: 'unpaid' | 'paid' | 'refunded' | 'pending_payment' | 'failed' | 'cancelled';
+  package_id?: string;
+  activated_at?: string;
+  expires_at?: string;
+  message_display_config?: MessageDisplayConfig;
+  website_config?: any;
+  website_status?: 'draft' | 'published' | 'unpublished';
+  website_published_at?: string;
+  website_published_config?: any;
+  website_preview_token?: string;
   created_at: string;
   updated_at: string;
+}
+
+export type MessageClassification = 'NORMAL' | 'AI_SUGGESTED' | 'SPECIAL_GUEST' | 'COUPLE_SELECTED';
+
+export interface MessageDisplayConfig {
+  normalDuration: number; // Duration in seconds
+  specialGuestDuration: number; // Duration in seconds
+  coupleSelectedDuration: number; // Duration in seconds
+  featuredFrequency: number; // Every N messages
+  spotlightAnimation: 'fade-scale' | 'cinematic-glide' | 'elegant-spotlight';
+  maxConsecutiveFeatured: number; // Max consecutive featured
+}
+
+export const DEFAULT_MESSAGE_DISPLAY_CONFIG: MessageDisplayConfig = {
+  normalDuration: 8,
+  specialGuestDuration: 12,
+  coupleSelectedDuration: 16,
+  featuredFrequency: 3,
+  spotlightAnimation: 'elegant-spotlight',
+  maxConsecutiveFeatured: 1
+};
+
+export interface Message {
+  id: string;
+  name: string;
+  message: string;
+  timestamp: number;
+  project_id?: string;
+  status?: 'pending' | 'approved' | 'rejected';
+  classification?: MessageClassification;
+  is_featured?: boolean;
+  is_pinned?: boolean;
+  ai_highlight_reason?: string;
+  guest_category?: string;
+}
+
+export interface EventOrder {
+  id: string;
+  event_id: string;
+  agency_id: string;
+  customer_id: string;
+  package_id: string;
+  package_snapshot: {
+    id: string;
+    name: string;
+    price: number;
+    currency: string;
+    guestLimit: number;
+    durationMonths: number;
+    features: string[];
+  };
+  amount: number; // in cents
+  currency: string;
+  order_status: 'pending' | 'completed' | 'failed' | 'cancelled';
+  order_type: 'purchase' | 'renewal' | 'upgrade';
+  stripe_session_id?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface EventPayment {
+  id: string;
+  order_id: string;
+  event_id: string;
+  provider: 'stripe' | 'manual' | 'legacy_migration';
+  provider_transaction_id?: string;
+  amount: number;
+  currency: string;
+  payment_status: 'pending' | 'succeeded' | 'failed';
+  paid_at?: string;
+  created_at: string;
+}
+
+export interface EventEntitlement {
+  id: string;
+  event_id: string;
+  order_id?: string;
+  guest_limit: number;
+  features: string[];
+  activated_at: string;
+  expires_at: string;
+  created_at: string;
 }
 
 export interface RSVP {
@@ -60,6 +153,8 @@ export interface RSVP {
   meal_preference?: string;
   dietary_requirements?: string;
   responses?: Record<string, any>;
+  is_vip?: boolean;
+  guest_category?: string;
   created_at: string;
 }
 

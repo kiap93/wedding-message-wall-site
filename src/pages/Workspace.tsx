@@ -19,9 +19,17 @@ import {
   Search,
   Key,
   Music,
-  Code
+  Code,
+  CreditCard,
+  RefreshCw,
+  Sparkles,
+  Globe,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { Agency, WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate } from '../types';
+import { isEventActive, getDaysRemaining, getPackageById } from '../lib/packages';
+import { EVENT_PRICING, formatPrice } from '../config/pricing';
 import RSVPManager from '../components/RSVPManager';
 import RSVPFieldEditor from '../components/RSVPFieldEditor';
 import RSVPForm from '../components/RSVPForm';
@@ -67,7 +75,7 @@ export default function Workspace() {
   const [editingEvent, setEditingEvent] = useState<Partial<WeddingEvent> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
-  const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'form' | 'moderation' | 'invitation'>('aesthetic');
+  const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'form' | 'moderation' | 'invitation' | 'website'>('aesthetic');
 
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showRSVPPreview, setShowRSVPPreview] = useState(false);
@@ -229,10 +237,10 @@ export default function Workspace() {
   const isStaff = user?.email === 'buildsiteasia@gmail.com' || user?.email?.includes('@eventframe.io');
 
   useEffect(() => {
-    if (isCouple && events.length === 0 && view === 'list' && !isLoadingEvents && isSubscribed) {
+    if (isCouple && events.length === 0 && view === 'list' && !isLoadingEvents) {
       handleCreateNew();
     }
-  }, [isCouple, events, view, isLoadingEvents, isSubscribed]);
+  }, [isCouple, events, view, isLoadingEvents]);
 
   const handleCreateNew = () => {
     if (!agency) return;
@@ -240,11 +248,7 @@ export default function Workspace() {
       alert('Individual accounts are limited to one event. Upgrade to an Agency account to manage multiple events.');
       return;
     }
-    if (!isSubscribed && !isStaff) {
-      alert('A pro subscription is required to create new events.');
-      navigate('/subscription');
-      return;
-    }
+    // Free draft event creation: Any registered user can create draft events
     const newEvent: Partial<WeddingEvent> = {
       name: '',
       slug: `wedding-${Math.random().toString(36).substring(2, 7)}`,
@@ -257,7 +261,10 @@ export default function Workspace() {
       access_password: Math.random().toString(36).substring(2, 8).toUpperCase(),
       auto_approve_messages: false,
       image_url: '',
-      rsvp_fields: []
+      rsvp_fields: [],
+      status: 'draft',
+      payment_status: 'unpaid',
+      package_id: 'standard'
     };
     setEditingEvent(newEvent);
     setActiveEditorTab('aesthetic');
@@ -380,6 +387,48 @@ export default function Workspace() {
     if (type === 'rsvp') return `${base}/${event.slug}/rsvp${query}`;
     if (type === 'invitation') return `${base}/${event.slug}/invitation`;
     return `${base}/couple/login?slug=${event.slug}`;
+  };
+
+  const handleUnpublishWebsite = async (projectId: string) => {
+    if (!window.confirm('Are you sure you want to take this wedding website offline? Public guests will see a polite offline notice.')) {
+      return;
+    }
+    try {
+      const response = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/website/unpublish`, {
+        method: 'POST'
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to unpublish website');
+      }
+      if (agency) await fetchEvents(agency.id, agency.user_role);
+      if (editingEvent && editingEvent.id === projectId) {
+        setEditingEvent({ ...editingEvent, website_status: 'unpublished' });
+      }
+      alert('Wedding website has been taken offline.');
+    } catch (err: any) {
+      console.error('Error unpublishing website:', err);
+      alert('Could not unpublish website: ' + err.message);
+    }
+  };
+
+  const handleOpenDraftPreview = async (projectId: string) => {
+    try {
+      const response = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/website/preview-token`, {
+        method: 'POST'
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to generate preview token');
+      }
+      const data = await response.json();
+      if (data.previewUrl) {
+        window.open(data.previewUrl, '_blank');
+      }
+    } catch (err: any) {
+      console.error('Error opening preview:', err);
+      alert('Could not open preview: ' + err.message);
+    }
   };
 
   const handleShareCoupleLogin = (event: WeddingEvent) => {
@@ -537,32 +586,38 @@ export default function Workspace() {
             }
           />
 
-          {/* Metric KPI Strip */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Metric KPI Strip: Total, Active, Pending Payment, Expired */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-white p-4 rounded-lg border border-[#E8E8E5] shadow-subtle">
-              <div className="text-xs text-[#777777]">Total Registered Weddings</div>
+              <div className="text-xs text-[#777777]">Total Events</div>
               <div className="mt-2 text-2xl font-semibold font-mono tabular-nums text-[#252525]">
                 {events.length}
               </div>
-              <div className="mt-1 text-xs text-[#777777]">Across this workspace</div>
+              <div className="mt-1 text-xs text-[#888888]">All registered weddings</div>
             </div>
 
             <div className="bg-white p-4 rounded-lg border border-[#E8E8E5] shadow-subtle">
-              <div className="text-xs text-[#777777]">Upcoming Celebrations</div>
-              <div className="mt-2 text-2xl font-semibold font-mono tabular-nums text-[#252525]">
-                {events.filter(e => new Date(e.wedding_date) >= new Date()).length}
+              <div className="text-xs text-emerald-700 font-medium">Active Events</div>
+              <div className="mt-2 text-2xl font-semibold font-mono tabular-nums text-emerald-800">
+                {events.filter(e => isEventActive(e, agency)).length}
               </div>
-              <div className="mt-1 text-xs text-[#777777]">Scheduled on calendar</div>
+              <div className="mt-1 text-xs text-emerald-600">12-Month full access</div>
             </div>
 
             <div className="bg-white p-4 rounded-lg border border-[#E8E8E5] shadow-subtle">
-              <div className="text-xs text-[#777777]">Workspace Status</div>
-              <div className="mt-2 text-sm font-semibold text-[#252525]">
-                {isSubscribed ? 'Pro License Active' : 'Starter Account'}
+              <div className="text-xs text-amber-700 font-medium">Pending Payment</div>
+              <div className="mt-2 text-2xl font-semibold font-mono tabular-nums text-amber-800">
+                {events.filter(e => e.payment_status === 'pending_payment' || e.status === 'pending_payment').length}
               </div>
-              <div className="mt-1 text-xs text-[#8B806F]">
-                {agency?.slug ? `${agency.slug}.eventframe.io` : 'Standard domain'}
+              <div className="mt-1 text-xs text-amber-600">Awaiting confirmation</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg border border-[#E8E8E5] shadow-subtle">
+              <div className="text-xs text-[#777777]">Expired Events</div>
+              <div className="mt-2 text-2xl font-semibold font-mono tabular-nums text-[#777777]">
+                {events.filter(e => !isEventActive(e, agency) && e.payment_status === 'paid' && e.expires_at && new Date(e.expires_at) < new Date()).length}
               </div>
+              <div className="mt-1 text-xs text-[#888888]">Eligible for $5 renewal</div>
             </div>
           </div>
 
@@ -613,6 +668,9 @@ export default function Workspace() {
                 const coupleTitle = event.groom_name && event.bride_name 
                   ? `${event.groom_name} & ${event.bride_name}` 
                   : event.name || 'Untitled Wedding';
+                const isActive = isEventActive(event, agency);
+                const daysRemaining = getDaysRemaining(event.expires_at);
+                const pkg = getPackageById(event.package_id || 'standard');
 
                 return (
                   <div
@@ -652,8 +710,87 @@ export default function Workspace() {
                         /{event.slug}
                       </div>
 
+                      {/* License & Website Status Badges */}
+                      <div className="mt-2.5 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {agency?.subscription_status === 'active' || agency?.is_demo === true ? (
+                            <Badge variant="taupe" size="sm">Legacy Pro Active</Badge>
+                          ) : isActive ? (
+                            <Badge variant="success" size="sm">
+                              Active {daysRemaining !== null ? `(${daysRemaining}d left)` : ''}
+                            </Badge>
+                          ) : event.payment_status === 'pending_payment' ? (
+                            <Badge variant="warning" size="sm">Pending Payment</Badge>
+                          ) : (event.expires_at && new Date(event.expires_at) < new Date() && event.payment_status === 'paid') ? (
+                            <Badge variant="error" size="sm">Expired</Badge>
+                          ) : (
+                            <Badge variant="neutral" size="sm">Draft / Unpaid</Badge>
+                          )}
+
+                          {/* Website Status Badge */}
+                          {event.website_status === 'published' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              <span>Website Live</span>
+                            </span>
+                          ) : event.website_status === 'unpublished' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                              <EyeOff className="w-3 h-3 text-amber-600" />
+                              <span>Site Offline</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-medium bg-stone-100 text-stone-600 border border-stone-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />
+                              <span>Site Draft</span>
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] font-mono text-[#8B806F] font-semibold">
+                          {formatPrice(EVENT_PRICING.pricePerEvent)} / 12M
+                        </span>
+                      </div>
+
+                      {/* Public Website Strip if Published */}
+                      {event.website_status === 'published' && (
+                        <div className="mt-2.5 p-2 rounded-md bg-emerald-50/60 border border-emerald-200/70 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Globe className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <a
+                              href={`/${event.slug}/website`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] font-mono text-emerald-900 hover:text-emerald-950 truncate underline decoration-emerald-300"
+                            >
+                              /{event.slug}/website
+                            </a>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(`${window.location.origin}/${event.slug}/website`);
+                                setCopiedId(`web-${event.id}`);
+                                setTimeout(() => setCopiedId(null), 2000);
+                              }}
+                              className="p-1 text-emerald-700 hover:text-emerald-950 rounded transition-colors"
+                              title="Copy live website link"
+                            >
+                              {copiedId === `web-${event.id}` ? <Check className="w-3 h-3 text-emerald-600" /> : <Share2 className="w-3 h-3" />}
+                            </button>
+                            <a
+                              href={`/${event.slug}/website`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1 text-emerald-700 hover:text-emerald-950 rounded transition-colors"
+                              title="Open live website in new tab"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Metadata */}
-                      <div className="mt-4 pt-3 border-t border-[#EFEFEA] space-y-1.5 text-xs text-[#777777]">
+                      <div className="mt-3 pt-3 border-t border-[#EFEFEA] space-y-1.5 text-xs text-[#777777]">
                         <div className="flex items-center gap-2">
                           <CalendarIcon className="w-3.5 h-3.5 text-[#B0ADA8]" />
                           <span className="font-mono tabular-nums">
@@ -678,48 +815,84 @@ export default function Workspace() {
                     </div>
 
                     {/* Bottom Action Strip */}
-                    <div className="mt-5 pt-3 border-t border-[#EFEFEA] flex flex-wrap gap-1.5">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => window.open(getEventUrl(event, 'display'), '_blank')}
-                        className="flex-1 !h-7 !text-[11px]"
-                      >
-                        Display
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => window.open(getEventUrl(event, 'guest'), '_blank')}
-                        className="flex-1 !h-7 !text-[11px]"
-                      >
-                        Guest
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => window.open(getEventUrl(event, 'rsvp'), '_blank')}
-                        className="flex-1 !h-7 !text-[11px]"
-                      >
-                        RSVP
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigate(`/editor/${event.id}`)}
-                        className="flex-1 !h-7 !text-[11px]"
-                      >
-                        Studio
-                      </Button>
-                      {!isCouple && (
-                        <button
-                          onClick={() => handleShareCoupleLogin(event)}
-                          title="Copy couple login link and PIN"
-                          className="px-2 h-7 bg-[#FAF9F7] text-[#777777] hover:text-[#252525] rounded border border-[#E8E8E5] transition-colors flex items-center justify-center text-xs"
-                        >
-                          {copiedId === event.id ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Share2 className="w-3.5 h-3.5" />}
-                        </button>
+                    <div className="mt-4 pt-3 border-t border-[#EFEFEA] space-y-2">
+                      {!isActive && (
+                        <div>
+                          {event.expires_at && new Date(event.expires_at) < new Date() && event.payment_status === 'paid' ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate(`/subscription?eventId=${event.id}`)}
+                              className="w-full !h-7 !text-[11px] text-amber-800 border-amber-300 hover:bg-amber-50"
+                              leftIcon={<RefreshCw className="w-3 h-3 text-amber-700" />}
+                            >
+                              Renew 12 Mos ({formatPrice(EVENT_PRICING.pricePerEvent)})
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => navigate(`/subscription?eventId=${event.id}`)}
+                              className="w-full !h-7 !text-[11px]"
+                              leftIcon={<CreditCard className="w-3 h-3" />}
+                            >
+                              Activate Event ({formatPrice(EVENT_PRICING.pricePerEvent)})
+                            </Button>
+                          )}
+                        </div>
                       )}
+
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => window.open(getEventUrl(event, 'display'), '_blank')}
+                          className="flex-1 !h-7 !text-[11px]"
+                        >
+                          Display
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => window.open(getEventUrl(event, 'guest'), '_blank')}
+                          className="flex-1 !h-7 !text-[11px]"
+                        >
+                          Guest
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => window.open(getEventUrl(event, 'rsvp'), '_blank')}
+                          className="flex-1 !h-7 !text-[11px]"
+                        >
+                          RSVP
+                        </Button>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => navigate(`/website-studio/${event.id}`)}
+                          className="flex-1 !h-7 !text-[11px] !bg-[#252525]"
+                        >
+                          Website
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(`/editor/${event.id}`)}
+                          className="flex-1 !h-7 !text-[11px]"
+                        >
+                          Stationery
+                        </Button>
+                        {!isCouple && (
+                          <button
+                            onClick={() => handleShareCoupleLogin(event)}
+                            title="Copy couple login link and PIN"
+                            className="px-2 h-7 bg-[#FAF9F7] text-[#777777] hover:text-[#252525] rounded border border-[#E8E8E5] transition-colors flex items-center justify-center text-xs"
+                          >
+                            {copiedId === event.id ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Share2 className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -895,10 +1068,11 @@ export default function Workspace() {
           <Tabs
             items={[
               { id: 'aesthetic', label: 'Event Details & Style' },
+              { id: 'website', label: 'Website Studio' },
               { id: 'rsvp', label: 'RSVP Responses' },
               { id: 'form', label: 'RSVP Form Schema' },
               { id: 'moderation', label: 'Guest Messages' },
-              { id: 'invitation', label: 'Invitation Studio' },
+              { id: 'invitation', label: 'Stationery Studio' },
             ]}
             activeId={activeEditorTab}
             onChange={(id) => setActiveEditorTab(id as any)}
@@ -1115,6 +1289,144 @@ export default function Workspace() {
                   >
                     View Guest Invitation
                   </Button>
+                </div>
+              </div>
+            )}
+
+            {activeEditorTab === 'website' && editingEvent?.id && (
+              <div className="max-w-3xl bg-white p-8 rounded-lg border border-[#E8E8E5] shadow-subtle space-y-6">
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#FAF9F7] text-[11px] font-mono font-medium text-[#8B806F] border border-[#E8E8E5]">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Canva-Inspired Visual Website Builder</span>
+                  </div>
+                  <h3 className="text-lg font-semibold text-[#252525]">Wedding Website Studio & Publication</h3>
+                  <p className="text-xs text-[#777777] leading-relaxed">
+                    Visually customize your wedding website with responsive desktop, tablet, and mobile previews. Add sections for your Love Story, Wedding Schedule, Photo Gallery, Venue Guide, and interactive RSVP questionnaires.
+                  </p>
+                </div>
+
+                {/* Publication Status & Public Link Panel */}
+                <div className="p-5 rounded-xl border border-[#E8E8E5] bg-[#FAF9F7] space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-[#252525]">Website Status:</span>
+                      {editingEvent.website_status === 'published' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span>PUBLISHED & LIVE</span>
+                        </span>
+                      ) : editingEvent.website_status === 'unpublished' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                          <EyeOff className="w-3.5 h-3.5 text-amber-600" />
+                          <span>UNPUBLISHED / OFFLINE</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-stone-100 text-stone-600 border border-stone-200">
+                          <span className="w-2 h-2 rounded-full bg-stone-400" />
+                          <span>DRAFT ONLY</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {editingEvent.website_published_at && (
+                      <span className="text-[11px] font-mono text-[#777777]">
+                        Last published: {new Date(editingEvent.website_published_at).toLocaleDateString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                      </span>
+                    )}
+                  </div>
+
+                  {editingEvent.slug && (
+                    <div className="p-3 bg-white rounded-lg border border-[#E8E8E5] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Globe className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-[10px] uppercase font-mono tracking-wider text-[#777777]">Public Guest URL</div>
+                          <div className="text-xs font-mono text-[#252525] truncate">
+                            {window.location.origin}/{editingEvent.slug}/website
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/${editingEvent.slug}/website`);
+                            setCopiedId(`web-panel-${editingEvent.id}`);
+                            setTimeout(() => setCopiedId(null), 2000);
+                          }}
+                          className="!h-7 !text-[11px]"
+                          leftIcon={copiedId === `web-panel-${editingEvent.id}` ? <Check className="w-3 h-3 text-emerald-600" /> : <Share2 className="w-3 h-3" />}
+                        >
+                          {copiedId === `web-panel-${editingEvent.id}` ? 'Copied' : 'Copy Link'}
+                        </Button>
+                        {editingEvent.website_status === 'published' && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => window.open(`/${editingEvent.slug}/website`, '_blank')}
+                            className="!h-7 !text-[11px]"
+                            rightIcon={<ExternalLink className="w-3 h-3" />}
+                          >
+                            Open Site
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 rounded-xl bg-[#FAF9F7] border border-[#E8E8E5] grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-mono tracking-wider text-[#777777] block">Active Sections</span>
+                    <span className="text-base font-semibold text-[#252525]">10 Curated Sections</span>
+                    <p className="text-[11px] text-[#777777]">Hero, Countdown, Story, Schedule, Venue, Gallery, RSVP, Wall & More</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-mono tracking-wider text-[#777777] block">Design System</span>
+                    <span className="text-base font-semibold text-[#252525]">Unified Aesthetics</span>
+                    <p className="text-[11px] text-[#777777]">Palettes and typography pairings synchronized with your live ballroom theme</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-mono tracking-wider text-[#777777] block">SEO & Social Meta</span>
+                    <span className="text-base font-semibold text-[#252525]">Open Graph Cards</span>
+                    <p className="text-[11px] text-[#777777]">Auto-generates preview cards for iMessage, WhatsApp, Facebook, and Google Search</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={() => navigate(`/website-studio/${editingEvent.id}`)}
+                    rightIcon={<Layout className="w-4 h-4" />}
+                    className="!bg-[#252525]"
+                  >
+                    Open Website Studio Workspace
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="md"
+                    onClick={() => handleOpenDraftPreview(editingEvent.id!)}
+                    rightIcon={<Eye className="w-4 h-4" />}
+                  >
+                    Preview Draft (Private Link)
+                  </Button>
+
+                  {editingEvent.website_status === 'published' && (
+                    <Button
+                      variant="outline"
+                      size="md"
+                      onClick={() => handleUnpublishWebsite(editingEvent.id!)}
+                      rightIcon={<EyeOff className="w-4 h-4 text-amber-700" />}
+                      className="text-amber-800 border-amber-300 hover:bg-amber-50"
+                    >
+                      Unpublish Website
+                    </Button>
+                  )}
                 </div>
               </div>
             )}

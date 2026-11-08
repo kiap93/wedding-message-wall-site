@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Users, CheckCircle2, XCircle, Search, Download, FileSpreadsheet } from 'lucide-react';
+import { Users, CheckCircle2, XCircle, Search, Download, FileSpreadsheet, Crown, Star } from 'lucide-react';
 import { RSVP, RSVPField } from '../types';
-import { fetchRSVPs } from '../lib/api';
+import { fetchRSVPs, updateRSVPVIP } from '../lib/api';
 import Badge from '../design-system/components/Badge';
 import Button from '../design-system/components/Button';
 
@@ -88,6 +88,31 @@ export default function RSVPManager({ projectId, rsvpFields }: RSVPManagerProps)
     }
     
     return '—';
+  };
+
+  const handleToggleVIP = async (rsvp: RSVP, nextCategory?: string) => {
+    const nextIsVip = nextCategory ? true : !rsvp.is_vip;
+    const effectiveCategory = nextCategory || (nextIsVip ? (rsvp.guest_category || 'VIP') : undefined);
+
+    // Optimistic UI update
+    setRsvps(prev => prev.map(item => {
+      if (item.id === rsvp.id) {
+        return {
+          ...item,
+          is_vip: nextIsVip,
+          guest_category: nextIsVip ? effectiveCategory : undefined
+        };
+      }
+      return item;
+    }));
+
+    try {
+      await updateRSVPVIP(rsvp.id, nextIsVip, effectiveCategory);
+    } catch (err) {
+      console.error('Failed to toggle VIP status:', err);
+      // Revert if failed
+      setRsvps(prev => prev.map(item => item.id === rsvp.id ? rsvp : item));
+    }
   };
 
   const filteredRSVPs = rsvps.filter(r => 
@@ -199,6 +224,7 @@ export default function RSVPManager({ projectId, rsvpFields }: RSVPManagerProps)
             <thead>
               <tr className="border-b border-[#E8E8E5] bg-[#FAF9F7]/70 text-[#777777]">
                 <th className="py-2.5 px-4 font-medium tracking-tight">Status</th>
+                <th className="py-2.5 px-4 font-medium tracking-tight">VIP Highlight</th>
                 {activeFields.map(field => (
                   <th key={field.id} className="py-2.5 px-4 font-medium tracking-tight">
                     {field.label}
@@ -210,14 +236,14 @@ export default function RSVPManager({ projectId, rsvpFields }: RSVPManagerProps)
             <tbody className="divide-y divide-[#EFEFEA]">
               {isLoading ? (
                 <tr>
-                  <td colSpan={activeFields.length + 2} className="py-12 text-center text-[#777777]">
+                  <td colSpan={activeFields.length + 3} className="py-12 text-center text-[#777777]">
                     <div className="w-5 h-5 border-2 border-[#252525] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
                     <span>Loading guest responses...</span>
                   </td>
                 </tr>
               ) : filteredRSVPs.length === 0 ? (
                 <tr>
-                  <td colSpan={activeFields.length + 2} className="py-12 text-center text-[#777777]">
+                  <td colSpan={activeFields.length + 3} className="py-12 text-center text-[#777777]">
                     {searchTerm ? 'No guests found matching search criteria.' : 'No RSVP responses recorded yet.'}
                   </td>
                 </tr>
@@ -234,6 +260,33 @@ export default function RSVPManager({ projectId, rsvpFields }: RSVPManagerProps)
                           Declined
                         </Badge>
                       )}
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleToggleVIP(rsvp)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-medium transition-all ${
+                            rsvp.is_vip 
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200 shadow-xs' 
+                              : 'bg-[#F2F1ED] text-[#777777] border border-transparent hover:border-[#D5D4CF] hover:text-[#252525]'
+                          }`}
+                          title={rsvp.is_vip ? "Designated VIP Attendee. Wall messages will have SPECIAL_GUEST priority. Click to unmark." : "Click to designate as VIP Attendee"}
+                        >
+                          <Crown className={`w-3 h-3 ${rsvp.is_vip ? 'text-emerald-700 fill-emerald-600/30' : 'text-[#999999]'}`} />
+                          <span>{rsvp.is_vip ? (rsvp.guest_category || 'VIP') : 'Mark VIP'}</span>
+                        </button>
+                        {rsvp.is_vip && (
+                          <select
+                            value={rsvp.guest_category || 'VIP'}
+                            onChange={(e) => handleToggleVIP(rsvp, e.target.value)}
+                            className="text-[10px] bg-white border border-emerald-200 text-emerald-900 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                          >
+                            <option value="VIP">VIP</option>
+                            <option value="Family">Family</option>
+                            <option value="Bridal Party">Bridal Party</option>
+                          </select>
+                        )}
+                      </div>
                     </td>
                     {activeFields.map(field => (
                       <td key={field.id} className={`py-3 px-4 ${field.id === 'name' ? 'font-medium text-[#252525]' : 'text-[#555555]'}`}>

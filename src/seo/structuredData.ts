@@ -37,11 +37,10 @@ export function getSoftwareApplicationSchema() {
     description: 'The editorial software platform for modern wedding studios and planners. Bespoke digital stationery suites, real-time live guest moderation, and custom RSVP questionnaires.',
     screenshot: SEO_CONFIG.defaultOgImage,
     offers: {
-      '@type': 'AggregateOffer',
+      '@type': 'Offer',
       priceCurrency: 'USD',
-      lowPrice: '19',
-      highPrice: '399',
-      offerCount: '3',
+      price: '5.00',
+      description: 'USD $5.00 one-time payment for 12 months full wedding event access. Free agency registration.',
     },
     featureList: [
       'White-label agency subdomains',

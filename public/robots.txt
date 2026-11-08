@@ -18,6 +18,8 @@ Disallow: /workspace
 Disallow: /workspace/
 Disallow: /editor
 Disallow: /editor/
+Disallow: /website-studio
+Disallow: /website-studio/
 Disallow: /couple
 Disallow: /couple/
 Disallow: /templates/manage

@@ -11,6 +11,7 @@ import { getSupabase } from '../lib/supabase';
 import { getAgencyById } from '../lib/agency';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { fetchTemplates } from '../lib/templates';
+import { isEventActive } from '../lib/packages';
 
 export default function RSVPPage() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
@@ -182,9 +183,8 @@ export default function RSVPPage() {
 
   const currentUrl = window.location.origin + window.location.pathname + window.location.search;
 
-  const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
-  const isCoupleLogic = agency?.user_role === 'couple';
-  const isPreview = isCoupleLogic && !isSubscribed && !isPreviewParam;
+  const isSubscribed = isEventActive(project, agency);
+  const isPreview = !isSubscribed && !isPreviewParam;
 
   if (isLoading) {
     return (
@@ -207,16 +207,16 @@ export default function RSVPPage() {
           <div className="flex items-center gap-2">
             <Zap className="w-3.5 h-3.5 text-[#8B806F]" />
             <span className="font-mono text-[11px]">
-              Preview Mode: {rsvpCount}/5 RSVPs
+              Draft Preview: {rsvpCount}/5 RSVPs • 12-Month License Required
             </span>
           </div>
           <a
-            href="/subscription"
+            href={project?.id ? `/subscription?eventId=${project.id}` : '/subscription'}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[11px] font-medium underline hover:text-[#8B806F] transition-colors"
           >
-            Upgrade to Publish
+            Activate 12-Month License
           </a>
         </div>
       )}

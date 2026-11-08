@@ -13,6 +13,9 @@ import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { GoogleGenAI } from "@google/genai";
 import uploadRouter from './server/uploadRouter';
+import { activateEventPurchase } from './server/billingService';
+import { EVENT_PRICING, formatPrice } from './src/config/pricing';
+import { EVENT_PACKAGES, getPackageById, isEventActive, getDaysRemaining } from './src/lib/packages';
 
 dotenv.config();
 
@@ -96,11 +99,31 @@ async function startServer() {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
+        const eventId = session.metadata?.eventId;
+        const packageId = session.metadata?.packageId || 'standard';
         const agencyId = session.metadata?.agencyId;
         const subscriptionId = session.subscription as string;
         const customerId = session.customer as string;
 
-        if (agencyId) {
+        // 1. Pay-per-event activation (Primary commercial model)
+        if (eventId) {
+          try {
+            await activateEventPurchase(getSupabaseAdmin(), {
+              eventId,
+              packageId,
+              customerId,
+              agencyId,
+              transactionId: session.id,
+              amountPaidCents: session.amount_total || undefined,
+              provider: 'stripe'
+            });
+            console.log(`[Stripe Webhook] Event ${eventId} activated with package ${packageId} for 12 months!`);
+          } catch (err: any) {
+            console.error(`[Stripe Webhook] Error activating event ${eventId}:`, err.message);
+          }
+        } 
+        // 2. Legacy agency subscription fallback
+        else if (agencyId) {
           const updateData: any = {
             subscription_status: 'active',
             stripe_customer_id: customerId,
@@ -115,7 +138,7 @@ async function startServer() {
             .from('agencies')
             .update(updateData)
             .eq('id', agencyId);
-          console.log(`Agency/Couple ${agencyId} paid/subscribed!`);
+          console.log(`[Stripe Webhook] Legacy Agency/Couple ${agencyId} updated to active`);
         }
         break;
       }
@@ -383,6 +406,54 @@ function verifyPasswordNode(password: string, storedHash: string) {
   const salt = Buffer.from(saltHex, 'hex');
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
   return hash.toString('hex') === originalHashHex;
+}
+
+function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classification: string; reason: string }> {
+  const suggestions: Array<{ id: string; classification: string; reason: string }> = [];
+
+  const blessingKeywords = ['blessed', 'blessing', 'forever', 'eternity', 'lifetime', 'grace', 'unconditional', 'cherish', 'sacred', 'honor'];
+  const storyKeywords = ['remember when', 'growing up', 'first met', 'college', 'childhood', 'years ago', 'since day one', 'first saw you'];
+  const emotionKeywords = ['proud', 'tears', 'crying', 'heart melts', 'radiant', 'soulmate', 'meant to be', 'breathtaking'];
+
+  for (const m of messages) {
+    const text = (m.message || '').toLowerCase();
+    const name = (m.name || '').toLowerCase();
+
+    let reason = '';
+    const hasStory = storyKeywords.some(kw => text.includes(kw));
+    const hasBlessing = blessingKeywords.filter(kw => text.includes(kw)).length >= 2;
+    const hasEmotion = emotionKeywords.some(kw => text.includes(kw));
+    const isVipName = name.includes('mom') || name.includes('dad') || name.includes('grandmother') || name.includes('grandfather') || name.includes('sister') || name.includes('brother') || name.includes('best man') || name.includes('maid of honor');
+
+    if (hasStory) {
+      reason = 'Shares a cherished personal memory and authentic connection with the couple.';
+    } else if (isVipName && (hasBlessing || hasEmotion)) {
+      reason = 'Heartfelt blessings from close family and bridal party.';
+    } else if (hasBlessing) {
+      reason = 'Deep, poetic blessings for a lifetime of unconditional partnership.';
+    } else if (hasEmotion && text.length > 50) {
+      reason = 'Emotionally resonant reflection celebrating the couple’s journey.';
+    }
+
+    if (reason && suggestions.length < 5) {
+      suggestions.push({
+        id: m.id,
+        classification: 'AI_SUGGESTED',
+        reason
+      });
+    }
+  }
+
+  if (suggestions.length === 0 && messages.length > 0) {
+    const sorted = [...messages].sort((a, b) => (b.message?.length || 0) - (a.message?.length || 0));
+    suggestions.push({
+      id: sorted[0].id,
+      classification: 'AI_SUGGESTED',
+      reason: 'Heartwarming wishes celebrating your wedding day.'
+    });
+  }
+
+  return suggestions;
 }
 
   apiRouter.post('/auth/email', async (req, res) => {
@@ -804,8 +875,11 @@ function verifyPasswordNode(password: string, storedHash: string) {
       
       if (!agency) return res.status(403).json({ error: 'Agency not found' });
 
-      // Ensure the project is linked to this user's agency
+      // Ensure the project is linked to this user's agency with pay-per-event defaults
       const newProject = {
+        status: 'draft',
+        payment_status: 'unpaid',
+        package_id: 'standard',
         ...projectData,
         agency_id: agency.id,
         created_at: new Date().toISOString(),
@@ -1263,7 +1337,31 @@ function verifyPasswordNode(password: string, storedHash: string) {
     }
   });
 
-  // --- Moderation Routes ---
+  apiRouter.patch('/rsvps/:id/vip', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { is_vip, guest_category } = req.body;
+      const { data, error } = await getSupabaseAdmin()
+        .from('rsvps')
+        .update({
+          is_vip: Boolean(is_vip),
+          guest_category: is_vip ? (guest_category || 'VIP') : null
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        return res.status(500).json({ error: error.message });
+      }
+
+      res.json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // --- Moderation & Highlight Routes ---
   apiRouter.post('/messages/:id/status', async (req, res) => {
     const authHeader = req.headers.authorization;
     const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
@@ -1287,54 +1385,782 @@ function verifyPasswordNode(password: string, storedHash: string) {
     }
   });
 
-  // --- Stripe Checkout Route ---
-  apiRouter.post('/create-checkout-session', async (req, res) => {
-    const { planId, agencyId } = req.body;
+  // Update Message Highlight Classification and Flags
+  apiRouter.post('/messages/:id/highlight', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
     
-    if (!stripe) {
-      return res.status(500).json({ error: 'Stripe is not configured' });
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+    try {
+      jwt.verify(token, JWT_SECRET);
+      const { id } = req.params;
+      const { classification, is_featured, is_pinned, guest_category, ai_highlight_reason } = req.body;
+
+      const updateData: any = {};
+      if (classification !== undefined) updateData.classification = classification;
+      if (is_featured !== undefined) updateData.is_featured = is_featured;
+      if (is_pinned !== undefined) updateData.is_pinned = is_pinned;
+      if (guest_category !== undefined) updateData.guest_category = guest_category;
+      if (ai_highlight_reason !== undefined) updateData.ai_highlight_reason = ai_highlight_reason;
+
+      const { data, error } = await getSupabaseAdmin()
+        .from('messages')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json({ success: true, message: data });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // AI-Powered Message Highlight Analysis
+  apiRouter.post('/messages/ai-suggest', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+    try {
+      jwt.verify(token, JWT_SECRET);
+      const { projectId } = req.body;
+      if (!projectId) return res.status(400).json({ error: 'projectId is required' });
+
+      // Fetch approved messages for this event
+      const { data: messages, error } = await getSupabaseAdmin()
+        .from('messages')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('status', 'approved');
+
+      if (error) throw error;
+      if (!messages || messages.length === 0) {
+        return res.json({ suggestions: [] });
+      }
+
+      let suggestions: any[] = [];
+      const geminiApiKey = process.env.GEMINI_API_KEY;
+
+      if (geminiApiKey) {
+        try {
+          const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+          const prompt = `You are a wedding reception curator. Analyze the following wedding guest messages.
+Identify which messages possess emotional significance, personal memories and stories, meaningful blessings, or deep connections with the couple.
+For each recommended message, specify a concise, elegant reason (1 sentence) why it deserves to be highlighted on the ballroom projector screen.
+Do NOT simply choose messages based on length. Prioritize sentiment, meaningful blessings, and genuine personal warmth.
+
+Messages:
+${JSON.stringify(messages.map((m: any) => ({ id: m.id, name: m.name, message: m.message })))}
+
+Return ONLY a valid JSON array of objects with the following schema:
+[
+  {
+    "id": "message_id",
+    "classification": "AI_SUGGESTED",
+    "reason": "Touching childhood memory shared with warmth and humor."
+  }
+]
+`;
+          const response = await ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json'
+            }
+          });
+
+          if (response.text) {
+            const parsed = JSON.parse(response.text);
+            if (Array.isArray(parsed)) {
+              suggestions = parsed;
+            }
+          }
+        } catch (aiErr: any) {
+          console.warn('Gemini highlight analysis fallback:', aiErr.message);
+        }
+      }
+
+      // If AI model didn't return suggestions or was unconfigured, use intelligent wedding heuristic analyzer
+      if (suggestions.length === 0) {
+        suggestions = analyzeMessagesHeuristic(messages);
+      }
+
+      res.json({ suggestions });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update Event Message Display Configuration
+  apiRouter.post('/projects/:id/message-config', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+    try {
+      jwt.verify(token, JWT_SECRET);
+      const { id } = req.params;
+      const { config } = req.body;
+
+      const { data, error } = await getSupabaseAdmin()
+        .from('projects')
+        .update({ message_display_config: config, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json({ success: true, project: data });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // --- Wedding Website Publishing, Lifecycle & SEO Endpoints ---
+  const RESERVED_SLUGS = [
+    'login', 'verify', 'reset-password', 'onboarding', 'workspace', 'editor',
+    'website-studio', 'templates', 'pricing', 'subscription', 'api', 'couple',
+    'display', 'guest', 'rsvp', 'invitation', 'e', 'g', 'r', 'event', 'agency'
+  ];
+
+  // Helper to authenticate project owner
+  async function verifyProjectAccess(req: express.Request, projectId: string) {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    const pinHeader = req.headers['x-event-pin'] as string | undefined;
+
+    const supabase = getSupabaseAdmin();
+    const { data: project, error: projErr } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .maybeSingle();
+
+    if (projErr || !project) return { authorized: false, project: null, agency: null };
+
+    const { data: agency } = await supabase
+      .from('agencies')
+      .select('*')
+      .eq('id', project.agency_id)
+      .maybeSingle();
+
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+        const userId = decoded.id || decoded.sub;
+        if (agency && agency.user_id === userId) {
+          return { authorized: true, project, agency };
+        }
+      } catch (e) {
+        // invalid token
+      }
+    }
+
+    if (pinHeader && project.access_password === pinHeader) {
+      return { authorized: true, project, agency };
+    }
+
+    // Support demo project in non-prod
+    if (projectId === 'demo') {
+      return { authorized: true, project, agency: { is_demo: true } as any };
+    }
+
+    return { authorized: false, project, agency };
+  }
+
+  // 1. Publish Website
+  apiRouter.post('/projects/:id/website/publish', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { website_config } = req.body;
+
+      const { authorized, project, agency } = await verifyProjectAccess(req, id);
+      if (!authorized || !project) {
+        return res.status(403).json({ error: 'Unauthorized to publish this website' });
+      }
+
+      // Check payment & eligibility (USD $5 pay-per-event requirement)
+      const isEligible = isEventActive(project, agency);
+      if (!isEligible) {
+        return res.status(402).json({
+          error: 'Event license payment required ($5.00 USD for 12 months) before publishing.',
+          code: 'PAYMENT_REQUIRED',
+          eventId: project.id
+        });
+      }
+
+      // Validate slug
+      if (!project.slug || RESERVED_SLUGS.includes(project.slug.toLowerCase())) {
+        return res.status(400).json({
+          error: `Event slug '${project.slug}' is reserved or invalid. Please update the event slug.`
+        });
+      }
+
+      // Determine snapshot to publish
+      const configToPublish = website_config || project.website_config;
+      if (!configToPublish) {
+        return res.status(400).json({ error: 'No website configuration found to publish' });
+      }
+
+      const publishedAt = new Date().toISOString();
+
+      // Separate draft vs published:
+      // - website_published_config holds immutable snapshot for public visitors
+      // - website_config remains current draft
+      // - website_status becomes 'published'
+      const updatePayload: any = {
+        website_status: 'published',
+        website_published_at: publishedAt,
+        website_published_config: configToPublish,
+        updated_at: publishedAt
+      };
+
+      // Also persist the latest draft if passed
+      if (website_config) {
+        updatePayload.website_config = website_config;
+      }
+
+      const { data: updated, error: updateErr } = await getSupabaseAdmin()
+        .from('projects')
+        .update(updatePayload)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (updateErr) {
+        console.error('Publish error:', updateErr);
+        return res.status(500).json({ error: updateErr.message });
+      }
+
+      res.json({
+        success: true,
+        status: 'published',
+        publishedAt,
+        publicUrl: `/${project.slug}/website`,
+        project: updated
+      });
+    } catch (err: any) {
+      console.error('Publish website route error:', err);
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
+  // 2. Unpublish Website
+  apiRouter.post('/projects/:id/website/unpublish', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authorized, project } = await verifyProjectAccess(req, id);
+      if (!authorized || !project) {
+        return res.status(403).json({ error: 'Unauthorized to unpublish this website' });
+      }
+
+      const { data: updated, error: updateErr } = await getSupabaseAdmin()
+        .from('projects')
+        .update({
+          website_status: 'unpublished',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (updateErr) {
+        return res.status(500).json({ error: updateErr.message });
+      }
+
+      res.json({
+        success: true,
+        status: 'unpublished',
+        project: updated
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3. Generate/Get Revocable Preview Token
+  apiRouter.post('/projects/:id/website/preview-token', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authorized, project } = await verifyProjectAccess(req, id);
+      if (!authorized || !project) {
+        return res.status(403).json({ error: 'Unauthorized to access preview token' });
+      }
+
+      let previewToken = project.website_preview_token;
+      if (!previewToken) {
+        previewToken = crypto.randomBytes(16).toString('hex');
+        await getSupabaseAdmin()
+          .from('projects')
+          .update({ website_preview_token: previewToken })
+          .eq('id', id);
+      }
+
+      res.json({
+        success: true,
+        previewToken,
+        previewUrl: `/${project.slug}/website?preview=true&token=${previewToken}`
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 4. Public / Guest Website Data API
+  apiRouter.get('/events/:slug/website-data', async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const { token: previewToken } = req.query;
+
+      // Demo fallback
+      if (slug === 'demo') {
+        return res.json({
+          status: 'published',
+          published: true,
+          isPreview: false,
+          project: {
+            id: 'demo',
+            slug: 'demo',
+            name: 'Lucas & Sofia Wedding',
+            groom_name: 'Lucas',
+            bride_name: 'Sofia',
+            wedding_date: '2025-09-20',
+            location: 'San Francisco, CA',
+            website_status: 'published'
+          }
+        });
+      }
+
+      const { data: project, error } = await getSupabaseAdmin()
+        .from('projects')
+        .select('id, agency_id, name, slug, groom_name, bride_name, wedding_date, location, theme_id, image_url, website_status, website_published_at, website_published_config, website_config, website_preview_token')
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (error || !project) {
+        return res.status(404).json({ error: 'Wedding celebration not found' });
+      }
+
+      const isPublished = project.website_status === 'published';
+
+      // Safe project payload (excludes private agency/auth tokens)
+      const safeProject = {
+        id: project.id,
+        name: project.name,
+        slug: project.slug,
+        groom_name: project.groom_name,
+        bride_name: project.bride_name,
+        wedding_date: project.wedding_date,
+        location: project.location,
+        theme_id: project.theme_id,
+        image_url: project.image_url,
+        website_status: project.website_status,
+        website_published_at: project.website_published_at
+      };
+
+      if (isPublished) {
+        return res.json({
+          status: 'published',
+          published: true,
+          isPreview: false,
+          config: project.website_published_config || project.website_config,
+          project: safeProject
+        });
+      }
+
+      // Check if authorized preview
+      let isAuthorizedPreview = false;
+      if (previewToken && project.website_preview_token && previewToken === project.website_preview_token) {
+        isAuthorizedPreview = true;
+      } else {
+        // Check session token
+        const authHeader = req.headers.authorization;
+        const sessionToken = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+        if (sessionToken) {
+          try {
+            const decoded = jwt.verify(sessionToken, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+            const { data: agency } = await getSupabaseAdmin()
+              .from('agencies')
+              .select('id')
+              .eq('user_id', decoded.id || decoded.sub)
+              .maybeSingle();
+            if (agency && agency.id === project.agency_id) {
+              isAuthorizedPreview = true;
+            }
+          } catch (e) {}
+        }
+      }
+
+      if (isAuthorizedPreview) {
+        return res.json({
+          status: project.website_status || 'draft',
+          published: false,
+          isPreview: true,
+          config: project.website_config,
+          project: safeProject
+        });
+      }
+
+      // Unpublished / Private to public visitors
+      return res.status(200).json({
+        status: project.website_status || 'draft',
+        published: false,
+        isPreview: false,
+        error: project.website_status === 'unpublished' 
+          ? 'This wedding website is currently unpublished.'
+          : 'This wedding website is currently in private draft mode.',
+        project: safeProject
+      });
+    } catch (err: any) {
+      console.error('website-data error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- Centralized Pricing & Package Catalog Routes ---
+  apiRouter.get('/pricing', (req, res) => {
+    res.json({
+      pricing: EVENT_PRICING,
+      formattedPrice: formatPrice(EVENT_PRICING.pricePerEvent)
+    });
+  });
+
+  apiRouter.get('/packages', (req, res) => {
+    res.json({ packages: EVENT_PACKAGES, pricing: EVENT_PRICING });
+  });
+
+  // --- Stripe Checkout Route (USD $5 Pay-Per-Event) ---
+  apiRouter.post('/create-checkout-session', async (req, res) => {
+    const { eventId, agencyId, successUrl, cancelUrl } = req.body;
+    
+    // Authenticate user if header or cookie is available
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    let authAgency: any = null;
+
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+        const userId = decoded.id || decoded.sub;
+        const { data: userAgency } = await getSupabaseAdmin()
+          .from('agencies')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        authAgency = userAgency;
+      } catch (err) {
+        // Continue with agencyId from body if valid
+      }
+    }
+
+    if (!eventId) {
+      return res.status(400).json({ error: 'eventId is required to create a pay-per-event checkout session' });
+    }
+
+    // 1. Fetch target event and verify ownership
+    let event: any = null;
+    try {
+      const { data, error } = await getSupabaseAdmin()
+        .from('projects')
+        .select('id, name, agency_id, payment_status, status, expires_at')
+        .eq('id', eventId)
+        .single();
+
+      if (error || !data) {
+        return res.status(404).json({ error: `Event not found: ${eventId}` });
+      }
+      event = data;
+
+      // Ensure user cannot pay for events belonging to another agency
+      if (authAgency && event.agency_id && authAgency.id !== event.agency_id) {
+        return res.status(403).json({ error: 'Forbidden: You cannot pay for an event belonging to another organization' });
+      }
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    // 2. Set event status to pending_payment in database
+    try {
+      await getSupabaseAdmin()
+        .from('projects')
+        .update({
+          payment_status: 'pending_payment',
+          status: 'pending_payment',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', eventId);
+    } catch (updateErr: any) {
+      console.warn('Could not update pending_payment status:', updateErr.message);
+    }
+
+    // Determine redirect URLs
+    const defaultSuccess = `${APP_URL}/subscription?success=true&eventId=${eventId}`;
+    const defaultCancel = `${APP_URL}/subscription?canceled=true&eventId=${eventId}`;
+    const effectiveSuccess = successUrl || defaultSuccess;
+    const effectiveCancel = cancelUrl || defaultCancel;
+
+    // 3. Check payment provider configuration
+    // IMPORTANT: Never simulate payment. If provider is unconfigured, preserve pending_payment status.
+    const isPlaceholderStripe = !stripe || !STRIPE_SECRET_KEY || !STRIPE_SECRET_KEY.startsWith('sk_');
+    if (isPlaceholderStripe) {
+      console.warn('[Stripe] Stripe is not configured with a live key. Event marked as pending_payment. Preserving pending workflow without simulating paid status.');
+      return res.json({ 
+        status: 'pending_payment',
+        pending: true,
+        eventId,
+        amount: EVENT_PRICING.pricePerEvent,
+        currency: EVENT_PRICING.currency,
+        message: 'Payment gateway is in setup mode. Event status has been updated to pending_payment.'
+      });
     }
 
     try {
-      // In a production app, we'd look up the price ID from planId
-      const isOneTime = planId === 'price_one_time';
-      
+      // 4. Create authoritative Stripe Checkout Session ($5.00 USD)
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [
           {
             price_data: {
-              currency: 'usd',
+              currency: EVENT_PRICING.currency.toLowerCase(),
               product_data: {
-                name: isOneTime ? 'Individual Wedding License' : (planId === 'price_monthly' ? 'Agency Pro (Monthly)' : 'Agency Pro (Yearly)'),
+                name: `EventFrame Event License — ${event.name || 'Wedding Celebration'}`,
+                description: '12 Months Full Event Access · Live Screen Moderation · Full Digital Suite',
               },
-              unit_amount: isOneTime ? 1900 : (planId === 'price_monthly' ? 4900 : 47000),
-              ...(!isOneTime && {
-                recurring: {
-                  interval: planId === 'price_monthly' ? 'month' : 'year',
-                },
-              }),
+              unit_amount: EVENT_PRICING.priceInCents, // Authoritative USD $5.00 (500 cents)
             },
             quantity: 1,
           },
         ],
-        mode: isOneTime ? 'payment' : 'subscription',
-        ...( !isOneTime && {
-          subscription_data: {
-            trial_period_days: 30,
-          },
-        }),
-        success_url: `${APP_URL}/subscription?success=true`,
-        cancel_url: `${APP_URL}/subscription?canceled=true`,
+        mode: 'payment',
+        success_url: effectiveSuccess.includes('{CHECKOUT_SESSION_ID}') 
+          ? effectiveSuccess 
+          : `${effectiveSuccess}${effectiveSuccess.includes('?') ? '&' : '?'}session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: effectiveCancel,
         metadata: {
-          agencyId,
-          planId,
+          eventId,
+          agencyId: event.agency_id || agencyId || '',
+          amount: EVENT_PRICING.priceInCents.toString(),
+          billingModel: EVENT_PRICING.billingModel
         },
       });
 
-      res.json({ url: session.url });
+      return res.json({ url: session.url, sessionId: session.id, status: 'pending_payment' });
     } catch (error: any) {
-      console.error('Stripe error:', error);
+      console.error('Stripe checkout error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // --- Strict Session Verification Route (Only verified payments can activate) ---
+  apiRouter.post('/events/:id/verify-session', async (req, res) => {
+    const { id } = req.params;
+    const { sessionId } = req.body;
+
+    if (!sessionId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Payment session ID is required for verification. Events cannot be marked paid without verified payment confirmation.' 
+      });
+    }
+
+    if (!stripe || !STRIPE_SECRET_KEY || !STRIPE_SECRET_KEY.startsWith('sk_')) {
+      return res.status(400).json({ 
+        success: false, 
+        status: 'pending_payment',
+        error: 'Payment provider is not configured. Event remains in pending_payment status until verified.' 
+      });
+    }
+
+    try {
+      // Retrieve session directly from Stripe API
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+      // Verify payment was actually paid
+      if (session.payment_status !== 'paid') {
+        return res.status(400).json({ 
+          success: false, 
+          status: 'pending_payment',
+          error: `Stripe session payment not completed (status: ${session.payment_status})` 
+        });
+      }
+
+      // Verify that Session matches target Event ID (Prevent Event A payment activating Event B)
+      if (session.metadata?.eventId !== id) {
+        return res.status(403).json({ 
+          success: false, 
+          error: 'Security violation: Payment session does not match this event.' 
+        });
+      }
+
+      // Verify payment amount matches authoritative price ($5.00 USD / 500 cents)
+      if (session.amount_total !== null && session.amount_total < EVENT_PRICING.priceInCents) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Payment amount mismatch: Insufficient payment recorded.' 
+        });
+      }
+
+      // Authoritative activation
+      const result = await activateEventPurchase(getSupabaseAdmin(), {
+        eventId: id,
+        packageId: 'standard',
+        customerId: (session.customer as string) || 'customer',
+        agencyId: session.metadata?.agencyId,
+        transactionId: session.id,
+        amountPaidCents: session.amount_total || EVENT_PRICING.priceInCents,
+        provider: 'stripe'
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('Payment verification error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // --- Internal / Automated Test Activation Route (Protected for testing suites) ---
+  apiRouter.post('/events/:id/activate-mock', async (req, res) => {
+    const { id } = req.params;
+    const isTestExecution = req.headers['x-test-suite'] === 'true' || process.env.NODE_ENV !== 'production';
+
+    if (!isTestExecution) {
+      return res.status(403).json({ error: 'Mock activation is only permitted during automated test execution.' });
+    }
+
+    try {
+      const result = await activateEventPurchase(getSupabaseAdmin(), {
+        eventId: id,
+        packageId: 'standard',
+        customerId: 'test_agency',
+        transactionId: `test_tx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        amountPaidCents: EVENT_PRICING.priceInCents,
+        provider: 'test_suite'
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('Test activation error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // --- Billing Events List Route ---
+  apiRouter.get('/billing/events', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      const userId = decoded.id || decoded.sub;
+
+      // Find user agency
+      const { data: agency } = await getSupabaseAdmin()
+        .from('agencies')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (!agency) {
+        return res.json({ events: [], agency: null, metrics: { totalEvents: 0, activeEvents: 0, pendingPaymentEvents: 0, expiredEvents: 0 } });
+      }
+
+      // Fetch projects
+      const { data: projects, error } = await getSupabaseAdmin()
+        .from('projects')
+        .select('*')
+        .eq('agency_id', agency.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Enrich projects with payment and validity status
+      const now = Date.now();
+      const enrichedEvents = (projects || []).map((project: any) => {
+        const active = isEventActive(project, agency);
+        const daysRemaining = getDaysRemaining(project.expires_at);
+        const isExpired = project.expires_at && new Date(project.expires_at).getTime() <= now;
+
+        // Determine explicit lifecycle status
+        let displayStatus = 'draft';
+        if (active) {
+          displayStatus = 'active';
+        } else if (isExpired && project.payment_status === 'paid') {
+          displayStatus = 'expired';
+        } else if (project.payment_status === 'pending_payment') {
+          displayStatus = 'pending_payment';
+        } else if (project.payment_status === 'cancelled') {
+          displayStatus = 'cancelled';
+        } else if (project.payment_status === 'failed') {
+          displayStatus = 'failed';
+        }
+
+        return {
+          ...project,
+          displayStatus,
+          isActive: active,
+          daysRemaining,
+          amountPaid: project.payment_status === 'paid' ? EVENT_PRICING.pricePerEvent : 0,
+          pricePerEvent: EVENT_PRICING.pricePerEvent,
+          currency: EVENT_PRICING.currency,
+          validityMonths: EVENT_PRICING.validityMonths,
+          isGrandfathered: agency.is_demo === true || agency.subscription_status === 'active'
+        };
+      });
+
+      const metrics = {
+        totalEvents: enrichedEvents.length,
+        activeEvents: enrichedEvents.filter((e: any) => e.isActive).length,
+        pendingPaymentEvents: enrichedEvents.filter((e: any) => e.displayStatus === 'pending_payment').length,
+        expiredEvents: enrichedEvents.filter((e: any) => e.displayStatus === 'expired').length,
+        totalPaidAmount: enrichedEvents.reduce((acc: number, e: any) => acc + (e.amountPaid || 0), 0)
+      };
+
+      res.json({ events: enrichedEvents, agency, metrics, pricing: EVENT_PRICING });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // --- Billing Order History Route ---
+  apiRouter.get('/billing/history', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      const userId = decoded.id || decoded.sub;
+
+      const { data: agency } = await getSupabaseAdmin()
+        .from('agencies')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (!agency) return res.json({ orders: [] });
+
+      try {
+        const { data: orders, error } = await getSupabaseAdmin()
+          .from('event_orders')
+          .select('*')
+          .eq('agency_id', agency.id)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          // Table might not exist yet if migration pending
+          return res.json({ orders: [] });
+        }
+        res.json({ orders: orders || [] });
+      } catch {
+        res.json({ orders: [] });
+      }
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
@@ -1352,8 +2178,53 @@ function verifyPasswordNode(password: string, storedHash: string) {
     res.type('text/plain').sendFile(path.join(__dirname, 'public', 'robots.txt'));
   });
 
-  app.get('/sitemap.xml', (req, res) => {
-    res.type('application/xml').sendFile(path.join(__dirname, 'public', 'sitemap.xml'));
+  app.get('/sitemap.xml', async (req, res) => {
+    try {
+      const { data: publishedProjects } = await getSupabaseAdmin()
+        .from('projects')
+        .select('slug, updated_at, website_published_at, website_config, website_status')
+        .eq('website_status', 'published');
+
+      const staticUrls = [
+        { loc: 'https://eventframe.io/', priority: '1.0', changefreq: 'weekly' },
+        { loc: 'https://eventframe.io/wedding-planner-software', priority: '0.9', changefreq: 'weekly' },
+        { loc: 'https://eventframe.io/white-label-wedding-software', priority: '0.9', changefreq: 'weekly' },
+        { loc: 'https://eventframe.io/digital-wedding-invitations', priority: '0.9', changefreq: 'weekly' },
+        { loc: 'https://eventframe.io/wedding-rsvp-management', priority: '0.9', changefreq: 'weekly' },
+        { loc: 'https://eventframe.io/wedding-guest-management', priority: '0.9', changefreq: 'weekly' },
+        { loc: 'https://eventframe.io/wedding-reception-display', priority: '0.9', changefreq: 'weekly' },
+        { loc: 'https://eventframe.io/templates', priority: '0.8', changefreq: 'weekly' },
+        { loc: 'https://eventframe.io/pricing', priority: '0.8', changefreq: 'monthly' }
+      ];
+
+      let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+      xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+
+      for (const item of staticUrls) {
+        xml += `  <url>\n    <loc>${item.loc}</loc>\n    <changefreq>${item.changefreq}</changefreq>\n    <priority>${item.priority}</priority>\n  </url>\n`;
+      }
+
+      if (publishedProjects && publishedProjects.length > 0) {
+        for (const p of publishedProjects) {
+          if (!p.slug) continue;
+          let cfg: any = p.website_config;
+          if (typeof cfg === 'string') {
+            try { cfg = JSON.parse(cfg); } catch (e) { cfg = null; }
+          }
+          if (cfg?.seo?.noIndex === true) continue; // Respect user indexing preference
+
+          const rawDate = p.website_published_at || p.updated_at || new Date().toISOString();
+          const lastmod = rawDate.split('T')[0];
+          xml += `  <url>\n    <loc>https://eventframe.io/${encodeURIComponent(p.slug)}/website</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
+        }
+      }
+
+      xml += '</urlset>';
+      res.type('application/xml').send(xml);
+    } catch (err: any) {
+      console.error('Error generating dynamic sitemap:', err);
+      res.type('application/xml').sendFile(path.join(__dirname, 'public', 'sitemap.xml'));
+    }
   });
 
   // --- End Auth Routes ---

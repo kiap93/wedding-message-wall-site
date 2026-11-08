@@ -1,16 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, QrCode, Zap } from 'lucide-react';
+import { Heart, QrCode, Zap, Star, Crown, Pin, Sparkles } from 'lucide-react';
 import { fetchMessages, Message } from '../lib/api';
 import { getSupabase } from '../lib/supabase';
-import { WeddingEvent, WeddingTemplate, Agency } from '../types';
+import { WeddingEvent, WeddingTemplate, Agency, MessageDisplayConfig, DEFAULT_MESSAGE_DISPLAY_CONFIG } from '../types';
 import { resolveEventTheme, ResolvedEventTheme } from '../lib/eventTheme';
 import { ThemeOverlay } from '../components/ThemeDecorations';
 import { QRCodeSVG } from 'qrcode.react';
 import { getAgencyById } from '../lib/agency';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { fetchTemplates } from '../lib/templates';
+import { isEventActive } from '../lib/packages';
+import { scheduleMessageRotation, getMessageDuration } from '../lib/displayScheduler';
 
 export default function Display() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
@@ -19,10 +21,9 @@ export default function Display() {
   const [agency, setAgency] = useState<Agency | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchParams] = useSearchParams();
-  const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
-  const isCoupleLogic = agency?.user_role === 'couple';
+  const isSubscribed = isEventActive(project, agency);
   const isPreviewParam = searchParams.get('preview') === 'true';
-  const isPreview = isCoupleLogic && !isSubscribed && !isPreviewParam;
+  const isPreview = !isSubscribed && !isPreviewParam;
   const [showQR, setShowQR] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
@@ -265,6 +266,14 @@ export default function Display() {
     };
   }, [project?.id, projectId, isPreview, isPreviewParam]);
 
+  const displayConfig: MessageDisplayConfig = useMemo(() => {
+    return project?.message_display_config || DEFAULT_MESSAGE_DISPLAY_CONFIG;
+  }, [project?.message_display_config]);
+
+  const scheduledMessages = useMemo(() => {
+    return scheduleMessageRotation(messages, displayConfig);
+  }, [messages, displayConfig]);
+
   if (isLoading) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${theme.colors.background}`}>
@@ -284,14 +293,14 @@ export default function Display() {
           <div className="flex items-center gap-2">
             <Zap className="w-3.5 h-3.5 text-[#8B806F]" />
             <span className="font-mono text-[11px]">
-              Preview Mode • Guestbook Limited to 5 Messages
+              Draft Preview • 12-Month License Required for Full Public Access
             </span>
           </div>
           <button 
-            onClick={() => window.open('/subscription', '_blank')}
+            onClick={() => window.open(project?.id ? `/subscription?eventId=${project.id}` : '/subscription', '_blank')}
             className="bg-white text-[#252525] px-3 py-1 rounded text-xs font-medium hover:bg-[#F7F7F5] transition-colors"
           >
-            Upgrade to Publish
+            Activate 12-Month License
           </button>
         </div>
       )}
@@ -374,23 +383,24 @@ export default function Display() {
           </div>
         </header>
 
+        {/* Display Priority & Rotation Engine */}
         <main className="flex-1 relative px-2 sm:px-4 md:px-8">
           <AnimatePresence mode="wait">
             {theme.display.layoutVariant === 'hanging' ? (
-              <HangingLayout key="hanging" messages={messages} theme={theme} />
+              <HangingLayout key="hanging" messages={scheduledMessages} theme={theme} displayConfig={displayConfig} />
             ) : theme.display.layoutVariant === 'floating' ? (
-              <FloatingLayout key="floating" messages={messages} theme={theme} />
+              <FloatingLayout key="floating" messages={scheduledMessages} theme={theme} displayConfig={displayConfig} />
             ) : theme.display.layoutVariant === 'custom' ? (
-              <CustomLayout key="custom" messages={messages} template={theme.rawTemplate} project={project} />
+              <CustomLayout key="custom" messages={scheduledMessages} template={theme.rawTemplate} project={project} />
             ) : theme.display.layoutVariant === 'grid' ? (
-              <GridLayout key="grid" messages={messages} theme={theme} />
+              <GridLayout key="grid" messages={scheduledMessages} theme={theme} displayConfig={displayConfig} />
             ) : (
-              <MasonryLayout key="masonry" messages={messages} theme={theme} />
+              <MasonryLayout key="masonry" messages={scheduledMessages} theme={theme} displayConfig={displayConfig} />
             )}
           </AnimatePresence>
 
           {/* Empty State */}
-          {messages.length === 0 && (
+          {scheduledMessages.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <motion.div 
                 initial={{ opacity: 0 }}
@@ -425,6 +435,17 @@ export default function Display() {
         .custom-card-wrapper {
           display: block !important;
           min-height: 10px;
+        }
+        @keyframes spotlight-glow-pulse {
+          0%, 100% {
+            box-shadow: 0 0 25px rgba(245, 158, 11, 0.35), 0 0 50px rgba(251, 191, 36, 0.15);
+          }
+          50% {
+            box-shadow: 0 0 45px rgba(245, 158, 11, 0.6), 0 0 80px rgba(251, 191, 36, 0.3);
+          }
+        }
+        .spotlight-halo {
+          animation: spotlight-glow-pulse 4s ease-in-out infinite;
         }
         ${theme.rawTemplate.css || ''}
       `}} />
@@ -476,7 +497,15 @@ function CustomLayout({ messages, template, project }: { messages: Message[], te
   );
 }
 
-function MasonryLayout({ messages, theme }: { messages: Message[], theme: ResolvedEventTheme }) {
+function MasonryLayout({ 
+  messages, 
+  theme, 
+  displayConfig 
+}: { 
+  messages: Message[]; 
+  theme: ResolvedEventTheme; 
+  displayConfig: MessageDisplayConfig; 
+}) {
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -487,7 +516,7 @@ function MasonryLayout({ messages, theme }: { messages: Message[], theme: Resolv
       <AnimatePresence mode="popLayout">
         {messages.map((msg) => (
           <div key={msg.id} className="break-inside-avoid block">
-            <MessageCard msg={msg} theme={theme} />
+            <MessageCard msg={msg} theme={theme} displayConfig={displayConfig} />
           </div>
         ))}
       </AnimatePresence>
@@ -495,7 +524,15 @@ function MasonryLayout({ messages, theme }: { messages: Message[], theme: Resolv
   );
 }
 
-function GridLayout({ messages, theme }: { messages: Message[], theme: ResolvedEventTheme }) {
+function GridLayout({ 
+  messages, 
+  theme, 
+  displayConfig 
+}: { 
+  messages: Message[]; 
+  theme: ResolvedEventTheme; 
+  displayConfig: MessageDisplayConfig; 
+}) {
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -506,7 +543,7 @@ function GridLayout({ messages, theme }: { messages: Message[], theme: ResolvedE
       <AnimatePresence mode="popLayout">
         {messages.map((msg) => (
           <div key={msg.id}>
-            <MessageCard msg={msg} theme={theme} />
+            <MessageCard msg={msg} theme={theme} displayConfig={displayConfig} />
           </div>
         ))}
       </AnimatePresence>
@@ -514,7 +551,15 @@ function GridLayout({ messages, theme }: { messages: Message[], theme: ResolvedE
   );
 }
 
-function HangingLayout({ messages, theme }: { messages: Message[], theme: ResolvedEventTheme }) {
+function HangingLayout({ 
+  messages, 
+  theme, 
+  displayConfig 
+}: { 
+  messages: Message[]; 
+  theme: ResolvedEventTheme; 
+  displayConfig: MessageDisplayConfig; 
+}) {
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -541,7 +586,7 @@ function HangingLayout({ messages, theme }: { messages: Message[], theme: Resolv
           <div key={msg.id} className="relative">
             {/* The Twine attached to card */}
             <div className="absolute top-[-60px] left-1/2 w-[2px] h-16 bg-[#829D82]/40 -translate-x-1/2" />
-            <MessageCard msg={msg} theme={theme} hanging />
+            <MessageCard msg={msg} theme={theme} displayConfig={displayConfig} hanging />
           </div>
         ))}
       </AnimatePresence>
@@ -549,7 +594,15 @@ function HangingLayout({ messages, theme }: { messages: Message[], theme: Resolv
   );
 }
 
-function FloatingLayout({ messages, theme }: { messages: Message[], theme: ResolvedEventTheme }) {
+function FloatingLayout({ 
+  messages, 
+  theme, 
+  displayConfig 
+}: { 
+  messages: Message[]; 
+  theme: ResolvedEventTheme; 
+  displayConfig: MessageDisplayConfig; 
+}) {
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -569,13 +622,13 @@ function FloatingLayout({ messages, theme }: { messages: Message[], theme: Resol
               initial={{ opacity: 0, scale: 0.6 }}
               animate={{ 
                 opacity: 1, 
-                scale: 1,
+                scale: 1, 
                 top: `${y}%`,
                 left: `${x}%`,
               }}
               transition={{ duration: 0.8, delay: idx * 0.08 }}
             >
-              <MessageCard msg={msg} theme={theme} floating />
+              <MessageCard msg={msg} theme={theme} displayConfig={displayConfig} floating />
             </motion.div>
           );
         })}
@@ -587,11 +640,13 @@ function FloatingLayout({ messages, theme }: { messages: Message[], theme: Resol
 function MessageCard({ 
   msg, 
   theme, 
+  displayConfig = DEFAULT_MESSAGE_DISPLAY_CONFIG,
   hanging, 
   floating 
 }: { 
   msg: Message; 
   theme: ResolvedEventTheme; 
+  displayConfig?: MessageDisplayConfig;
   hanging?: boolean; 
   floating?: boolean; 
 }) {
@@ -601,6 +656,40 @@ function MessageCard({
   const floatDuration = 6 + (seed % 6);
   const floatDelay = (seed % 5000) / 1000;
   const Icon = theme.IconComponent;
+
+  const isCoupleSelected = msg.classification === 'COUPLE_SELECTED' || msg.is_featured;
+  const isSpecialGuest = msg.classification === 'SPECIAL_GUEST';
+  const isPinned = msg.is_pinned;
+  const animationStyle = displayConfig.spotlightAnimation || 'elegant-spotlight';
+  const durationSec = getMessageDuration(msg, displayConfig);
+
+  // Dynamic animation and styling based on classification
+  let spotlightClasses = '';
+  let spotlightAnimationProps: any = {};
+
+  if (isCoupleSelected) {
+    if (animationStyle === 'elegant-spotlight') {
+      spotlightClasses = 'ring-2 ring-amber-400/90 spotlight-halo bg-gradient-to-b from-[#FFFDF7] to-[#FFF9EB] border-amber-300 text-stone-900 shadow-2xl';
+      spotlightAnimationProps = {
+        scale: [1, 1.025, 1],
+        transition: { duration: 5, repeat: Infinity, ease: 'easeInOut' }
+      };
+    } else if (animationStyle === 'fade-scale') {
+      spotlightClasses = 'ring-2 ring-amber-400 shadow-2xl bg-gradient-to-b from-amber-50/95 to-white border-amber-300';
+      spotlightAnimationProps = {
+        scale: 1.03,
+        transition: { type: 'spring', damping: 15, stiffness: 100 }
+      };
+    } else if (animationStyle === 'cinematic-glide') {
+      spotlightClasses = 'ring-2 ring-amber-400/80 shadow-[0_20px_50px_rgba(245,158,11,0.25)] bg-gradient-to-tr from-amber-50/90 via-white to-amber-50/80 border-amber-300';
+      spotlightAnimationProps = {
+        x: [xOffset - 4, xOffset + 4, xOffset - 4],
+        transition: { duration: 7, repeat: Infinity, ease: 'easeInOut' }
+      };
+    }
+  } else if (isSpecialGuest) {
+    spotlightClasses = 'ring-1.5 ring-emerald-600/70 shadow-lg bg-gradient-to-b from-emerald-50/40 to-white/95 border-emerald-200';
+  }
 
   const cardBaseClass = theme.id === 'polaroid' 
     ? 'polaroid-frame bg-white text-gray-900 rounded-none' 
@@ -614,8 +703,8 @@ function MessageCard({
       initial={{ opacity: 0, scale: 0.85, y: 24, rotate: rotation }}
       animate={{ 
         opacity: 1, 
-        scale: 1, 
-        x: xOffset,
+        scale: spotlightAnimationProps.scale || 1, 
+        x: spotlightAnimationProps.x || xOffset,
         y: floating ? [0, -18, 0, 18, 0] : [0, -8, 0],
         rotate: [rotation, rotation + 1.5, rotation - 1.5, rotation] 
       }}
@@ -636,22 +725,44 @@ function MessageCard({
         opacity: { duration: 0.5 },
         scale: { type: "spring", damping: 20 }
       }}
-      className={`p-6 sm:p-7 transition-all relative text-center ${cardBaseClass} ${
+      className={`p-6 sm:p-7 transition-all relative text-center ${cardBaseClass} ${spotlightClasses} ${
         floating ? 'w-64 scale-80 md:scale-100' : 'w-full'
       }`}
       style={{ transformOrigin: 'center center' }}
     >
+      {/* Pinned Badge */}
+      {isPinned && (
+        <div className="absolute -top-3 left-4 z-20 flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wider uppercase bg-[#252525] text-white shadow-md">
+          <Pin className="w-2.5 h-2.5 fill-current" />
+          <span>Pinned</span>
+        </div>
+      )}
+
+      {/* Spotlight / Special Guest Ribbon Header */}
+      {isCoupleSelected ? (
+        <div className="mb-3.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold tracking-wide uppercase bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-sm ring-2 ring-amber-300/60">
+          <Sparkles className="w-3 h-3 text-amber-200 fill-current animate-pulse" />
+          <span>Couple's Spotlight</span>
+          <Star className="w-3 h-3 fill-current text-amber-200" />
+        </div>
+      ) : isSpecialGuest ? (
+        <div className="mb-3.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wider uppercase bg-emerald-100 text-emerald-800 border border-emerald-300/80 shadow-xs">
+          <Crown className="w-3 h-3 text-emerald-700" />
+          <span>{msg.guest_category ? `${msg.guest_category}` : 'VIP Guest'}</span>
+        </div>
+      ) : null}
+
       {/* Hanging Pin / Wooden Peg */}
       {hanging && (
         <div className="absolute -top-2.5 left-1/2 w-4 h-4 bg-[#829D82] rounded-full border-2 border-white shadow-xs -translate-x-1/2 z-10" />
       )}
 
       <div className="flex flex-col items-center justify-center mb-3">
-        <div className={`mb-2.5 ${theme.colors.accent}`}>
-          <Icon className="w-5 h-5 fill-current opacity-30" />
+        <div className={`mb-2.5 ${isCoupleSelected ? 'text-amber-500' : theme.colors.accent}`}>
+          <Icon className="w-5 h-5 fill-current opacity-40" />
         </div>
-        <h3 className={`text-lg sm:text-xl ${theme.fontHeading} ${theme.id === 'polaroid' ? 'text-gray-900' : theme.colors.headerText} tracking-tight font-semibold`}>
-          {msg.name || 'Anonymous Guest'}
+        <h3 className={`text-lg sm:text-xl ${theme.fontHeading} ${theme.id === 'polaroid' ? 'text-gray-900' : theme.colors.headerText} tracking-tight font-semibold flex items-center gap-1.5`}>
+          <span>{msg.name || 'Anonymous Guest'}</span>
         </h3>
       </div>
 
@@ -661,15 +772,29 @@ function MessageCard({
         "{msg.message}"
       </p>
 
-      <div className={`flex justify-center border-t ${
-        theme.id === 'polaroid' ? 'border-gray-200' : theme.colors.border
-      } pt-3`}>
-        <span className={`text-[10px] uppercase font-mono tracking-wider tabular-nums ${
-          theme.id === 'polaroid' ? 'text-gray-400' : theme.colors.subtleText
-        }`}>
+      <div className={`flex items-center justify-between border-t ${
+        theme.id === 'polaroid' ? 'border-gray-200' : isCoupleSelected ? 'border-amber-200/80' : theme.colors.border
+      } pt-3 text-[10px] uppercase font-mono tracking-wider tabular-nums ${
+        theme.id === 'polaroid' ? 'text-gray-400' : theme.colors.subtleText
+      }`}>
+        <span>
           {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </span>
+        <span className="opacity-75 flex items-center gap-1">
+          {isCoupleSelected ? (
+            <span className="text-amber-700 font-semibold flex items-center gap-1">
+              <Star className="w-2.5 h-2.5 fill-current" /> {durationSec}s
+            </span>
+          ) : isSpecialGuest ? (
+            <span className="text-emerald-700 font-semibold flex items-center gap-1">
+              <Crown className="w-2.5 h-2.5" /> {durationSec}s
+            </span>
+          ) : (
+            <span>{durationSec}s</span>
+          )}
         </span>
       </div>
     </motion.div>
   );
 }
+

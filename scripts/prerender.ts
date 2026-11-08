@@ -144,62 +144,58 @@ const PRERENDER_CONTENT: Record<string, { h1: string; contentHtml: string }> = {
     `
   },
   '/pricing': {
-    h1: 'EventFrame Pricing — Plans for Wedding Studios & Couples',
+    h1: 'EventFrame Pricing — Pay-Per-Event Wedding Licensing ($5 USD)',
     contentHtml: `
       ${prerenderHeader}
-      <main class="max-w-6xl mx-auto px-6 py-12">
+      <main class="max-w-4xl mx-auto px-6 py-16">
         <div class="text-center space-y-3 max-w-xl mx-auto mb-12">
-          <h1 class="font-serif text-3xl sm:text-4xl text-[#252525]">Transparent Pricing for Studios & Couples</h1>
-          <p class="text-xs sm:text-sm text-[#777777] leading-relaxed">Choose the right plan for your boutique wedding studio or individual celebration.</p>
+          <span class="text-xs font-mono font-semibold uppercase tracking-wider text-[#8B806F]">ONE-TIME PAYMENT LICENSING</span>
+          <h1 class="font-serif text-3xl sm:text-4xl text-[#252525]">One Event. One Payment. $5.00 USD.</h1>
+          <p class="text-xs sm:text-sm text-[#777777] leading-relaxed">No mandatory monthly subscriptions, no bulk credits, and no recurring commitments. Every wedding event purchase includes 12 full calendar months of access.</p>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-          <div class="bg-white border border-[#E8E8E5] rounded-lg p-6 shadow-sm space-y-4">
+
+        <div class="bg-white border-2 border-[#252525] rounded-2xl p-8 sm:p-10 shadow-card space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6 border-b border-[#E8E8E5] pb-6">
             <div>
-              <span class="text-xs font-semibold text-[#8B806F]">Single Celebration</span>
-              <h2 class="text-lg font-semibold text-[#252525] mt-1">Couple License</h2>
-              <p class="text-xs text-[#777777] mt-1">Everything needed for a single unforgettable wedding event.</p>
+              <span class="text-xs font-mono text-[#8B806F] uppercase font-semibold">ALL-INCLUSIVE WEDDING LICENSE</span>
+              <h2 class="text-2xl font-serif text-[#252525] mt-1">Full Event Digital Suite</h2>
+              <p class="text-xs text-[#777777] mt-1">12 Months Full Access · Live Display Moderation · Custom RSVP System</p>
             </div>
-            <div class="text-3xl font-semibold text-[#252525]">$19 <span class="text-xs font-normal text-[#777777]">one-time</span></div>
-            <ul class="text-xs text-[#777777] space-y-2 pt-2 border-t border-[#EFEFEA]">
-              <li>✓ 1 Active Wedding Event</li>
-              <li>✓ Unlimited RSVP Submissions</li>
-              <li>✓ Live Guest Wall Moderation</li>
-              <li>✓ Digital Invitation Studio</li>
-            </ul>
-            <a href="/login" class="block text-center py-2 px-4 bg-white border border-[#E8E8E5] text-[#252525] text-xs font-medium rounded">Select Couple Plan</a>
+            <div class="text-right shrink-0">
+              <div class="text-4xl font-mono font-bold text-[#252525]">$5.00 <span class="text-xs font-normal text-[#777777]">USD</span></div>
+              <div class="text-[11px] text-emerald-800 font-medium mt-1">One-time payment per event</div>
+            </div>
           </div>
 
-          <div class="bg-white border-2 border-[#252525] rounded-lg p-6 shadow-md space-y-4 relative">
-            <span class="absolute -top-3 right-4 bg-[#252525] text-white text-[10px] font-mono px-2 py-0.5 rounded">MOST POPULAR</span>
-            <div>
-              <span class="text-xs font-semibold text-[#8B806F]">Boutique Agency</span>
-              <h2 class="text-lg font-semibold text-[#252525] mt-1">Studio Pro</h2>
-              <p class="text-xs text-[#777777] mt-1">Designed for active wedding planners and boutique event studios.</p>
-            </div>
-            <div class="text-3xl font-semibold text-[#252525]">$49 <span class="text-xs font-normal text-[#777777]">/ month</span></div>
-            <ul class="text-xs text-[#777777] space-y-2 pt-2 border-t border-[#EFEFEA]">
-              <li>✓ Unlimited Client Events</li>
-              <li>✓ White-label Agency Subdomain</li>
-              <li>✓ Couple Access PIN Portals</li>
-              <li>✓ Priority Live Screen Sync</li>
+          <div class="grid sm:grid-cols-2 gap-4 py-4 border-b border-[#E8E8E5] text-xs text-[#555555]">
+            <ul class="space-y-2">
+              <li>✓ 12 Full Calendar Months Validity</li>
+              <li>✓ Bespoke Digital Invitation & Canvas Designer</li>
+              <li>✓ Custom RSVP Questionnaires & Dietary Tracking</li>
+              <li>✓ Dedicated Couple PIN Portal</li>
             </ul>
-            <a href="/login" class="block text-center py-2 px-4 bg-[#252525] text-white text-xs font-medium rounded">Start 30-Day Free Trial</a>
+            <ul class="space-y-2">
+              <li>✓ Live Reception Screen & Photo Wall</li>
+              <li>✓ Real-Time Guest Message Moderation</li>
+              <li>✓ 8 Curated Display Art Themes</li>
+              <li>✓ CSV Guest Export & Lifetime Archival</li>
+            </ul>
           </div>
 
-          <div class="bg-white border border-[#E8E8E5] rounded-lg p-6 shadow-sm space-y-4">
-            <div>
-              <span class="text-xs font-semibold text-[#8B806F]">Enterprise Agency</span>
-              <h2 class="text-lg font-semibold text-[#252525] mt-1">Agency Annual</h2>
-              <p class="text-xs text-[#777777] mt-1">For established studios managing large annual wedding rosters.</p>
+          <div class="p-4 bg-[#FAF9F7] rounded-lg border border-[#E8E8E5]">
+            <div class="text-xs font-semibold text-[#252525] mb-2">Transparent Multi-Event Pricing for Agencies:</div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs">
+              <div class="p-2 bg-white rounded border border-[#E8E8E5]"><strong>1 Event:</strong> $5.00</div>
+              <div class="p-2 bg-white rounded border border-[#E8E8E5]"><strong>2 Events:</strong> $10.00</div>
+              <div class="p-2 bg-white rounded border border-[#E8E8E5]"><strong>5 Events:</strong> $25.00</div>
+              <div class="p-2 bg-white rounded border border-[#E8E8E5]"><strong>10 Events:</strong> $50.00</div>
             </div>
-            <div class="text-3xl font-semibold text-[#252525]">$399 <span class="text-xs font-normal text-[#777777]">/ year</span></div>
-            <ul class="text-xs text-[#777777] space-y-2 pt-2 border-t border-[#EFEFEA]">
-              <li>✓ Unlimited Client Events</li>
-              <li>✓ Custom Apex Domain CNAME</li>
-              <li>✓ Bespoke Template Styling</li>
-              <li>✓ Dedicated Support Manager</li>
-            </ul>
-            <a href="/login" class="block text-center py-2 px-4 bg-white border border-[#E8E8E5] text-[#252525] text-xs font-medium rounded">Select Annual Plan</a>
+          </div>
+
+          <div class="text-center pt-2">
+            <a href="/login" class="inline-block py-2.5 px-6 bg-[#252525] text-white text-xs font-medium rounded hover:bg-[#333333] transition-colors">
+              Create Free Draft Event
+            </a>
           </div>
         </div>
       </main>

@@ -5,6 +5,9 @@ import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from "@google/genai";
 import Stripe from 'stripe';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { EVENT_PACKAGES, getPackageById, isEventActive, getDaysRemaining } from '../src/lib/packages';
+import { EVENT_PRICING, formatPrice } from '../src/config/pricing';
+import { activateEventPurchase } from '../server/billingService';
 
 type Bindings = {
   ASSETS?: { fetch: typeof fetch };
@@ -1106,6 +1109,9 @@ app.post('/api/projects', async (c) => {
     if (!agency) return c.json({ error: 'Agency not found' }, 403);
 
     const newProject = {
+      status: 'draft',
+      payment_status: 'unpaid',
+      package_id: 'standard',
       ...projectData,
       agency_id: agency.id,
       created_at: new Date().toISOString(),
@@ -1438,6 +1444,262 @@ app.post('/api/rsvps', async (c) => {
   }
 });
 
+// RSVP VIP Guest Update Route
+app.patch('/api/rsvps/:id/vip', async (c) => {
+  const id = c.req.param('id');
+  const { is_vip, guest_category } = await c.req.json();
+
+  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+  try {
+    const { data, error } = await supabase
+      .from('rsvps')
+      .update({
+        is_vip: Boolean(is_vip),
+        guest_category: is_vip ? (guest_category || 'VIP') : null
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      return c.json({ error: error.message }, 500);
+    }
+    return c.json({ success: true, data });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// Message Moderation Status Route
+app.post('/api/messages/:id/status', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+  try {
+    await verify(token, jwtSecret, 'HS256');
+    const id = c.req.param('id');
+    const { status } = await c.req.json();
+
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !serviceRoleKey) return c.json({ error: 'Database config missing' }, 500);
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const { error } = await supabase
+      .from('messages')
+      .update({ status })
+      .eq('id', id);
+
+    if (error) throw error;
+    return c.json({ success: true });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 401);
+  }
+});
+
+// Message Highlight Classification & Pinned Flags Route
+app.post('/api/messages/:id/highlight', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+  try {
+    await verify(token, jwtSecret, 'HS256');
+    const id = c.req.param('id');
+    const { classification, is_featured, is_pinned, guest_category, ai_highlight_reason } = await c.req.json();
+
+    const updateData: any = {};
+    if (classification !== undefined) updateData.classification = classification;
+    if (is_featured !== undefined) updateData.is_featured = is_featured;
+    if (is_pinned !== undefined) updateData.is_pinned = is_pinned;
+    if (guest_category !== undefined) updateData.guest_category = guest_category;
+    if (ai_highlight_reason !== undefined) updateData.ai_highlight_reason = ai_highlight_reason;
+
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !serviceRoleKey) return c.json({ error: 'Database config missing' }, 500);
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const { data, error } = await supabase
+      .from('messages')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return c.json({ success: true, message: data });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// AI-Powered Message Highlight Analysis Route
+app.post('/api/messages/ai-suggest', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+  try {
+    await verify(token, jwtSecret, 'HS256');
+    const { projectId } = await c.req.json();
+    if (!projectId) return c.json({ error: 'projectId is required' }, 400);
+
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !serviceRoleKey) return c.json({ error: 'Database config missing' }, 500);
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const { data: messages, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('status', 'approved');
+
+    if (error) throw error;
+    if (!messages || messages.length === 0) {
+      return c.json({ suggestions: [] });
+    }
+
+    let suggestions: any[] = [];
+    const geminiApiKey = c.env.GEMINI_API_KEY;
+
+    if (geminiApiKey) {
+      try {
+        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+        const prompt = `You are a wedding reception curator. Analyze the following wedding guest messages.
+Identify which messages possess emotional significance, personal memories and stories, meaningful blessings, or deep connections with the couple.
+For each recommended message, specify a concise, elegant reason (1 sentence) why it deserves to be highlighted on the ballroom projector screen.
+Do NOT simply choose messages based on length. Prioritize sentiment, meaningful blessings, and genuine personal warmth.
+
+Messages:
+${JSON.stringify(messages.map((m: any) => ({ id: m.id, name: m.name, message: m.message })))}
+
+Return ONLY a valid JSON array of objects with the following schema:
+[
+  {
+    "id": "message_id",
+    "classification": "AI_SUGGESTED",
+    "reason": "Touching childhood memory shared with warmth and humor."
+  }
+]
+`;
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json'
+          }
+        });
+
+        if (response.text) {
+          const parsed = JSON.parse(response.text);
+          if (Array.isArray(parsed)) {
+            suggestions = parsed;
+          }
+        }
+      } catch (aiErr: any) {
+        console.warn('Worker Gemini analysis fallback:', aiErr.message);
+      }
+    }
+
+    if (suggestions.length === 0) {
+      // Heuristic fallback
+      const blessingKeywords = ['blessed', 'blessing', 'forever', 'eternity', 'lifetime', 'grace', 'unconditional', 'cherish', 'sacred', 'honor'];
+      const storyKeywords = ['remember when', 'growing up', 'first met', 'college', 'childhood', 'years ago', 'since day one', 'first saw you'];
+      const emotionKeywords = ['proud', 'tears', 'crying', 'heart melts', 'radiant', 'soulmate', 'meant to be', 'breathtaking'];
+
+      for (const m of messages) {
+        const text = (m.message || '').toLowerCase();
+        const name = (m.name || '').toLowerCase();
+
+        let reason = '';
+        const hasStory = storyKeywords.some(kw => text.includes(kw));
+        const hasBlessing = blessingKeywords.filter(kw => text.includes(kw)).length >= 2;
+        const hasEmotion = emotionKeywords.some(kw => text.includes(kw));
+        const isVipName = name.includes('mom') || name.includes('dad') || name.includes('grandmother') || name.includes('grandfather') || name.includes('sister') || name.includes('brother') || name.includes('best man') || name.includes('maid of honor');
+
+        if (hasStory) {
+          reason = 'Shares a cherished personal memory and authentic connection with the couple.';
+        } else if (isVipName && (hasBlessing || hasEmotion)) {
+          reason = 'Heartfelt blessings from close family and bridal party.';
+        } else if (hasBlessing) {
+          reason = 'Deep, poetic blessings for a lifetime of unconditional partnership.';
+        } else if (hasEmotion && text.length > 50) {
+          reason = 'Emotionally resonant reflection celebrating the couple’s journey.';
+        }
+
+        if (reason && suggestions.length < 5) {
+          suggestions.push({
+            id: m.id,
+            classification: 'AI_SUGGESTED',
+            reason
+          });
+        }
+      }
+
+      if (suggestions.length === 0 && messages.length > 0) {
+        const sorted = [...messages].sort((a: any, b: any) => (b.message?.length || 0) - (a.message?.length || 0));
+        suggestions.push({
+          id: sorted[0].id,
+          classification: 'AI_SUGGESTED',
+          reason: 'Heartwarming wishes celebrating your wedding day.'
+        });
+      }
+    }
+
+    return c.json({ suggestions });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// Update Event Message Display Configuration Route
+app.post('/api/projects/:id/message-config', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+  try {
+    await verify(token, jwtSecret, 'HS256');
+    const id = c.req.param('id');
+    const { config } = await c.req.json();
+
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !serviceRoleKey) return c.json({ error: 'Database config missing' }, 500);
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const { data, error } = await supabase
+      .from('projects')
+      .update({ message_display_config: config, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return c.json({ success: true, project: data });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
 app.get('/api/debug-env', (c) => {
   return c.json({
     has_jwt_secret: !!c.env.JWT_SECRET,
@@ -1450,13 +1712,107 @@ app.get('/api/debug-env', (c) => {
   });
 });
 
-// 6. Stripe Checkout Session
+// 6. Centralized Pricing & Package Catalog
+app.get('/api/pricing', (c) => {
+  return c.json({
+    pricing: EVENT_PRICING,
+    formattedPrice: formatPrice(EVENT_PRICING.pricePerEvent)
+  });
+});
+
+app.get('/api/packages', (c) => c.json({ packages: EVENT_PACKAGES, pricing: EVENT_PRICING }));
+
+// 7. Stripe Checkout Session (USD $5 Pay-Per-Event)
 app.post('/api/create-checkout-session', async (c) => {
-  const { planId, agencyId } = await c.req.json();
+  const { eventId, agencyId, successUrl, cancelUrl } = await c.req.json();
   const stripeSecret = c.env.STRIPE_SECRET_KEY;
-  
-  if (!stripeSecret) {
-    return c.json({ error: 'Stripe is not configured in worker' }, 500);
+  const appUrl = c.env.APP_URL || 'https://eventframe.io';
+
+  if (!eventId) {
+    return c.json({ error: 'eventId is required to create a pay-per-event checkout session' }, 400);
+  }
+
+  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return c.json({ error: 'Supabase configuration missing' }, 500);
+  }
+  const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
+
+  // Authenticate user token if provided
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  let authAgencyId: string | null = null;
+
+  if (token) {
+    try {
+      const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+      const payload = await verify(token, jwtSecret, 'HS256') as any;
+      const userId = payload.id || payload.sub;
+      const { data: userAgency } = await supabase
+        .from('agencies')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (userAgency) authAgencyId = userAgency.id;
+    } catch (err) {
+      // Continue with body agencyId
+    }
+  }
+
+  // 1. Fetch event and verify authorization
+  let event: any = null;
+  try {
+    const { data, error } = await supabase
+      .from('projects')
+      .select('id, name, agency_id, payment_status, status, expires_at')
+      .eq('id', eventId)
+      .single();
+
+    if (error || !data) {
+      return c.json({ error: `Event not found: ${eventId}` }, 404);
+    }
+    event = data;
+
+    // Ensure users cannot pay for events belonging to another agency
+    if (authAgencyId && event.agency_id && authAgencyId !== event.agency_id) {
+      return c.json({ error: 'Forbidden: You cannot pay for an event belonging to another organization' }, 403);
+    }
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+
+  // 2. Authoritatively set event status to pending_payment in database
+  try {
+    await supabase
+      .from('projects')
+      .update({
+        payment_status: 'pending_payment',
+        status: 'pending_payment',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', eventId);
+  } catch (updateErr: any) {
+    console.warn('Could not update pending_payment status:', updateErr.message);
+  }
+
+  const defaultSuccess = `${appUrl}/subscription?success=true&eventId=${eventId}`;
+  const defaultCancel = `${appUrl}/subscription?canceled=true&eventId=${eventId}`;
+  const effectiveSuccess = successUrl || defaultSuccess;
+  const effectiveCancel = cancelUrl || defaultCancel;
+
+  // 3. Strict Check: If Stripe is not configured, preserve pending_payment without simulating payment
+  const isPlaceholderStripe = !stripeSecret || !stripeSecret.startsWith('sk_');
+  if (isPlaceholderStripe) {
+    console.warn('[Stripe Worker] Stripe is not configured with a live key. Event marked as pending_payment. Preserving pending workflow.');
+    return c.json({
+      status: 'pending_payment',
+      pending: true,
+      eventId,
+      amount: EVENT_PRICING.pricePerEvent,
+      currency: EVENT_PRICING.currency,
+      message: 'Payment gateway is in setup mode. Event status has been updated to pending_payment.'
+    });
   }
 
   const stripe = new Stripe(stripeSecret, {
@@ -1464,50 +1820,43 @@ app.post('/api/create-checkout-session', async (c) => {
   });
 
   try {
-    const isOneTime = planId === 'price_one_time';
-    const appUrl = c.env.APP_URL || 'https://eventframe.io';
-    
+    // 4. Create authoritative Stripe Checkout Session ($5.00 USD)
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
           price_data: {
-            currency: 'usd',
+            currency: EVENT_PRICING.currency.toLowerCase(),
             product_data: {
-              name: isOneTime ? 'Individual Wedding License' : (planId === 'price_monthly' ? 'Agency Pro (Monthly)' : 'Agency Pro (Yearly)'),
+              name: `EventFrame Event License — ${event.name || 'Wedding Celebration'}`,
+              description: '12 Months Full Event Access · Live Screen Moderation · Full Digital Suite',
             },
-            unit_amount: isOneTime ? 1900 : (planId === 'price_monthly' ? 4900 : 47000),
-            ...(!isOneTime && {
-              recurring: {
-                interval: planId === 'price_monthly' ? 'month' : 'year',
-              },
-            }),
+            unit_amount: EVENT_PRICING.priceInCents, // Authoritative USD $5.00 (500 cents)
           },
           quantity: 1,
         },
       ],
-      mode: isOneTime ? 'payment' : 'subscription',
-      ...( !isOneTime && {
-        subscription_data: {
-          trial_period_days: 30,
-        },
-      }),
-      success_url: `${appUrl}/subscription?success=true`,
-      cancel_url: `${appUrl}/subscription?canceled=true`,
+      mode: 'payment',
+      success_url: effectiveSuccess.includes('{CHECKOUT_SESSION_ID}') 
+        ? effectiveSuccess 
+        : `${effectiveSuccess}${effectiveSuccess.includes('?') ? '&' : '?'}session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: effectiveCancel,
       metadata: {
-        agencyId,
-        planId,
+        eventId,
+        agencyId: event.agency_id || agencyId || '',
+        amount: EVENT_PRICING.priceInCents.toString(),
+        billingModel: EVENT_PRICING.billingModel
       },
     });
 
-    return c.json({ url: session.url });
+    return c.json({ url: session.url, sessionId: session.id, status: 'pending_payment' });
   } catch (error: any) {
     console.error('Stripe error in worker:', error);
     return c.json({ error: error.message }, 500);
   }
 });
 
-// 7. Stripe Webhook
+// 8. Stripe Webhook
 app.post('/api/webhook', async (c) => {
   const stripeSecret = c.env.STRIPE_SECRET_KEY;
   const webhookSecret = c.env.STRIPE_WEBHOOK_SECRET;
@@ -1544,11 +1893,31 @@ app.post('/api/webhook', async (c) => {
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session;
+      const eventId = session.metadata?.eventId;
+      const packageId = session.metadata?.packageId || 'standard';
       const agencyId = session.metadata?.agencyId;
       const subscriptionId = session.subscription as string;
       const customerId = session.customer as string;
 
-      if (agencyId) {
+      // 1. Pay-per-event activation
+      if (eventId) {
+        try {
+          await activateEventPurchase(supabase, {
+            eventId,
+            packageId,
+            customerId,
+            agencyId,
+            transactionId: session.id,
+            amountPaidCents: session.amount_total || undefined,
+            provider: 'stripe'
+          });
+          console.log(`[Worker Webhook] Event ${eventId} activated with package ${packageId}`);
+        } catch (err: any) {
+          console.error(`[Worker Webhook] Activation error for ${eventId}:`, err);
+        }
+      } 
+      // 2. Legacy agency subscription fallback
+      else if (agencyId) {
         const updateData: any = {
           subscription_status: 'active',
           stripe_customer_id: customerId,
@@ -1564,7 +1933,7 @@ app.post('/api/webhook', async (c) => {
           .update(updateData)
           .eq('id', agencyId);
         
-        console.log(`Agency/Couple ${agencyId} confirmed via worker webhook`);
+        console.log(`[Worker Webhook] Agency/Couple ${agencyId} confirmed`);
       }
       break;
     }
@@ -1579,6 +1948,235 @@ app.post('/api/webhook', async (c) => {
   }
 
   return c.json({ received: true });
+});
+
+// 9. Strict Session Verification Route (Only verified payments can activate)
+app.post('/api/events/:id/verify-session', async (c) => {
+  const id = c.req.param('id');
+  const { sessionId } = await c.req.json().catch(() => ({}));
+
+  if (!sessionId) {
+    return c.json({ 
+      success: false, 
+      error: 'Payment session ID is required for verification. Events cannot be marked paid without verified payment confirmation.' 
+    }, 400);
+  }
+
+  const stripeSecret = c.env.STRIPE_SECRET_KEY;
+  if (!stripeSecret || !stripeSecret.startsWith('sk_')) {
+    return c.json({ 
+      success: false, 
+      status: 'pending_payment',
+      error: 'Payment provider is not configured. Event remains in pending_payment status until verified.' 
+    }, 400);
+  }
+
+  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return c.json({ error: 'Supabase configuration missing' }, 500);
+  }
+  const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
+
+  try {
+    const stripe = new Stripe(stripeSecret, {
+      httpClient: Stripe.createFetchHttpClient(),
+    });
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    // Verify payment was actually paid
+    if (session.payment_status !== 'paid') {
+      return c.json({ 
+        success: false, 
+        status: 'pending_payment',
+        error: `Stripe session payment not completed (status: ${session.payment_status})` 
+      }, 400);
+    }
+
+    // Verify Session matches target Event ID (Prevent Event A payment activating Event B)
+    if (session.metadata?.eventId !== id) {
+      return c.json({ 
+        success: false, 
+        error: 'Security violation: Payment session does not match this event.' 
+      }, 403);
+    }
+
+    // Verify payment amount matches authoritative price ($5.00 USD / 500 cents)
+    if (session.amount_total !== null && session.amount_total < EVENT_PRICING.priceInCents) {
+      return c.json({ 
+        success: false, 
+        error: 'Payment amount mismatch: Insufficient payment recorded.' 
+      }, 400);
+    }
+
+    // Authoritative activation
+    const result = await activateEventPurchase(supabase, {
+      eventId: id,
+      packageId: 'standard',
+      customerId: (session.customer as string) || 'customer',
+      agencyId: session.metadata?.agencyId,
+      transactionId: session.id,
+      amountPaidCents: session.amount_total || EVENT_PRICING.priceInCents,
+      provider: 'stripe'
+    });
+
+    return c.json(result);
+  } catch (error: any) {
+    console.error('Worker verification error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// 10. Development / Testing Mock Activation Route
+app.post('/api/events/:id/activate-mock', async (c) => {
+  const id = c.req.param('id');
+  const { packageId = 'standard' } = await c.req.json().catch(() => ({}));
+
+  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return c.json({ error: 'Supabase configuration missing' }, 500);
+  }
+  const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
+
+  try {
+    const result = await activateEventPurchase(supabase, {
+      eventId: id,
+      packageId,
+      customerId: 'demo_user',
+      transactionId: `mock_${Date.now()}`,
+      provider: 'mock'
+    });
+
+    return c.json(result);
+  } catch (error: any) {
+    console.error('Worker mock activation error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// 11. Billing Events List Route
+app.get('/api/billing/events', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return c.json({ error: 'Supabase configuration missing' }, 500);
+  }
+  const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
+
+  try {
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
+    const userId = payload.id || payload.sub;
+
+    const { data: agency } = await supabase
+      .from('agencies')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!agency) return c.json({ events: [], agency: null });
+
+    const { data: projects, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('agency_id', agency.id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const now = new Date();
+    const enrichedEvents = (projects || []).map((project: any) => {
+      const active = isEventActive(project, agency);
+      const daysRemaining = getDaysRemaining(project.expires_at);
+      const isExpired = project.expires_at ? new Date(project.expires_at) < now : false;
+
+      // Determine explicit lifecycle status
+      let displayStatus = 'draft';
+      if (active) {
+        displayStatus = 'active';
+      } else if (isExpired && project.payment_status === 'paid') {
+        displayStatus = 'expired';
+      } else if (project.payment_status === 'pending_payment') {
+        displayStatus = 'pending_payment';
+      } else if (project.payment_status === 'cancelled') {
+        displayStatus = 'cancelled';
+      } else if (project.payment_status === 'failed') {
+        displayStatus = 'failed';
+      }
+
+      return {
+        ...project,
+        displayStatus,
+        isActive: active,
+        daysRemaining,
+        amountPaid: project.payment_status === 'paid' ? EVENT_PRICING.pricePerEvent : 0,
+        pricePerEvent: EVENT_PRICING.pricePerEvent,
+        currency: EVENT_PRICING.currency,
+        validityMonths: EVENT_PRICING.validityMonths,
+        isGrandfathered: agency.is_demo === true || agency.subscription_status === 'active'
+      };
+    });
+
+    const metrics = {
+      totalEvents: enrichedEvents.length,
+      activeEvents: enrichedEvents.filter((e: any) => e.isActive).length,
+      pendingPaymentEvents: enrichedEvents.filter((e: any) => e.displayStatus === 'pending_payment').length,
+      expiredEvents: enrichedEvents.filter((e: any) => e.displayStatus === 'expired').length,
+      totalPaidAmount: enrichedEvents.reduce((acc: number, e: any) => acc + (e.amountPaid || 0), 0)
+    };
+
+    return c.json({ events: enrichedEvents, agency, metrics, pricing: EVENT_PRICING });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// 12. Billing Order History Route
+app.get('/api/billing/history', async (c) => {
+  const tokenHeader = c.req.header('Authorization');
+  const cookieToken = getCookie(c, 'wedding_session');
+  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+
+  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return c.json({ error: 'Supabase configuration missing' }, 500);
+  }
+  const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
+
+  try {
+    const payload = await verify(token, jwtSecret, 'HS256') as any;
+    const userId = payload.id || payload.sub;
+
+    const { data: agency } = await supabase
+      .from('agencies')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!agency) return c.json({ orders: [] });
+
+    try {
+      const { data: orders } = await supabase
+        .from('event_orders')
+        .select('*')
+        .eq('agency_id', agency.id)
+        .order('created_at', { ascending: false });
+
+      return c.json({ orders: orders || [] });
+    } catch {
+      return c.json({ orders: [] });
+    }
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
 });
 
 // 8. Strict 404 for any unmatched API routes (prevents accidentally serving index.html)

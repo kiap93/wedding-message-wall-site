@@ -1,19 +1,14 @@
 import { getSupabase } from './supabase';
-import { RSVP } from '../types';
+import { RSVP, Message, MessageClassification, MessageDisplayConfig, DEFAULT_MESSAGE_DISPLAY_CONFIG } from '../types';
 import { API_BASE } from './config';
 
-export interface Message {
-  id: string;
-  name: string;
-  message: string;
-  timestamp: number;
-  project_id?: string;
-  status?: 'pending' | 'approved' | 'rejected';
-}
+export type { Message, MessageClassification, MessageDisplayConfig };
+export { DEFAULT_MESSAGE_DISPLAY_CONFIG };
 
 const MOCK_MESSAGES: Message[] = [
-  { id: 'm1', name: 'Alex & Sam', message: 'Wishing you a lifetime of love and happiness! Beautiful ceremony.', timestamp: Date.now() - 500000, status: 'approved' },
-  { id: 'm2', name: 'Emma Wilson', message: 'So happy for both of you! May your journey together be magical.', timestamp: Date.now() - 1200000, status: 'approved' },
+  { id: 'm1', name: 'Alex & Sam', message: 'Wishing you a lifetime of love and happiness! Beautiful ceremony.', timestamp: Date.now() - 500000, status: 'approved', classification: 'NORMAL', is_featured: false, is_pinned: false },
+  { id: 'm2', name: 'Emma Wilson (Maid of Honor)', message: 'From our university dorms to this breathtaking altar—Sofia, you have never looked more radiant. Lucas, take care of my best friend forever!', timestamp: Date.now() - 1200000, status: 'approved', classification: 'COUPLE_SELECTED', is_featured: true, is_pinned: true },
+  { id: 'm3', name: 'Grandmother Rose', message: 'May your marriage be blessed with the quiet patience, unending grace, and deep laughter that carried your grandfather and me through fifty-two wonderful years.', timestamp: Date.now() - 1800000, status: 'approved', classification: 'SPECIAL_GUEST', is_featured: true, is_pinned: false, guest_category: 'VIP' },
 ];
 
 export async function fetchMessages(projectId?: string, includeAll: boolean = false): Promise<Message[]> {
@@ -66,9 +61,91 @@ export async function updateMessageStatus(messageId: string, status: 'approved' 
   }
 }
 
-export async function postMessage(name: string, message: string, projectId?: string, autoApprove: boolean = false): Promise<void> {
+export async function updateMessageHighlight(
+  messageId: string, 
+  updates: { 
+    classification?: MessageClassification; 
+    is_featured?: boolean; 
+    is_pinned?: boolean;
+    ai_highlight_reason?: string;
+    guest_category?: string;
+  }
+): Promise<void> {
+  try {
+    const { authenticatedFetch } = await import('./auth');
+    const response = await authenticatedFetch(`${API_BASE}/api/messages/${messageId}/highlight`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to update message highlight');
+    }
+  } catch (err) {
+    console.error('Failed to update message highlight:', err);
+    throw err;
+  }
+}
+
+export async function analyzeMessagesWithAI(
+  projectId: string
+): Promise<{ suggestions: Array<{ id: string; classification: MessageClassification; reason: string }> }> {
+  try {
+    const { authenticatedFetch } = await import('./auth');
+    const response = await authenticatedFetch(`${API_BASE}/api/messages/ai-suggest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to run AI highlight suggestions');
+    }
+
+    return await response.json();
+  } catch (err) {
+    console.error('Failed to analyze messages with AI:', err);
+    throw err;
+  }
+}
+
+export async function updateMessageDisplayConfig(
+  projectId: string,
+  config: MessageDisplayConfig
+): Promise<void> {
+  try {
+    const { authenticatedFetch } = await import('./auth');
+    const response = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/message-config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to update display configuration');
+    }
+  } catch (err) {
+    console.error('Failed to update message display config:', err);
+    throw err;
+  }
+}
+
+export async function postMessage(
+  name: string, 
+  message: string, 
+  projectId?: string, 
+  autoApprove: boolean = false,
+  guestCategory?: string
+): Promise<void> {
   try {
     const supabase = getSupabase();
+    const isVip = guestCategory === 'VIP' || guestCategory === 'Family' || guestCategory === 'Bridal Party';
+    const classification: MessageClassification = isVip ? 'SPECIAL_GUEST' : 'NORMAL';
+
     const { error } = await supabase
       .from('messages')
       .insert([
@@ -77,7 +154,11 @@ export async function postMessage(name: string, message: string, projectId?: str
           message, 
           timestamp: Date.now(),
           project_id: projectId,
-          status: autoApprove ? 'approved' : 'pending'
+          status: autoApprove ? 'approved' : 'pending',
+          classification,
+          is_featured: false,
+          is_pinned: false,
+          guest_category: guestCategory || null
         }
       ]);
     
@@ -133,3 +214,37 @@ export async function fetchRSVPs(projectId: string): Promise<RSVP[]> {
     return [];
   }
 }
+
+export async function updateRSVPVIP(
+  rsvpId: string, 
+  isVip: boolean, 
+  category?: string
+): Promise<void> {
+  try {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from('rsvps')
+      .update({
+        is_vip: isVip,
+        guest_category: isVip ? (category || 'VIP') : null
+      })
+      .eq('id', rsvpId);
+
+    if (error) {
+      console.warn('Direct Supabase RSVP VIP update failed, trying API proxy:', error.message);
+      const res = await fetch(`${API_BASE}/api/rsvps/${rsvpId}/vip`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_vip: isVip, guest_category: category })
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Failed to update VIP status');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to update RSVP VIP status:', err);
+    throw err;
+  }
+}
+

@@ -14,6 +14,8 @@ import {
   Loader2
 } from 'lucide-react';
 import { WeddingEvent, TEMPLATES, TemplateId } from '../types';
+import { isEventActive, getDaysRemaining, getPackageById } from '../lib/packages';
+import { EVENT_PRICING, formatPrice } from '../config/pricing';
 import RSVPManager from '../components/RSVPManager';
 import MessageModerator from '../components/MessageModerator';
 import { getSupabase } from '../lib/supabase';
@@ -252,6 +254,56 @@ export default function CoupleDashboard() {
 
       {/* Main Container */}
       <main className="max-w-5xl mx-auto p-6 sm:p-8 space-y-6">
+        {/* 12-Month License Status Banner */}
+        {(() => {
+          const isActive = isEventActive(event, workspace);
+          const days = getDaysRemaining(event.expires_at);
+          const pkg = getPackageById(event.package_id || 'standard');
+
+          if (!isActive && !workspace?.is_demo && workspace?.subscription_status !== 'active') {
+            return (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 shadow-subtle">
+                <div>
+                  <div className="text-sm font-semibold flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    <span>Draft Mode — License Not Yet Activated</span>
+                  </div>
+                  <p className="text-xs text-amber-800 mt-0.5">
+                    Your wedding is in draft preview. Activate your 12-Month License ({formatPrice(EVENT_PRICING.pricePerEvent)} one-time) to unlock full public RSVP submissions and live guest screens.
+                  </p>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => navigate(`/subscription?eventId=${event.id}`)}
+                >
+                  Activate License ({formatPrice(EVENT_PRICING.pricePerEvent)})
+                </Button>
+              </div>
+            );
+          }
+
+          return (
+            <div className="p-3 bg-white border border-[#E8E8E5] rounded-lg flex items-center justify-between text-xs text-[#777777] shadow-subtle">
+              <div className="flex items-center gap-2">
+                <Badge variant="success" size="sm">12-Month License Active</Badge>
+                <span className="font-medium text-[#252525]">{pkg.name} Tier ({pkg.guestLimit} Guests)</span>
+                {event.expires_at && (
+                  <span className="hidden sm:inline">
+                    · Valid until {new Date(event.expires_at).toLocaleDateString()} {days !== null ? `(${days} days left)` : ''}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => navigate(`/subscription?eventId=${event.id}`)}
+                className="text-[11px] text-[#8B806F] hover:text-[#252525] font-medium underline"
+              >
+                License Details
+              </button>
+            </div>
+          );
+        })()}
+
         <PageHeader
           title={coupleTitle}
           description="Manage your guest responses, live message moderation, and cover photos."

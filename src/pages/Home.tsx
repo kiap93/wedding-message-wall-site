@@ -13,8 +13,13 @@ import {
   Users, 
   ChevronDown,
   Globe,
-  MessageSquare
+  MessageSquare,
+  Clock,
+  Calendar,
+  CreditCard,
+  Shield
 } from 'lucide-react';
+import { EVENT_PRICING, formatPrice, calculateEventCost } from '../config/pricing';
 import MarketingLayout from '../layouts/MarketingLayout';
 import Button from '../design-system/components/Button';
 import heroWeddingImage from '../assets/images/hero_wedding_editorial_1793501242401.jpg';
@@ -65,6 +70,10 @@ export default function Home() {
     {
       q: 'Can couples edit their wedding pages directly?',
       a: 'Yes. Couples receive a secure event access PIN that gives them access to their private dashboard to view RSVPs, download guest lists, and moderate celebration messages.'
+    },
+    {
+      q: 'How does EventFrame pay-per-event pricing work?',
+      a: 'EventFrame operates on a pure pay-per-event model. You pay once per wedding event, which includes 12 full calendar months of access. There are no mandatory monthly subscriptions, no bulk credits, and no recurring commitments. User signup and draft creation are always free.'
     }
   ];
 
@@ -383,157 +392,123 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Pricing Section */}
+      {/* Pricing Section - USD $5 Pay-Per-Event */}
       <section id="pricing" className="py-20 md:py-28 border-b border-[#E8E8E5] bg-white">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="text-center max-w-xl mx-auto mb-12">
-            <span className="text-xs font-medium text-[#8B806F]">TRANSPARENT PLANS</span>
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <span className="text-xs font-mono font-semibold uppercase tracking-wider text-[#8B806F]">PAY-PER-EVENT LICENSING</span>
             <h2 className="font-serif text-3xl md:text-4xl font-normal text-[#252525] mt-2">
-              Simple, predictable agency pricing.
+              One Event. One Payment. {formatPrice(EVENT_PRICING.pricePerEvent)}.
             </h2>
-            <p className="text-xs md:text-sm text-[#777777] mt-2">
-              Everything you need to deliver high-touch digital wedding experiences.
+            <p className="text-xs md:text-sm text-[#777777] mt-3 leading-relaxed">
+              No recurring monthly retainers, no credit bundles, and no surprise renewals. 
+              Couples and wedding agencies pay once per active celebration with 12 full months of platform access.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {/* Starter Plan */}
-            <div className="border border-[#E8E8E5] rounded-lg p-6 bg-white flex flex-col justify-between shadow-subtle">
-              <div>
-                <div className="text-xs font-semibold text-[#777777]">INDIVIDUAL WEDDING</div>
-                <h3 className="text-lg font-semibold text-[#252525] mt-1">Single Event</h3>
-                <p className="text-xs text-[#777777] mt-1">For single couples managing their personal wedding.</p>
-                
-                <div className="my-6">
-                  <span className="text-3xl font-semibold font-mono text-[#252525] tabular-nums">$19</span>
-                  <span className="text-xs text-[#777777]"> / event lifetime</span>
-                </div>
+          {/* Main Pricing Hero Card */}
+          <div className="bg-[#FAF9F7] border-2 border-[#252525] rounded-2xl p-8 sm:p-10 shadow-card max-w-3xl mx-auto relative overflow-hidden">
+            <div className="absolute top-0 right-0 bg-[#252525] text-white text-[11px] font-mono px-4 py-1 rounded-bl-xl tracking-wider">
+              12 MONTHS ACCESS INCLUDED
+            </div>
 
-                <div className="space-y-2.5 text-xs text-[#555555]">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span>1 Custom Wedding URL</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span>Up to 250 RSVP entries</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span>Live Display & Moderation</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span>Digital Invitation Suite</span>
-                  </div>
-                </div>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-[#E8E8E5] pb-8">
+              <div>
+                <span className="text-xs font-mono text-[#8B806F] uppercase font-semibold">ALL-INCLUSIVE LICENSE</span>
+                <h3 className="font-serif text-2xl font-normal text-[#252525] mt-1">Wedding Event License</h3>
+                <p className="text-xs text-[#777777] mt-1 max-w-sm">
+                  Complete digital suite for invitations, guestbook uploads, live ballroom display, and attendee RSVPs.
+                </p>
               </div>
 
-              <div className="pt-8">
-                <Button
-                  variant="outline"
-                  size="md"
-                  className="w-full"
-                  onClick={() => navigate('/login')}
-                >
-                  Start Single Event
-                </Button>
+              <div className="flex items-baseline gap-1.5 bg-white border border-[#E8E8E5] rounded-xl px-5 py-3 shadow-subtle shrink-0">
+                <span className="text-4xl font-mono font-bold text-[#252525]">{formatPrice(EVENT_PRICING.pricePerEvent)}</span>
+                <span className="text-xs text-[#777777]">/ event</span>
               </div>
             </div>
 
-            {/* Studio Pro */}
-            <div className="border-2 border-[#252525] rounded-lg p-6 bg-[#FAF9F7] flex flex-col justify-between shadow-card relative">
-              <div className="absolute -top-3 right-6 bg-[#252525] text-white text-[10px] font-medium px-2 py-0.5 rounded">
-                MOST POPULAR
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-[#8B806F]">STUDIO PRO</div>
-                <h3 className="text-lg font-semibold text-[#252525] mt-1">Agency Suite</h3>
-                <p className="text-xs text-[#777777] mt-1">For boutique wedding planners & photography studios.</p>
-                
-                <div className="my-6">
-                  <span className="text-3xl font-semibold font-mono text-[#252525] tabular-nums">$49</span>
-                  <span className="text-xs text-[#777777]"> / month</span>
+            <div className="grid sm:grid-cols-2 gap-4 py-6 border-b border-[#E8E8E5]">
+              <div className="space-y-2.5 text-xs text-[#252525]">
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
+                  <span className="font-medium">12 Full Calendar Months Validity</span>
                 </div>
-
-                <div className="space-y-2.5 text-xs text-[#252525]">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span className="font-medium">Unlimited Wedding Events</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span>Custom Agency Subdomain</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span>White-label Client Dashboards</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span>Invitation Template Designer</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span>Custom RSVP Fields & Export</span>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
+                  <span>Interactive Digital Invitation Suite</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
+                  <span>Custom RSVP & Dietary Questionnaire</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
+                  <span>Real-Time Guest Wishes & Photo Wall</span>
                 </div>
               </div>
 
-              <div className="pt-8">
-                <Button
-                  variant="primary"
-                  size="md"
-                  className="w-full"
-                  onClick={() => navigate('/login')}
-                >
-                  Launch Agency Pro
-                </Button>
+              <div className="space-y-2.5 text-xs text-[#252525]">
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
+                  <span>Live Reception Display Moderation</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
+                  <span>Bespoke Typography & Color Aesthetics</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
+                  <span>Dedicated Couple PIN Access Portal</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
+                  <span>CSV Records Export & Lifetime Archive</span>
+                </div>
               </div>
             </div>
 
-            {/* Enterprise Plan */}
-            <div className="border border-[#E8E8E5] rounded-lg p-6 bg-white flex flex-col justify-between shadow-subtle">
-              <div>
-                <div className="text-xs font-semibold text-[#777777]">BESPOKE ENTERPRISE</div>
-                <h3 className="text-lg font-semibold text-[#252525] mt-1">Agency Network</h3>
-                <p className="text-xs text-[#777777] mt-1">For multi-location event firms and luxury venues.</p>
-                
-                <div className="my-6">
-                  <span className="text-3xl font-semibold font-mono text-[#252525] tabular-nums">$399</span>
-                  <span className="text-xs text-[#777777]"> / year</span>
+            {/* Multi-Event Cost Breakdown */}
+            <div className="pt-6">
+              <div className="text-[11px] font-mono uppercase tracking-wider text-[#8B806F] mb-3 font-semibold">
+                TRANSPARENT MULTI-EVENT PRICING
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div className="p-3 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle">
+                  <div className="text-xs text-[#777777]">1 Event</div>
+                  <div className="text-base font-mono font-bold text-[#252525] mt-1">$5.00</div>
+                  <div className="text-[10px] text-[#888888]">One-time</div>
                 </div>
-
-                <div className="space-y-2.5 text-xs text-[#555555]">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span>Custom Apex Domain CNAME</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span>Dedicated Priority Concierge</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span>Multi-Team Seat Management</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-[#8B806F]" />
-                    <span>Custom CSS & Asset CDN</span>
-                  </div>
+                <div className="p-3 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle">
+                  <div className="text-xs text-[#777777]">2 Events</div>
+                  <div className="text-base font-mono font-bold text-[#252525] mt-1">$10.00</div>
+                  <div className="text-[10px] text-[#888888]">12 mos each</div>
+                </div>
+                <div className="p-3 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle">
+                  <div className="text-xs text-[#777777]">5 Events</div>
+                  <div className="text-base font-mono font-bold text-[#252525] mt-1">$25.00</div>
+                  <div className="text-[10px] text-[#888888]">12 mos each</div>
+                </div>
+                <div className="p-3 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle">
+                  <div className="text-xs text-[#777777]">10 Events</div>
+                  <div className="text-base font-mono font-bold text-[#252525] mt-1">$50.00</div>
+                  <div className="text-[10px] text-[#888888]">12 mos each</div>
                 </div>
               </div>
+            </div>
 
-              <div className="pt-8">
-                <Button
-                  variant="outline"
-                  size="md"
-                  className="w-full"
-                  onClick={() => navigate('/login')}
-                >
-                  Contact Enterprise
-                </Button>
+            <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="text-xs text-[#777777] text-center sm:text-left">
+                Agency account creation is 100% free. Create and design draft weddings with zero payment required.
               </div>
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => navigate('/login')}
+                rightIcon={<ArrowRight className="w-4 h-4" />}
+                className="w-full sm:w-auto"
+              >
+                Create Free Draft Event
+              </Button>
             </div>
           </div>
         </div>

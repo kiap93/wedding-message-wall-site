@@ -12,6 +12,7 @@ import { getSupabase } from '../lib/supabase';
 import { getAgencyById } from '../lib/agency';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { fetchTemplates } from '../lib/templates';
+import { isEventActive } from '../lib/packages';
 
 export default function Guest() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
@@ -95,9 +96,8 @@ export default function Guest() {
     }
   };
 
-  const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
-  const isCoupleLogic = agency?.user_role === 'couple';
-  const isPreview = isCoupleLogic && !isSubscribed && !isPreviewParam;
+  const isSubscribed = isEventActive(project, agency);
+  const isPreview = !isSubscribed && !isPreviewParam;
 
   const loadProject = async (id?: string, slugName?: string) => {
     if (id === 'demo' || slugName === 'demo') {
@@ -246,7 +246,29 @@ export default function Guest() {
     }
 
     try {
-      await postMessage(name, message, project.id, !!project?.auto_approve_messages);
+      // Cross-check if guest has been designated as VIP in Guest Management (RSVPs)
+      let designatedCategory: string | undefined = undefined;
+      try {
+        const supabase = getSupabase();
+        const trimmedName = name.trim();
+        if (trimmedName && project.id) {
+          const { data: vipRsvps } = await supabase
+            .from('rsvps')
+            .select('is_vip, guest_category')
+            .eq('project_id', project.id)
+            .ilike('name', trimmedName)
+            .eq('is_vip', true)
+            .limit(1);
+
+          if (vipRsvps && vipRsvps.length > 0 && vipRsvps[0].is_vip) {
+            designatedCategory = vipRsvps[0].guest_category || 'VIP';
+          }
+        }
+      } catch (checkErr) {
+        // Non-blocking fallback
+      }
+
+      await postMessage(name, message, project.id, !!project?.auto_approve_messages, designatedCategory);
       setMessages(prev => [...prev, { id: Date.now() }]);
       
       // Fire theme-specific celebratory confetti
@@ -285,12 +307,12 @@ export default function Guest() {
             </span>
           </div>
           <a
-            href="/subscription"
+            href={project?.id ? `/subscription?eventId=${project.id}` : '/subscription'}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[11px] font-medium underline hover:text-[#8B806F] transition-colors"
           >
-            Upgrade to Publish
+            Activate 12-Month License
           </a>
         </div>
       )}

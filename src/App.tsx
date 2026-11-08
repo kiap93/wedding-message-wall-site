@@ -15,6 +15,8 @@ import StaffTemplates from './pages/StaffTemplates';
 import ResetPassword from './pages/ResetPassword';
 import InvitationEditor from './pages/InvitationEditor';
 import InvitationViewer from './pages/InvitationViewer';
+import WebsiteStudio from './pages/WebsiteStudio';
+import WeddingWebsite from './pages/WeddingWebsite';
 
 import { API_BASE } from './lib/config';
 import { authenticatedFetch, setAuthToken } from './lib/auth';
@@ -175,6 +177,8 @@ export default function App() {
             <Route path="/wedding-reception-display" element={<WeddingReceptionDisplay />} />
             <Route path="/workspace" element={<AuthGuard><Workspace /></AuthGuard>} />
             <Route path="/editor/:projectId" element={<AuthGuard><InvitationEditor /></AuthGuard>} />
+            <Route path="/website-studio/:projectId" element={<AuthGuard><WebsiteStudio /></AuthGuard>} />
+            <Route path="/website-studio" element={<AuthGuard><WebsiteStudio /></AuthGuard>} />
             
             {/* Couple Login & Dashboard */}
             <Route path="/couple/login" element={<CoupleLogin />} />
@@ -186,6 +190,7 @@ export default function App() {
             <Route path="/:slug/guest" element={<Guest />} />
             <Route path="/:slug/rsvp" element={<RSVPPage />} />
             <Route path="/:slug/invitation" element={<InvitationViewer />} />
+            <Route path="/:slug/website" element={<WeddingWebsite />} />
             <Route path="/:slug" element={<Display />} />
 
             {/* Legacy/Compat routes */}
