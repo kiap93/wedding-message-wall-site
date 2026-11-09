@@ -109,7 +109,9 @@ export interface WebsiteSettings {
 
 export interface WebsiteSEOConfig {
   title?: string;
+  pageTitle?: string;
   description?: string;
+  metaDescription?: string;
   keywords?: string;
   canonicalUrl?: string;
   noIndex?: boolean; // When true, sets robots to noindex, nofollow and excludes from sitemap

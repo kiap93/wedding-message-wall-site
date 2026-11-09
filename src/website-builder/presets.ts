@@ -346,10 +346,12 @@ export function createDefaultWebsiteConfig(project: Partial<WeddingEvent>): Webs
     },
     seo: {
       title: `${groom} & ${bride} Wedding | ${weddingDate ? new Date(weddingDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Wedding Celebration'}`,
+      pageTitle: `${groom} & ${bride} Wedding | ${weddingDate ? new Date(weddingDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Wedding Celebration'}`,
       description: `Join ${groom} and ${bride} as they celebrate their wedding${location ? ` in ${location}` : ''}. View wedding schedule, venue directions, and confirm your RSVP.`,
+      metaDescription: `Join ${groom} and ${bride} as they celebrate their wedding${location ? ` in ${location}` : ''}. View wedding schedule, venue directions, and confirm your RSVP.`,
       keywords: `wedding, ${groom}, ${bride}, wedding website, RSVP, celebration`,
       noIndex: false,
-      ogTitle: `${groom} & ${bride} • Wedding Celebration`,
+      ogTitle: `${groom} & ${bride} Wedding | ${weddingDate ? new Date(weddingDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Wedding Celebration'}`,
       ogDescription: `Join ${groom} and ${bride} as they celebrate their wedding. View schedule, venue details, and RSVP online.`,
       ogImage: heroImage
     },

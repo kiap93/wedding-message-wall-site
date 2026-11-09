@@ -14,7 +14,8 @@ import {
   Loader2, 
   Sparkles,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  RefreshCw
 } from 'lucide-react';
 import { useWebsiteStore } from '../store/websiteStore';
 import Button from '../../design-system/components/Button';

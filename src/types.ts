@@ -158,6 +158,122 @@ export interface RSVP {
   created_at: string;
 }
 
+// --- Guest List, Table Assignment & Hall Planner Types ---
+
+export type GuestRSVPStatus = 'pending' | 'attending' | 'declined';
+
+export interface GuestGroup {
+  id: string;
+  project_id: string;
+  group_name: string;
+  invitation_reference?: string;
+  color?: string;
+  notes?: string;
+  member_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Guest {
+  id: string;
+  project_id: string;
+  guest_group_id?: string | null;
+  guest_group?: GuestGroup | null;
+  full_name: string;
+  email?: string;
+  phone?: string;
+  rsvp_status: GuestRSVPStatus;
+  pax: number;
+  meal_preference?: string;
+  dietary_notes?: string;
+  notes?: string;
+  is_vip?: boolean;
+  is_plus_one?: boolean;
+  primary_guest_id?: string | null;
+  primary_guest_name?: string | null;
+  rsvp_id?: string | null;
+  assigned_table_id?: string | null;
+  assigned_table_name?: string | null;
+  assigned_table_number?: string | null;
+  seat_number?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TableType = 'round' | 'rectangular' | 'square' | 'custom';
+
+export interface SeatingTable {
+  id: string;
+  project_id: string;
+  table_name: string;
+  table_number: string;
+  table_type: TableType;
+  capacity: number;
+  category?: string;
+  notes?: string;
+  assigned_guests?: Guest[];
+  assigned_count?: number;
+  remaining_seats?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SeatingAssignment {
+  id: string;
+  project_id: string;
+  guest_id: string;
+  seating_table_id: string;
+  seat_number?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type VenueObjectType = 
+  | 'table' 
+  | 'stage' 
+  | 'couple_table' 
+  | 'entrance' 
+  | 'dance_floor' 
+  | 'buffet' 
+  | 'bar' 
+  | 'photo_booth' 
+  | 'registration' 
+  | 'pillar' 
+  | 'wall' 
+  | 'decor' 
+  | 'label';
+
+export interface VenueLayoutObject {
+  id: string;
+  venue_layout_id: string;
+  project_id: string;
+  object_type: VenueObjectType;
+  object_reference_id?: string | null; // e.g. seating_table_id
+  label?: string;
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  properties?: Record<string, any>;
+  z_index?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VenueLayout {
+  id: string;
+  project_id: string;
+  layout_name: string;
+  canvas_width: number;
+  canvas_height: number;
+  grid_size: number;
+  snap_to_grid: boolean;
+  objects: VenueLayoutObject[];
+  created_at: string;
+  updated_at: string;
+}
+
 export type TemplateId = string;
 
 export interface TemplateColors {

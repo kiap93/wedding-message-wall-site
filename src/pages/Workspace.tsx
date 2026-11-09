@@ -31,6 +31,7 @@ import { Agency, WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate } 
 import { isEventActive, getDaysRemaining, getPackageById } from '../lib/packages';
 import { EVENT_PRICING, formatPrice } from '../config/pricing';
 import RSVPManager from '../components/RSVPManager';
+import GuestManagementSuite from '../components/guest-management/GuestManagementSuite';
 import RSVPFieldEditor from '../components/RSVPFieldEditor';
 import RSVPForm from '../components/RSVPForm';
 import MessageModerator from '../components/MessageModerator';
@@ -1069,7 +1070,7 @@ export default function Workspace() {
             items={[
               { id: 'aesthetic', label: 'Event Details & Style' },
               { id: 'website', label: 'Website Studio' },
-              { id: 'rsvp', label: 'RSVP Responses' },
+              { id: 'rsvp', label: 'Guest & Seating Suite' },
               { id: 'form', label: 'RSVP Form Schema' },
               { id: 'moderation', label: 'Guest Messages' },
               { id: 'invitation', label: 'Stationery Studio' },
@@ -1235,7 +1236,7 @@ export default function Workspace() {
             )}
 
             {activeEditorTab === 'rsvp' && editingEvent?.id && (
-              <RSVPManager
+              <GuestManagementSuite
                 projectId={editingEvent.id}
                 rsvpFields={editingEvent.rsvp_fields}
               />
