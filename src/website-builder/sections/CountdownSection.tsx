@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Sparkles } from 'lucide-react';
 import { WebsiteSection, WebsiteDesignConfig } from '../types';
 import { WeddingEvent } from '../../types';
+import { useEventTranslation } from '../../lib/i18n/TranslationContext';
 
 interface SectionProps {
   section: WebsiteSection;
@@ -10,6 +11,7 @@ interface SectionProps {
 }
 
 export const CountdownSection: React.FC<SectionProps> = ({ section, design, project }) => {
+  const { t } = useEventTranslation();
   const content = section.content || {};
   const targetDate = project?.wedding_date ? new Date(project.wedding_date).getTime() : Date.now() + 86400000 * 45;
 
@@ -57,26 +59,26 @@ export const CountdownSection: React.FC<SectionProps> = ({ section, design, proj
         <div className="space-y-2">
           <div className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest" style={{ color: p.accent }}>
             <Sparkles className="w-3.5 h-3.5" />
-            <span>The Moment Awaits</span>
+            <span>{t('countdown.momentAwaits', 'The Moment Awaits')}</span>
           </div>
           <h2 
             className="text-2xl sm:text-4xl font-normal tracking-tight"
             style={{ fontFamily: design.typography.headingFont, color: p.primary }}
           >
-            {content.headline || 'Counting Down to Forever'}
+            {t(`section.${section.id}.headline`, content.headline || 'Counting Down to Forever')}
           </h2>
           <p className="text-xs sm:text-sm max-w-md mx-auto" style={{ color: p.subtleText }}>
-            {content.subheadline || 'Every second brings us closer to celebrating our love together.'}
+            {t(`section.${section.id}.subheadline`, content.subheadline || 'Every second brings us closer to celebrating our love together.')}
           </p>
         </div>
 
         {/* 4 Clock Blocks */}
         <div className="grid grid-cols-4 gap-3 sm:gap-6 max-w-xl mx-auto">
           {[
-            { label: 'Days', value: timeLeft.days },
-            { label: 'Hours', value: timeLeft.hours },
-            { label: 'Minutes', value: timeLeft.minutes },
-            { label: 'Seconds', value: timeLeft.seconds },
+            { label: t('countdown.days', 'Days'), value: timeLeft.days },
+            { label: t('countdown.hours', 'Hours'), value: timeLeft.hours },
+            { label: t('countdown.minutes', 'Minutes'), value: timeLeft.minutes },
+            { label: t('countdown.seconds', 'Seconds'), value: timeLeft.seconds },
           ].map((item, idx) => (
             <div 
               key={idx}

@@ -2,6 +2,7 @@ import React from 'react';
 import { MapPin, Navigation, Compass, Sparkles } from 'lucide-react';
 import { WebsiteSection, WebsiteDesignConfig } from '../types';
 import { WeddingEvent } from '../../types';
+import { useEventTranslation } from '../../lib/i18n/TranslationContext';
 
 interface SectionProps {
   section: WebsiteSection;
@@ -10,6 +11,7 @@ interface SectionProps {
 }
 
 export const VenueSection: React.FC<SectionProps> = ({ section, design, project }) => {
+  const { t } = useEventTranslation();
   const content = section.content || {};
   const venueName = content.venueName || project?.location || 'Villa Montalvo Estate';
   const address = content.address || `${project?.location || 'San Francisco, CA'} • 15400 Montalvo Road`;
@@ -31,16 +33,16 @@ export const VenueSection: React.FC<SectionProps> = ({ section, design, project 
         <div className="text-center space-y-3">
           <div className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest" style={{ color: p.accent }}>
             <Compass className="w-3.5 h-3.5" />
-            <span>Celebration Venue</span>
+            <span>{t('venue.celebrationVenue', 'Celebration Venue')}</span>
           </div>
           <h2 
             className="text-3xl sm:text-5xl font-normal tracking-tight"
             style={{ fontFamily: design.typography.headingFont, color: p.primary }}
           >
-            {section.title || 'Venue & Location'}
+            {t(`section.${section.id}.title`, section.title || 'Venue & Location')}
           </h2>
           <p className="text-xs sm:text-sm max-w-md mx-auto" style={{ color: p.subtleText }}>
-            Join us at our dream setting where the ceremony and reception will take place.
+            {t(`section.${section.id}.subheadline`, 'Join us at our dream setting where the ceremony and reception will take place.')}
           </p>
         </div>
 
@@ -61,17 +63,17 @@ export const VenueSection: React.FC<SectionProps> = ({ section, design, project 
               className="text-2xl sm:text-3xl font-normal"
               style={{ fontFamily: design.typography.headingFont, color: p.primary }}
             >
-              {venueName}
+              {t(`section.${section.id}.venueName`, venueName)}
             </h3>
             <p className="text-sm sm:text-base leading-relaxed" style={{ color: p.subtleText }}>
-              {address}
+              {t(`section.${section.id}.address`, address)}
             </p>
           </div>
 
           <div className="pt-2 pb-2">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium" style={{ backgroundColor: p.background, color: p.accent, border: `1px solid ${p.border}` }}>
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Dress Code: {attire}</span>
+              <span>{t('venue.dressCode', 'Dress Code')}: {t(`section.${section.id}.attire`, attire)}</span>
             </div>
           </div>
 
@@ -87,7 +89,7 @@ export const VenueSection: React.FC<SectionProps> = ({ section, design, project 
               }}
             >
               <Navigation className="w-3.5 h-3.5" />
-              <span>Get Driving Directions</span>
+              <span>{t('venue.getDirections', 'Get Driving Directions')}</span>
             </a>
           </div>
         </div>

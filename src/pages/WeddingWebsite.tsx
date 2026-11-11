@@ -5,6 +5,7 @@ import { WeddingEvent } from '../types';
 import { WebsiteConfig } from '../website-builder/types';
 import { createDefaultWebsiteConfig } from '../website-builder/presets';
 import { WeddingWebsiteRenderer } from '../website-builder/WeddingWebsiteRenderer';
+import { TranslationProvider } from '../lib/i18n/TranslationContext';
 import { API_BASE } from '../lib/config';
 
 interface WebsiteDataResponse {
@@ -162,6 +163,19 @@ export default function WeddingWebsite() {
       document.head.appendChild(linkCanonical);
     }
     linkCanonical.href = canonicalUrl;
+
+    // Phase 8: hreflang alternate tags for multilingual SEO
+    const supportedLangs = ['en', 'zh-CN', 'zh-TW', 'ms'];
+    supportedLangs.forEach((l) => {
+      let altLink = document.head.querySelector<HTMLLinkElement>(`link[rel="alternate"][hreflang="${l}"]`);
+      if (!altLink) {
+        altLink = document.createElement('link');
+        altLink.rel = 'alternate';
+        altLink.hreflang = l;
+        document.head.appendChild(altLink);
+      }
+      altLink.href = l === 'en' ? canonicalUrl : `${canonicalUrl}?lang=${l}`;
+    });
 
     // Schema.org JSON-LD structured data for Event
     const jsonLdId = 'eventframe-wedding-jsonld';
@@ -359,12 +373,14 @@ export default function WeddingWebsite() {
         </aside>
       )}
 
-      {/* Shared Wedding Website Renderer */}
-      <WeddingWebsiteRenderer
-        config={config}
-        project={project}
-        isEditor={false}
-      />
+      {/* Shared Wedding Website Renderer with Translation Context */}
+      <TranslationProvider eventId={project.id} isEditor={isPreview}>
+        <WeddingWebsiteRenderer
+          config={config}
+          project={project}
+          isEditor={false}
+        />
+      </TranslationProvider>
     </div>
   );
 }

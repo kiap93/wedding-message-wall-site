@@ -2,6 +2,7 @@ import React from 'react';
 import { Heart } from 'lucide-react';
 import { WebsiteSection, WebsiteDesignConfig } from '../types';
 import { WeddingEvent } from '../../types';
+import { useEventTranslation } from '../../lib/i18n/TranslationContext';
 
 interface SectionProps {
   section: WebsiteSection;
@@ -10,6 +11,7 @@ interface SectionProps {
 }
 
 export const FooterSection: React.FC<SectionProps> = ({ section, design, project }) => {
+  const { t } = useEventTranslation();
   const content = section.content || {};
   const groom = project?.groom_name || 'Lucas';
   const bride = project?.bride_name || 'Sofia';
@@ -40,13 +42,13 @@ export const FooterSection: React.FC<SectionProps> = ({ section, design, project
         </h3>
 
         <p className="text-xs sm:text-sm text-stone-300 font-light max-w-md mx-auto leading-relaxed">
-          {content.thankYouMessage || 'With immense gratitude and boundless love, thank you for being an essential part of our celebration.'}
+          {t(`section.${section.id}.thankYouMessage`, content.thankYouMessage || 'With immense gratitude and boundless love, thank you for being an essential part of our celebration.')}
         </p>
 
         <div className="pt-4 border-t border-white/15 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-stone-400 font-mono">
-          <span>Celebrating Love • {weddingYear}</span>
+          <span>{t('footer.celebratingLove', 'Celebrating Love')} • {weddingYear}</span>
           <div className="flex items-center gap-1 text-stone-300">
-            <span>Powered by</span>
+            <span>{t('footer.poweredBy', 'Powered by')}</span>
             <span className="font-semibold text-white tracking-wide">EventFrame.io</span>
           </div>
         </div>

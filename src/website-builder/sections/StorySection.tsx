@@ -2,6 +2,7 @@ import React from 'react';
 import { Heart } from 'lucide-react';
 import { WebsiteSection, WebsiteDesignConfig } from '../types';
 import { WeddingEvent } from '../../types';
+import { useEventTranslation } from '../../lib/i18n/TranslationContext';
 
 interface SectionProps {
   section: WebsiteSection;
@@ -10,6 +11,7 @@ interface SectionProps {
 }
 
 export const StorySection: React.FC<SectionProps> = ({ section, design }) => {
+  const { t } = useEventTranslation();
   const content = section.content || {};
   const milestones = content.milestones || [];
   const p = design.palette;
@@ -29,16 +31,16 @@ export const StorySection: React.FC<SectionProps> = ({ section, design }) => {
         <div className="text-center space-y-3">
           <div className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest" style={{ color: p.accent }}>
             <Heart className="w-3.5 h-3.5 fill-current" />
-            <span>Our Journey</span>
+            <span>{t('story.ourJourney', 'Our Journey')}</span>
           </div>
           <h2 
             className="text-3xl sm:text-5xl font-normal tracking-tight"
             style={{ fontFamily: design.typography.headingFont, color: p.primary }}
           >
-            {content.headline || 'How Our Story Began'}
+            {t(`section.${section.id}.headline`, content.headline || 'How Our Story Began')}
           </h2>
           <p className="text-xs sm:text-sm max-w-lg mx-auto leading-relaxed" style={{ color: p.subtleText }}>
-            {content.subheadline || 'A few of our favorite memories that brought us to this milestone.'}
+            {t(`section.${section.id}.subheadline`, content.subheadline || 'A few of our favorite memories that brought us to this milestone.')}
           </p>
         </div>
 
@@ -46,6 +48,8 @@ export const StorySection: React.FC<SectionProps> = ({ section, design }) => {
         <div className="space-y-12 sm:space-y-16 relative">
           {milestones.map((item, index) => {
             const isEven = index % 2 === 0;
+            const milestoneTitle = t(`section.${section.id}.milestone.${item.id}.title`, item.title);
+            const milestoneDesc = t(`section.${section.id}.milestone.${item.id}.description`, item.description);
             return (
               <div 
                 key={item.id}
@@ -60,7 +64,7 @@ export const StorySection: React.FC<SectionProps> = ({ section, design }) => {
                   <div className="w-full md:w-1/2 aspect-[4/3] rounded-2xl overflow-hidden shadow-inner bg-stone-100 shrink-0">
                     <img 
                       src={item.image} 
-                      alt={item.title} 
+                      alt={milestoneTitle} 
                       className="w-full h-full object-cover object-center hover:scale-105 transition-transform duration-700" 
                     />
                   </div>
@@ -84,10 +88,10 @@ export const StorySection: React.FC<SectionProps> = ({ section, design }) => {
                     className="text-xl sm:text-2xl font-normal"
                     style={{ fontFamily: design.typography.headingFont, color: p.primary }}
                   >
-                    {item.title}
+                    {milestoneTitle}
                   </h3>
                   <p className="text-xs sm:text-sm leading-relaxed" style={{ color: p.subtleText }}>
-                    {item.description}
+                    {milestoneDesc}
                   </p>
                 </div>
               </div>

@@ -18,7 +18,7 @@ interface WebsiteBuilderState {
   project: WeddingEvent | null;
   config: WebsiteConfig;
   selectedSectionId: string | null;
-  activeTab: 'templates' | 'sections' | 'design' | 'media' | 'settings';
+  activeTab: 'templates' | 'sections' | 'design' | 'media' | 'settings' | 'languages';
   deviceMode: DeviceMode;
   zoom: number;
   saveStatus: 'idle' | 'unsaved' | 'saving' | 'saved';
@@ -34,7 +34,7 @@ interface WebsiteBuilderState {
   // Actions
   init: (project: WeddingEvent) => void;
   setSelectedSectionId: (id: string | null) => void;
-  setActiveTab: (tab: 'templates' | 'sections' | 'design' | 'media' | 'settings') => void;
+  setActiveTab: (tab: 'templates' | 'sections' | 'design' | 'media' | 'settings' | 'languages') => void;
   setDeviceMode: (mode: DeviceMode) => void;
   setZoom: (zoom: number) => void;
   setSaveStatus: (status: 'idle' | 'unsaved' | 'saving' | 'saved') => void;

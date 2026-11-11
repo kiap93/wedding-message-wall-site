@@ -13,6 +13,8 @@ import { getAgencyById } from '../lib/agency';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { fetchTemplates } from '../lib/templates';
 import { isEventActive } from '../lib/packages';
+import { TranslationProvider } from '../lib/i18n/TranslationContext';
+import { LanguageSelector } from '../components/LanguageSelector';
 
 export default function Guest() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
@@ -293,9 +295,10 @@ export default function Guest() {
   const rsvpUrl = (slug ? `/${slug}` : project?.slug ? `/${project.slug}` : '') + '/rsvp' + window.location.search;
 
   return (
-    <div className={`min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 ${theme.colors.background} transition-colors duration-500 relative overflow-x-hidden ${theme.fontBody} ${theme.colors.text}`}>
-      {/* Background Decorative Overlay */}
-      <ThemeOverlay themeId={theme.id} mode="ambient" />
+    <TranslationProvider eventId={project?.id || projectId || 'demo'}>
+      <div className={`min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 ${theme.colors.background} transition-colors duration-500 relative overflow-x-hidden ${theme.fontBody} ${theme.colors.text}`}>
+        {/* Background Decorative Overlay */}
+        <ThemeOverlay themeId={theme.id} mode="ambient" />
 
       {/* Top Banner for Previews */}
       {isPreview && (
@@ -503,6 +506,10 @@ export default function Guest() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Floating Language Selector */}
+      <LanguageSelector variant="floating" />
     </div>
+  </TranslationProvider>
   );
 }

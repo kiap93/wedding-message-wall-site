@@ -29,6 +29,7 @@ import { WEBSITE_TEMPLATES } from '../presets';
 import { WebsiteSectionType } from '../types';
 import Button from '../../design-system/components/Button';
 import Input from '../../design-system/components/Input';
+import { LanguageManager } from './LanguageManager';
 
 const FONT_OPTIONS = [
   'Playfair Display',
@@ -88,6 +89,7 @@ export const BuilderSidebar: React.FC = () => {
     { id: 'sections', label: 'Sections', icon: Layers },
     { id: 'design', label: 'Design', icon: Palette },
     { id: 'media', label: 'Media', icon: ImageIcon },
+    { id: 'languages', label: 'Languages', icon: Globe },
     { id: 'settings', label: 'Settings', icon: SettingsIcon },
   ] as const;
 
@@ -748,6 +750,11 @@ export const BuilderSidebar: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* TAB: LANGUAGES & LOCALIZATION */}
+        {activeTab === 'languages' && (
+          <LanguageManager />
         )}
       </div>
     </aside>

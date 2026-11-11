@@ -13,6 +13,7 @@ import { useWorkspace } from '../lib/WorkspaceContext';
 import { fetchTemplates } from '../lib/templates';
 import { isEventActive } from '../lib/packages';
 import { scheduleMessageRotation, getMessageDuration } from '../lib/displayScheduler';
+import { TranslationProvider } from '../lib/i18n/TranslationContext';
 
 export default function Display() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
@@ -283,9 +284,10 @@ export default function Display() {
   }
 
   return (
-    <div className={`min-h-screen ${theme.colors.background} transition-colors duration-700 relative overflow-x-hidden ${theme.fontBody} ${theme.colors.text}`}>
-      {/* Background Decorative Overlay */}
-      <ThemeOverlay themeId={theme.id} mode="fullscreen" />
+    <TranslationProvider eventId={project?.id || projectId || 'demo'}>
+      <div className={`min-h-screen ${theme.colors.background} transition-colors duration-700 relative overflow-x-hidden ${theme.fontBody} ${theme.colors.text}`}>
+        {/* Background Decorative Overlay */}
+        <ThemeOverlay themeId={theme.id} mode="fullscreen" />
 
       {/* Preview Warning Banner */}
       {isPreview && (
@@ -449,7 +451,8 @@ export default function Display() {
         }
         ${theme.rawTemplate.css || ''}
       `}} />
-    </div>
+      </div>
+    </TranslationProvider>
   );
 }
 

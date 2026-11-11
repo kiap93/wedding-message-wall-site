@@ -211,6 +211,9 @@ export interface SeatingTable {
   capacity: number;
   category?: string;
   notes?: string;
+  position_x?: number;
+  position_y?: number;
+  rotation?: number;
   assigned_guests?: Guest[];
   assigned_count?: number;
   remaining_seats?: number;
@@ -521,3 +524,67 @@ export const DEFAULT_TEMPLATES: WeddingTemplate[] = [
 ];
 
 export const TEMPLATES = DEFAULT_TEMPLATES;
+
+// ============================================================================
+// MULTILINGUAL TRANSLATION ENGINE TYPES
+// ============================================================================
+
+export type SupportedLanguageCode = 'en' | 'zh-CN' | 'zh-TW' | 'ms';
+
+export type TranslationPublicationStatus = 'draft' | 'published';
+
+export type TranslationStatus = 'draft' | 'translated' | 'needs_review' | 'auto_translated';
+
+export interface LanguageMeta {
+  code: string;
+  name: string;
+  nativeName: string;
+  flag?: string;
+  direction?: 'ltr' | 'rtl';
+}
+
+export const SUPPORTED_LANGUAGES: LanguageMeta[] = [
+  { code: 'en', name: 'English', nativeName: 'English', flag: '🇬🇧' },
+  { code: 'zh-CN', name: 'Simplified Chinese', nativeName: '简体中文', flag: '🇨🇳' },
+  { code: 'zh-TW', name: 'Traditional Chinese', nativeName: '繁體中文', flag: '🇹🇼' },
+  { code: 'ms', name: 'Malay', nativeName: 'Bahasa Melayu', flag: '🇲🇾' }
+];
+
+export interface EventLanguage {
+  id: string;
+  event_id: string;
+  language_code: string;
+  is_enabled: boolean;
+  is_default: boolean;
+  publication_status: TranslationPublicationStatus;
+  created_at?: string;
+  updated_at?: string;
+  // Computed stats
+  completion_percentage?: number;
+  total_keys?: number;
+  translated_keys?: number;
+  needs_review_count?: number;
+}
+
+export interface EventTranslation {
+  id: string;
+  event_id: string;
+  language_code: string;
+  content_key: string;
+  translated_value: string;
+  source_hash: string;
+  translation_status: TranslationStatus;
+  updated_at?: string;
+}
+
+export interface TranslationDictionary {
+  [content_key: string]: string;
+}
+
+export interface EventTranslationPackage {
+  event_id: string;
+  default_language: string;
+  current_language: string;
+  languages: EventLanguage[];
+  translations: TranslationDictionary;
+}

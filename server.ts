@@ -34,8 +34,21 @@ import {
   assignGroupToTable,
   getVenueLayout,
   saveVenueLayout,
-  syncGuestFromRSVP
+  syncGuestFromRSVP,
+  getEventAssignments
 } from './server/guestSeatingService';
+import {
+  getEventLanguages,
+  enableLanguage,
+  disableLanguage,
+  setDefaultLanguage,
+  setLanguagePublicationStatus,
+  getEventTranslations,
+  getAllEventTranslations,
+  saveEventTranslation,
+  autoTranslateEvent,
+  translateGuestMessage
+} from './server/translationService';
 
 dotenv.config();
 
@@ -1873,8 +1886,48 @@ Return ONLY a valid JSON array of objects with the following schema:
       const { authorized } = await verifyProjectAccess(req, id);
       if (!authorized) return res.status(403).json({ error: 'Unauthorized' });
 
+      const tables = await getEventTables(id);
+      const target = tables.find((t) => t.id === tableId);
+      if (!target) {
+        return res.status(404).json({ error: `Table "${tableId}" not found` });
+      }
+
+      const force = req.query.force === 'true' || (req.body && req.body.force === true);
+      if ((target.assigned_count || 0) > 0 && !force) {
+        return res.status(400).json({
+          error: `Cannot delete table "${target.table_name}" because it still has ${target.assigned_count} assigned guest(s). Please unassign guests first or pass force=true.`
+        });
+      }
+
       const deleted = await deleteTable(id, tableId);
-      res.json({ success: deleted });
+      res.json({ success: deleted, message: `Table "${target.table_name}" deleted successfully` });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 11b. Retrieve all seating assignments
+  apiRouter.get('/projects/:id/seating-assignments', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authorized } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized' });
+
+      const assignments = await getEventAssignments(id);
+      res.json({ success: true, assignments });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  apiRouter.get('/projects/:id/assignments', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authorized } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized' });
+
+      const assignments = await getEventAssignments(id);
+      res.json({ success: true, assignments });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -1960,8 +2013,47 @@ Return ONLY a valid JSON array of objects with the following schema:
     }
   });
 
+  apiRouter.get('/projects/:id/venue-layout', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authorized } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized' });
+
+      const layout = await getVenueLayout(id);
+      res.json({ success: true, layout });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // 16. Save layout
   apiRouter.post('/projects/:id/layout', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authorized } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized' });
+
+      const updated = await saveVenueLayout(id, req.body);
+      res.json({ success: true, layout: updated });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  apiRouter.post('/projects/:id/venue-layout', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authorized } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized' });
+
+      const updated = await saveVenueLayout(id, req.body);
+      res.json({ success: true, layout: updated });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  apiRouter.put('/projects/:id/venue-layout', async (req, res) => {
     try {
       const { id } = req.params;
       const { authorized } = await verifyProjectAccess(req, id);
@@ -2106,6 +2198,209 @@ Return ONLY a valid JSON array of objects with the following schema:
         success: true,
         previewToken,
         previewUrl: `/${project.slug}/website?preview=true&token=${previewToken}`
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // =========================================================================
+  // MULTILINGUAL TRANSLATION ENGINE API ENDPOINTS
+  // =========================================================================
+
+  // 1. Guest & Public: Combined Languages & Translations Payload
+  apiRouter.get('/projects/:id/languages-and-translations', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const requestedLang = (req.query.lang as string) || '';
+
+      const languages = await getEventLanguages(id);
+      const defaultLangObj = languages.find((l) => l.is_default) || languages[0];
+      const defaultLang = defaultLangObj?.language_code || 'en';
+
+      // Pick language: requested or default
+      const activeLang = requestedLang && languages.some((l) => l.language_code === requestedLang && l.is_enabled)
+        ? requestedLang
+        : defaultLang;
+
+      const translations = await getEventTranslations(id, activeLang);
+
+      res.json({
+        success: true,
+        event_id: id,
+        default_language: defaultLang,
+        current_language: activeLang,
+        languages,
+        translations
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 2. Editor: Get Event Languages with Completion Statistics
+  apiRouter.get('/projects/:id/languages', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authorized } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized to manage languages' });
+
+      const languages = await getEventLanguages(id);
+      res.json({ success: true, languages });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3. Editor: Enable / Add Language
+  apiRouter.post('/projects/:id/languages', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authorized } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized to add languages' });
+
+      const { language_code, is_default } = req.body;
+      if (!language_code) return res.status(400).json({ error: 'Language code is required' });
+
+      const lang = await enableLanguage(id, language_code, Boolean(is_default));
+      res.json({ success: true, language: lang });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 4. Editor: Disable Language
+  apiRouter.delete('/projects/:id/languages/:code', async (req, res) => {
+    try {
+      const { id, code } = req.params;
+      const { authorized } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized to disable language' });
+
+      await disableLanguage(id, code);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // 5. Editor: Set Default Language
+  apiRouter.put('/projects/:id/languages/:code/default', async (req, res) => {
+    try {
+      const { id, code } = req.params;
+      const { authorized } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized to set default language' });
+
+      await setDefaultLanguage(id, code);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 6. Editor: Set Language Publication Status (draft vs published)
+  apiRouter.put('/projects/:id/languages/:code/status', async (req, res) => {
+    try {
+      const { id, code } = req.params;
+      const { authorized } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized to update language publication status' });
+
+      const { status } = req.body;
+      if (!status || !['draft', 'published'].includes(status)) {
+        return res.status(400).json({ error: 'Status must be "draft" or "published"' });
+      }
+
+      await setLanguagePublicationStatus(id, code, status);
+      res.json({ success: true, status });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 7. Editor: Get All Translations List for Editing
+  apiRouter.get('/projects/:id/translations', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authorized } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized to view translations' });
+
+      const lang = req.query.lang as string | undefined;
+      const translations = await getAllEventTranslations(id, lang);
+      res.json({ success: true, translations });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 8. Editor: Save Individual Manual Translation
+  apiRouter.put('/projects/:id/translations', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authorized } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized to save translation' });
+
+      const { language_code, content_key, translated_value } = req.body;
+      if (!language_code || !content_key) {
+        return res.status(400).json({ error: 'language_code and content_key are required' });
+      }
+
+      const updated = await saveEventTranslation(
+        id,
+        language_code,
+        content_key,
+        translated_value || '',
+        undefined,
+        'translated'
+      );
+
+      res.json({ success: true, translation: updated });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 9. Editor: Trigger Auto-Translation Batch via Provider
+  apiRouter.post('/projects/:id/translations/auto-translate', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authorized, project } = await verifyProjectAccess(req, id);
+      if (!authorized) return res.status(403).json({ error: 'Unauthorized to trigger auto-translation' });
+
+      const { target_lang, website_config } = req.body;
+      if (!target_lang) return res.status(400).json({ error: 'target_lang is required' });
+
+      // Enable language if not already enabled
+      await enableLanguage(id, target_lang, false);
+
+      const result = await autoTranslateEvent(
+        id,
+        target_lang,
+        website_config || project?.website_config,
+        project
+      );
+
+      res.json({
+        success: result.success,
+        translated_count: result.translatedCount,
+        errors: result.errors || []
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 10. Guest / Wall: Translate Guest Message to View
+  apiRouter.post('/translate-message', async (req, res) => {
+    try {
+      const { text, target_lang } = req.body;
+      if (!text || !target_lang) {
+        return res.status(400).json({ error: 'text and target_lang are required' });
+      }
+
+      const translated = await translateGuestMessage(text, target_lang);
+      res.json({
+        success: true,
+        original_text: translated.originalText,
+        translated_text: translated.translatedText
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

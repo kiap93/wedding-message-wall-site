@@ -499,6 +499,9 @@ export async function createTable(projectId: string, tableData: Partial<SeatingT
     capacity: Number(tableData.capacity) || 10,
     category: tableData.category || 'General',
     notes: tableData.notes || '',
+    position_x: tableData.position_x !== undefined ? Number(tableData.position_x) : 100,
+    position_y: tableData.position_y !== undefined ? Number(tableData.position_y) : 100,
+    rotation: tableData.rotation !== undefined ? Number(tableData.rotation) : 0,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
@@ -527,7 +530,11 @@ export async function createTable(projectId: string, tableData: Partial<SeatingT
 }
 
 export async function updateTable(projectId: string, tableId: string, updates: Partial<SeatingTable>): Promise<SeatingTable | null> {
-  const safeUpdates = { ...updates, updated_at: new Date().toISOString() };
+  const safeUpdates: any = { ...updates, updated_at: new Date().toISOString() };
+  if (updates.position_x !== undefined) safeUpdates.position_x = Number(updates.position_x);
+  if (updates.position_y !== undefined) safeUpdates.position_y = Number(updates.position_y);
+  if (updates.rotation !== undefined) safeUpdates.rotation = Number(updates.rotation);
+  if (updates.capacity !== undefined) safeUpdates.capacity = Number(updates.capacity);
 
   const supabase = trySupabase();
   if (supabase) {
@@ -690,6 +697,32 @@ export async function unassignGuestFromTable(projectId: string, guestId: string)
   const store = getEventMemoryStore(projectId);
   store.assignments.delete(`${projectId}:${guestId}`);
   return true;
+}
+
+export async function getEventAssignments(projectId: string): Promise<SeatingAssignment[]> {
+  const supabase = trySupabase();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('seating_assignments')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true });
+
+      if (!error && data) return data;
+    } catch (err: any) {
+      markSupabaseUnavailable();
+    }
+  }
+
+  const store = getEventMemoryStore(projectId);
+  const result: SeatingAssignment[] = [];
+  store.assignments.forEach((asg) => {
+    if (asg.project_id === projectId) {
+      result.push(asg);
+    }
+  });
+  return result;
 }
 
 export async function assignGroupToTable(

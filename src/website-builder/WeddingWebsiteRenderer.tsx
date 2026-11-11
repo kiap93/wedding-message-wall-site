@@ -14,6 +14,8 @@ import { WebsiteConfig, WebsiteSection } from './types';
 import { WeddingEvent } from '../types';
 import { SectionRenderer } from './sections/SectionRenderer';
 import { ThemeOverlay } from '../components/ThemeDecorations';
+import { useEventTranslation } from '../lib/i18n/TranslationContext';
+import { LanguageSelector } from '../components/LanguageSelector';
 
 export interface WeddingWebsiteRendererProps {
   config: WebsiteConfig;
@@ -38,19 +40,21 @@ export const WeddingWebsiteRenderer: React.FC<WeddingWebsiteRendererProps> = ({
   onToggleVisibility,
   className = ''
 }) => {
+  const { t } = useEventTranslation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const groom = project?.groom_name || 'Lucas';
   const bride = project?.bride_name || 'Sofia';
-  const siteTitle = config.settings.siteTitle || `${groom} & ${bride}`;
+  const rawSiteTitle = config.settings.siteTitle || `${groom} & ${bride}`;
+  const siteTitle = t('siteTitle', rawSiteTitle);
 
   const navLinks = [
-    { type: 'story', label: 'Our Story', href: '#story' },
-    { type: 'schedule', label: 'Schedule', href: '#schedule' },
-    { type: 'venue', label: 'Venue', href: '#venue' },
-    { type: 'gallery', label: 'Gallery', href: '#gallery' },
-    { type: 'invitation', label: 'Invitation', href: '#invitation' },
-    { type: 'wall', label: 'Guest Wall', href: '#wall' },
+    { type: 'story', label: t('nav.story', 'Our Story'), href: '#story' },
+    { type: 'schedule', label: t('nav.schedule', 'Schedule'), href: '#schedule' },
+    { type: 'venue', label: t('nav.venue', 'Venue'), href: '#venue' },
+    { type: 'gallery', label: t('nav.gallery', 'Gallery'), href: '#gallery' },
+    { type: 'invitation', label: t('nav.invitation', 'Invitation'), href: '#invitation' },
+    { type: 'wall', label: t('nav.wall', 'Guest Wall'), href: '#wall' },
   ].filter((item) => config.sections.some((s) => s.type === item.type && (isEditor || s.enabled)));
 
   // If in editor mode, display all sections (with disabled state). In guest mode, only display enabled sections.
@@ -79,7 +83,7 @@ export const WeddingWebsiteRenderer: React.FC<WeddingWebsiteRendererProps> = ({
             color: p.accent
           }}
         >
-          {config.settings.announcementBar}
+          {t('settings.announcementBar', config.settings.announcementBar)}
         </div>
       )}
 
@@ -117,6 +121,13 @@ export const WeddingWebsiteRenderer: React.FC<WeddingWebsiteRendererProps> = ({
               </a>
             ))}
 
+            {/* Language Switcher in Navigation */}
+            <LanguageSelector 
+              variant="inline" 
+              themeColor={p.primary} 
+              textColor={p.text} 
+            />
+
             {config.settings.rsvpButtonInNav && (
               <a
                 href="#rsvp"
@@ -126,13 +137,18 @@ export const WeddingWebsiteRenderer: React.FC<WeddingWebsiteRendererProps> = ({
                   color: '#FFFFFF'
                 }}
               >
-                RSVP
+                {t('nav.rsvp', 'RSVP')}
               </a>
             )}
           </nav>
 
           {/* Mobile Menu Button */}
           <div className="flex md:hidden items-center gap-2">
+            <LanguageSelector 
+              variant="inline" 
+              themeColor={p.primary} 
+              textColor={p.text} 
+            />
             {config.settings.rsvpButtonInNav && (
               <a
                 href="#rsvp"
@@ -142,7 +158,7 @@ export const WeddingWebsiteRenderer: React.FC<WeddingWebsiteRendererProps> = ({
                   color: '#FFFFFF'
                 }}
               >
-                RSVP
+                {t('nav.rsvp', 'RSVP')}
               </a>
             )}
             <button
@@ -273,6 +289,11 @@ export const WeddingWebsiteRenderer: React.FC<WeddingWebsiteRendererProps> = ({
           );
         })}
       </main>
+
+      {/* Floating Language Selector for Public Visitors */}
+      {!isEditor && (
+        <LanguageSelector variant="floating" themeColor={p.primary} />
+      )}
     </div>
   );
 };

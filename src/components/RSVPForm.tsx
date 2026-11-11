@@ -5,6 +5,7 @@ import { WeddingTemplate, RSVPField } from '../types';
 import { ResolvedEventTheme, resolveEventTheme } from '../lib/eventTheme';
 import { postRSVP } from '../lib/api';
 import { useUser } from '../lib/UserContext';
+import { useEventTranslation } from '../lib/i18n/TranslationContext';
 
 interface RSVPFormProps {
   projectId: string;
@@ -26,6 +27,7 @@ export default function RSVPForm({
   rsvpFields 
 }: RSVPFormProps) {
   const { user } = useUser();
+  const { t } = useEventTranslation();
   const theme = providedTheme || resolveEventTheme(template?.id, template ? [template] : []);
 
   const [formData, setFormData] = useState<Record<string, any>>({
@@ -65,11 +67,11 @@ export default function RSVPForm({
   }
 
   const activeFields: RSVPField[] = (safeRsvpFields && safeRsvpFields.length > 0) ? safeRsvpFields : [
-    { id: 'name', label: 'Full Name', type: 'text', required: true },
-    { id: 'email', label: 'Email Address', type: 'text', required: false },
-    { id: 'guest_count', label: 'Number of Guests', type: 'number', required: true, showIfAttending: true },
-    { id: 'meal_preference', label: 'Meal Preference', type: 'select', required: true, options: ['Standard', 'Vegetarian', 'Vegan', 'Gluten Free'], showIfAttending: true },
-    { id: 'dietary_requirements', label: 'Dietary Notes', type: 'textarea', required: false, showIfAttending: true }
+    { id: 'name', label: t('rsvp.fullname', 'Full Name'), placeholder: t('rsvp.fullname_placeholder', 'e.g. Eleanor Vance'), type: 'text', required: true },
+    { id: 'email', label: t('rsvp.email', 'Email Address'), placeholder: t('rsvp.email_placeholder', 'e.g. eleanor@example.com'), type: 'text', required: false },
+    { id: 'guest_count', label: t('rsvp.guest_count', 'Number of Guests'), type: 'number', required: true, showIfAttending: true },
+    { id: 'meal_preference', label: t('rsvp.meal_pref', 'Meal Preference'), type: 'select', required: true, options: ['Standard', 'Vegetarian', 'Vegan', 'Gluten Free'], showIfAttending: true },
+    { id: 'dietary_requirements', label: t('rsvp.dietary', 'Dietary Notes'), placeholder: t('rsvp.dietary_placeholder', 'Please specify allergies, food intolerances or seating preferences...'), type: 'textarea', required: false, showIfAttending: true }
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -127,10 +129,10 @@ export default function RSVPForm({
           <Icon className="w-8 h-8 fill-current" />
         </div>
         <h3 className={`text-2xl ${theme.fontHeading} ${theme.colors.headerText} mb-2`}>
-          Response Received
+          {t('rsvp.success_title', 'Response Received')}
         </h3>
         <p className={`text-xs ${theme.colors.subtleText} max-w-xs mx-auto leading-relaxed`}>
-          Your RSVP has been recorded. We look forward to celebrating together.
+          {t('rsvp.success_message', 'Your RSVP has been recorded. We look forward to celebrating together.')}
         </p>
       </motion.div>
     );
@@ -287,7 +289,7 @@ export default function RSVPForm({
             }`}
           >
             <Check className="w-3.5 h-3.5" />
-            <span>Joyfully Accept</span>
+            <span>{t('rsvp.accept', 'Joyfully Accept')}</span>
           </button>
           <button
             type="button"
@@ -299,7 +301,7 @@ export default function RSVPForm({
             }`}
           >
             <X className="w-3.5 h-3.5" />
-            <span>Regretfully Decline</span>
+            <span>{t('rsvp.decline', 'Regretfully Decline')}</span>
           </button>
         </div>
       </div>
@@ -324,7 +326,11 @@ export default function RSVPForm({
           isSubmitting ? 'opacity-50 cursor-not-allowed' : theme.button.primary
         }`}
       >
-        {isSubmitting ? 'Submitting RSVP...' : formData.attending ? 'Confirm Attendance' : 'Send Decline Note'}
+        {isSubmitting 
+          ? t('rsvp.submitting', 'Submitting RSVP...') 
+          : formData.attending 
+            ? t('rsvp.submit', 'Confirm Attendance') 
+            : t('rsvp.decline', 'Send Decline Note')}
       </button>
     </form>
   );

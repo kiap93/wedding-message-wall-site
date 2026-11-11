@@ -2,6 +2,7 @@ import React from 'react';
 import { MessageSquare, Star, Sparkles, Send } from 'lucide-react';
 import { WebsiteSection, WebsiteDesignConfig } from '../types';
 import { WeddingEvent } from '../../types';
+import { useEventTranslation } from '../../lib/i18n/TranslationContext';
 
 interface SectionProps {
   section: WebsiteSection;
@@ -10,6 +11,7 @@ interface SectionProps {
 }
 
 export const WallSection: React.FC<SectionProps> = ({ section, design, project }) => {
+  const { t } = useEventTranslation();
   const content = section.content || {};
   const p = design.palette;
   const guestUrl = project?.slug ? `/${project.slug}/guest` : '#';
@@ -34,23 +36,23 @@ export const WallSection: React.FC<SectionProps> = ({ section, design, project }
         <div className="space-y-3">
           <div className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest" style={{ color: p.accent }}>
             <MessageSquare className="w-3.5 h-3.5" />
-            <span>Interactive Guestbook</span>
+            <span>{t('wall.interactiveGuestbook', 'Interactive Guestbook')}</span>
           </div>
           <h2 
             className="text-3xl sm:text-5xl font-normal tracking-tight"
             style={{ fontFamily: design.typography.headingFont, color: p.primary }}
           >
-            {content.headline || 'Warm Wishes & Guest Wall'}
+            {t(`section.${section.id}.headline`, content.headline || 'Warm Wishes & Guest Wall')}
           </h2>
           <p className="text-xs sm:text-sm max-w-md mx-auto" style={{ color: p.subtleText }}>
-            {content.subheadline || 'Send your love and heartfelt blessings. Notes appear live on the ballroom projector during the reception.'}
+            {t(`section.${section.id}.subheadline`, content.subheadline || 'Send your love and heartfelt blessings. Notes appear live on the ballroom projector during the reception.')}
           </p>
         </div>
 
         {/* Live Ballroom Indicator Strip */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-          <span>Live Ballroom Reception Screen Connected</span>
+          <span>{t('wall.screenConnected', 'Live Ballroom Reception Screen Connected')}</span>
         </div>
 
         {/* Notes Grid */}
@@ -94,7 +96,7 @@ export const WallSection: React.FC<SectionProps> = ({ section, design, project }
             }}
           >
             <Send className="w-3.5 h-3.5" />
-            <span>{content.buttonText || 'Leave a Message for the Couple'}</span>
+            <span>{t(`section.${section.id}.buttonText`, content.buttonText || t('wall.leaveMessage', 'Leave a Message for the Couple'))}</span>
           </a>
         </div>
       </div>

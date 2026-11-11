@@ -2,6 +2,7 @@ import React from 'react';
 import { Calendar, MapPin, Heart, ArrowDown } from 'lucide-react';
 import { WebsiteSection, WebsiteDesignConfig } from '../types';
 import { WeddingEvent } from '../../types';
+import { useEventTranslation } from '../../lib/i18n/TranslationContext';
 
 interface SectionProps {
   section: WebsiteSection;
@@ -11,11 +12,15 @@ interface SectionProps {
 }
 
 export const HeroSection: React.FC<SectionProps> = ({ section, design, project }) => {
+  const { t } = useEventTranslation();
+  const sId = section.id || section.type;
   const content = section.content || {};
   const groom = project?.groom_name || 'Lucas';
   const bride = project?.bride_name || 'Sofia';
-  const headline = content.headline || `${groom} & ${bride}`;
-  const subheadline = content.subheadline || 'Together with their families, invite you to celebrate their wedding day';
+  const rawHeadline = content.headline || `${groom} & ${bride}`;
+  const headline = t(`section.${sId}.headline`, rawHeadline);
+  const rawSubheadline = content.subheadline || 'Together with their families, invite you to celebrate their wedding day';
+  const subheadline = t(`section.${sId}.subheadline`, t('hero.default_subheadline', rawSubheadline));
   const dateStr = project?.wedding_date 
     ? new Date(project.wedding_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : 'Saturday, September 20, 2025';
@@ -51,7 +56,7 @@ export const HeroSection: React.FC<SectionProps> = ({ section, design, project }
         {/* Monogram / Top Subtitle */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/15 backdrop-blur-md text-xs tracking-widest uppercase font-mono border border-white/20">
           <Heart className="w-3.5 h-3.5 fill-amber-300 text-amber-300 animate-pulse" />
-          <span>The Wedding Celebration</span>
+          <span>{t('hero.badge', 'The Wedding Celebration')}</span>
         </div>
 
         {/* Couple Names */}
