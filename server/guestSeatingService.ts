@@ -33,9 +33,16 @@ function getEventMemoryStore(projectId: string): EventStorage {
   return memoryStore.get(projectId)!;
 }
 
-// Helper to generate IDs
+// Helper to generate UUIDs compliant with Postgres UUID columns
 function genId(prefix: string = 'id'): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 function trySupabase() {
@@ -57,7 +64,8 @@ export async function getEventGuests(projectId: string): Promise<Guest[]> {
         .eq('project_id', projectId)
         .order('created_at', { ascending: true });
 
-      if (!error && guests && guests.length > 0) {
+      if (error) throw error;
+      if (guests && guests.length > 0) {
         // Get table assignments
         const { data: assignments } = await supabase
           .from('seating_assignments')
@@ -158,7 +166,8 @@ export async function createGuest(projectId: string, guestData: Partial<Guest>):
         .select()
         .single();
 
-      if (!error && data) {
+      if (error) throw error;
+      if (data) {
         return data;
       }
     } catch (err: any) {
@@ -665,7 +674,8 @@ export async function assignGuestToTable(
           { onConflict: 'project_id, guest_id' }
         );
 
-      if (!error) return { success: true };
+      if (error) throw error;
+      return { success: true };
     } catch (err: any) {
       markSupabaseUnavailable();
       console.warn('[SeatingService] Supabase assign fallback to memory store:', err.message);
