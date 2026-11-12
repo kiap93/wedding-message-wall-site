@@ -15,6 +15,8 @@ import { fetchTemplates } from '../lib/templates';
 import { isEventActive } from '../lib/packages';
 import { TranslationProvider } from '../lib/i18n/TranslationContext';
 import { LanguageSelector } from '../components/LanguageSelector';
+import { PUBLIC_DEMO_ROOM_ID, PUBLIC_DEMO_PROJECT, PUBLIC_DEMO_AGENCY } from '../lib/demoService';
+import { createGuestMessageProvider } from '../lib/guestMessageProvider';
 
 export default function Guest() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
@@ -34,6 +36,7 @@ export default function Guest() {
 
   const [searchParams] = useSearchParams();
   const isPreviewParam = searchParams.get('preview') === 'true';
+  const isDemo = project?.id === PUBLIC_DEMO_ROOM_ID || projectId === 'demo' || slug === 'demo';
 
   useEffect(() => {
     async function load() {
@@ -42,6 +45,13 @@ export default function Guest() {
     }
     load();
   }, []);
+
+  const initDemoMode = () => {
+    setProject(PUBLIC_DEMO_PROJECT);
+    setAgency(PUBLIC_DEMO_AGENCY);
+    setMessages([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    setIsLoading(false);
+  };
 
   useEffect(() => {
     if (isLoadingWorkspace) return;
@@ -53,7 +63,8 @@ export default function Guest() {
     } else if (normalizedProjectId || slug) {
       loadProject(normalizedProjectId, slug);
     } else {
-      setIsLoading(false);
+      // Anonymous visitor on /guest: Initialize public demo automatically!
+      initDemoMode();
     }
   }, [projectId, slug, searchParams, isLoadingWorkspace, workspace?.id]);
 
@@ -90,51 +101,24 @@ export default function Guest() {
           .select('*', { count: 'exact', head: true })
           .eq('project_id', projectData.id);
         setRsvpCount(rsvpCountVal || 0);
+      } else {
+        // Fallback to public demo
+        initDemoMode();
       }
     } catch (err) {
       console.error('Error loading workspace project:', err);
+      initDemoMode();
     } finally {
       setIsLoading(false);
     }
   };
 
   const isSubscribed = isEventActive(project, agency);
-  const isPreview = !isSubscribed && !isPreviewParam;
+  const isPreview = !isDemo && !isSubscribed && !isPreviewParam;
 
   const loadProject = async (id?: string, slugName?: string) => {
-    if (id === 'demo' || slugName === 'demo') {
-      const demoAgency: Agency = {
-        id: 'demo-agency',
-        name: 'EventFrame Demo',
-        slug: 'demo',
-        user_id: 'demo-user',
-        user_role: 'agency',
-        subscription_status: 'active',
-        is_demo: true,
-        logo_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=100&h=100',
-        theme_config: { primaryColor: '#8B806F', accentColor: '#252525' },
-        created_at: new Date().toISOString()
-      };
-      const demoProject: WeddingEvent = {
-        id: 'demo-project',
-        agency_id: 'demo-agency',
-        groom_name: 'Lucas',
-        bride_name: 'Sofia',
-        name: 'Lucas & Sofia Wedding',
-        slug: 'demo',
-        theme_id: 'garden',
-        image_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80',
-        wedding_date: '2025-06-15',
-        location: 'San Francisco, CA',
-        auto_approve_messages: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      setAgency(demoAgency);
-      setProject(demoProject);
-      setMessages([{ id: 1 }, { id: 2 }, { id: 3 }]);
-      setRsvpCount(2);
-      setIsLoading(false);
+    if (id === 'demo' || slugName === 'demo' || id === PUBLIC_DEMO_ROOM_ID) {
+      initDemoMode();
       return;
     }
 
@@ -216,8 +200,8 @@ export default function Guest() {
   const theme: ResolvedEventTheme = resolveEventTheme(targetThemeId, templates);
   const Icon = theme.IconComponent;
 
-  const groom = project?.groom_name || searchParams.get('groom') || 'Alex';
-  const bride = project?.bride_name || searchParams.get('bride') || 'Sam';
+  const groom = project?.groom_name || searchParams.get('groom') || 'Lucas';
+  const bride = project?.bride_name || searchParams.get('bride') || 'Sofia';
 
   const currentUrl = window.location.origin + window.location.pathname + window.location.search;
 
@@ -248,29 +232,35 @@ export default function Guest() {
     }
 
     try {
-      // Cross-check if guest has been designated as VIP in Guest Management (RSVPs)
+      const provider = createGuestMessageProvider(project.id, isDemo);
       let designatedCategory: string | undefined = undefined;
-      try {
-        const supabase = getSupabase();
-        const trimmedName = name.trim();
-        if (trimmedName && project.id) {
-          const { data: vipRsvps } = await supabase
-            .from('rsvps')
-            .select('is_vip, guest_category')
-            .eq('project_id', project.id)
-            .ilike('name', trimmedName)
-            .eq('is_vip', true)
-            .limit(1);
 
-          if (vipRsvps && vipRsvps.length > 0 && vipRsvps[0].is_vip) {
-            designatedCategory = vipRsvps[0].guest_category || 'VIP';
+      if (!isDemo) {
+        try {
+          const supabase = getSupabase();
+          const trimmedName = name.trim();
+          if (trimmedName && project.id) {
+            const { data: vipRsvps } = await supabase
+              .from('rsvps')
+              .select('is_vip, guest_category')
+              .eq('project_id', project.id)
+              .ilike('name', trimmedName)
+              .eq('is_vip', true)
+              .limit(1);
+
+            if (vipRsvps && vipRsvps.length > 0 && vipRsvps[0].is_vip) {
+              designatedCategory = vipRsvps[0].guest_category || 'VIP';
+            }
           }
+        } catch {
+          // Non-blocking fallback
         }
-      } catch (checkErr) {
-        // Non-blocking fallback
       }
 
-      await postMessage(name, message, project.id, !!project?.auto_approve_messages, designatedCategory);
+      await provider.submitMessage(name, message, {
+        autoApprove: !!project?.auto_approve_messages,
+        guestCategory: designatedCategory
+      });
       setMessages(prev => [...prev, { id: Date.now() }]);
       
       // Fire theme-specific celebratory confetti
@@ -320,8 +310,17 @@ export default function Guest() {
         </div>
       )}
 
+      {/* Unobtrusive Public Demo Indicator */}
+      {isDemo && (
+        <div className="fixed top-4 left-4 z-50 flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#252525]/90 text-white backdrop-blur-md border border-white/10 text-xs shadow-md">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="font-semibold tracking-wider text-[10px] uppercase font-mono">LIVE DEMO</span>
+          <span className="text-white/60 text-[10px] hidden sm:inline">• Shared Room: eventframe-public-demo</span>
+        </div>
+      )}
+
       {/* Agency Branding */}
-      {agency && (
+      {agency && !isDemo && (
         <div className={`fixed ${isPreview ? 'top-12' : 'top-5'} left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[11px] backdrop-blur-md ${theme.agencyBadgeClass}`}>
           {agency.logo_url && <img src={agency.logo_url} alt={agency.name} className="h-3.5 w-auto rounded" />}
           <span className="font-medium opacity-90">{agency.name}</span>
@@ -434,14 +433,16 @@ export default function Guest() {
             </button>
           </form>
 
-          {/* Secondary link: RSVP */}
+          {/* Secondary link: RSVP or Live Display in Demo */}
           <div className="mt-5 pt-4 border-t border-black/5 dark:border-white/10 flex items-center justify-between text-xs">
-            <span className={`opacity-60 text-[11px]`}>Attending the celebration?</span>
+            <span className={`opacity-60 text-[11px]`}>
+              {isDemo ? 'See your wishes live on the display' : 'Attending the celebration?'}
+            </span>
             <Link
-              to={rsvpUrl}
+              to={isDemo ? '/display' : rsvpUrl}
               className={`font-medium underline hover:opacity-100 opacity-80 transition-opacity`}
             >
-              RSVP Here &rarr;
+              {isDemo ? 'View Live Display →' : 'RSVP Here →'}
             </Link>
           </div>
 

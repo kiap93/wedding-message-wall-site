@@ -14,6 +14,8 @@ import { fetchTemplates } from '../lib/templates';
 import { isEventActive } from '../lib/packages';
 import { scheduleMessageRotation, getMessageDuration } from '../lib/displayScheduler';
 import { TranslationProvider } from '../lib/i18n/TranslationContext';
+import { PUBLIC_DEMO_ROOM_ID, PUBLIC_DEMO_PROJECT, PUBLIC_DEMO_AGENCY } from '../lib/demoService';
+import { createGuestMessageProvider } from '../lib/guestMessageProvider';
 
 export default function Display() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
@@ -22,9 +24,10 @@ export default function Display() {
   const [agency, setAgency] = useState<Agency | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchParams] = useSearchParams();
+  const isDemo = project?.id === PUBLIC_DEMO_ROOM_ID || projectId === 'demo' || slug === 'demo';
   const isSubscribed = isEventActive(project, agency);
   const isPreviewParam = searchParams.get('preview') === 'true';
-  const isPreview = !isSubscribed && !isPreviewParam;
+  const isPreview = !isDemo && !isSubscribed && !isPreviewParam;
   const [showQR, setShowQR] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
@@ -38,6 +41,12 @@ export default function Display() {
     load();
   }, []);
 
+  const initDemoMode = () => {
+    setProject(PUBLIC_DEMO_PROJECT);
+    setAgency(PUBLIC_DEMO_AGENCY);
+    setIsLoading(false);
+  };
+
   useEffect(() => {
     if (isLoadingWorkspace) return;
     const urlProjectId = projectId || searchParams.get('id') || searchParams.get('projectId');
@@ -45,8 +54,11 @@ export default function Display() {
 
     if (!normalizedProjectId && !slug && workspace) {
       loadProjectByWorkspace(workspace.id);
-    } else {
+    } else if (normalizedProjectId || slug) {
       loadProject(normalizedProjectId, slug);
+    } else {
+      // Anonymous visitor on /display: Initialize public demo automatically!
+      initDemoMode();
     }
   }, [projectId, slug, searchParams, isLoadingWorkspace, workspace]);
 
@@ -74,51 +86,20 @@ export default function Display() {
           setAgency(workspace);
         }
       } else {
-        setIsLoading(false);
+        // Fallback to public demo if no project in workspace
+        initDemoMode();
       }
     } catch (err) {
       console.error('Error loading workspace project:', err);
+      initDemoMode();
+    } finally {
       setIsLoading(false);
     }
   };
 
   const loadProject = async (id?: string, slugName?: string) => {
-    if (id === 'demo' || slugName === 'demo') {
-      const demoAgency: Agency = {
-        id: 'demo-agency',
-        name: 'EventFrame Demo',
-        slug: 'demo',
-        user_id: 'demo-user',
-        user_role: 'agency',
-        subscription_status: 'active',
-        is_demo: true,
-        logo_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=100&h=100',
-        theme_config: { primaryColor: '#C5A059', accentColor: '#2D2424' },
-        created_at: new Date().toISOString()
-      };
-      const demoProject: WeddingEvent = {
-        id: 'demo-project',
-        agency_id: 'demo-agency',
-        groom_name: 'Lucas',
-        bride_name: 'Sofia',
-        name: 'Lucas & Sofia Wedding',
-        slug: 'demo',
-        theme_id: 'garden',
-        image_url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80',
-        wedding_date: '2025-06-15',
-        location: 'San Francisco, CA',
-        auto_approve_messages: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      setAgency(demoAgency);
-      setProject(demoProject);
-      setMessages([
-        { id: '1', project_id: 'demo-project', name: 'James & Clara', message: 'Wishing you both a lifetime of boundless love and happiness!', timestamp: Date.now() - 3600000, status: 'approved' },
-        { id: '2', project_id: 'demo-project', name: 'Emma Watson', message: 'Such an exquisitely beautiful celebration. Cheers to Lucas and Sofia!', timestamp: Date.now() - 7200000, status: 'approved' },
-        { id: '3', project_id: 'demo-project', name: 'Oliver & Mia', message: 'Honored to celebrate this unforgettable day with you both!', timestamp: Date.now() - 10800000, status: 'approved' }
-      ]);
-      setIsLoading(false);
+    if (id === 'demo' || slugName === 'demo' || id === PUBLIC_DEMO_ROOM_ID) {
+      initDemoMode();
       return;
     }
 
@@ -174,9 +155,13 @@ export default function Display() {
           const agencyData = await getAgencyById(projectData.agency_id);
           setAgency(agencyData);
         }
+      } else {
+        // No project found - initialize demo mode
+        initDemoMode();
       }
     } catch (err) {
       console.error('Error loading event:', err);
+      initDemoMode();
     } finally {
       setIsLoading(false);
     }
@@ -190,82 +175,52 @@ export default function Display() {
   const theme: ResolvedEventTheme = resolveEventTheme(targetThemeId, templates);
   const Icon = theme.IconComponent;
 
-  const groom = project?.groom_name || searchParams.get('groom') || 'Alex';
-  const bride = project?.bride_name || searchParams.get('bride') || 'Sam';
+  const groom = project?.groom_name || searchParams.get('groom') || 'Lucas';
+  const bride = project?.bride_name || searchParams.get('bride') || 'Sofia';
 
-  const baseUrl = window.location.origin + (slug ? `/${slug}` : project?.slug ? `/${project.slug}` : '');
-  const guestUrl = baseUrl + '/guest' + window.location.search;
+  const baseUrl = window.location.origin + (slug ? `/${slug}` : project?.slug && !isDemo ? `/${project.slug}` : '');
+  const guestUrl = isDemo ? `${window.location.origin}/guest` : baseUrl + '/guest' + window.location.search;
 
   useEffect(() => {
-    const targetId = project?.id || projectId;
+    const targetId = project?.id || projectId || (isDemo ? PUBLIC_DEMO_ROOM_ID : undefined);
     if (!targetId) return;
 
-    const loadInitialMessages = async () => {
-      try {
-        const data = await fetchMessages(targetId);
-        let processed = isPreview ? data.slice(0, 5) : data;
-        
-        if (isPreviewParam && processed.length < 5) {
-          const mockData = [
-            { id: 'm1', name: 'Sophia & James', message: 'Wishing you both a lifetime of deep love, joy, and adventure!', timestamp: Date.now(), status: 'approved' },
-            { id: 'm2', name: 'Grandma Betty', message: 'So proud of you both. A beautiful wedding day for a truly wonderful couple.', timestamp: Date.now() - 1000, status: 'approved' },
-            { id: 'm3', name: 'The Miller Family', message: 'Warmest congratulations to the newlyweds! Let the celebration begin!', timestamp: Date.now() - 2000, status: 'approved' },
-            { id: 'm4', name: 'Best Man Chris', message: 'To the happiest couple in the room! Cheers to unforgettable memories!', timestamp: Date.now() - 3000, status: 'approved' },
-            { id: 'm5', name: 'Aunt Sarah', message: 'May your journey together be illuminated by endless love and laughter.', timestamp: Date.now() - 4000, status: 'approved' }
-          ];
-          processed = [...processed, ...mockData.slice(0, 5 - processed.length)] as Message[];
-        }
-        
-        setMessages(processed);
-      } catch (err) {
-        console.error('Initial fetch error:', err);
+    let isMounted = true;
+    const isDemoTarget = isDemo || targetId === PUBLIC_DEMO_ROOM_ID || targetId === 'demo';
+    const provider = createGuestMessageProvider(targetId, isDemoTarget);
+
+    // Initial load
+    provider.loadInitialMessages().then((data) => {
+      if (!isMounted) return;
+      let processed = isPreview ? data.slice(0, 5) : data;
+      setMessages(processed);
+    }).catch(err => {
+      console.error('Initial fetch error:', err);
+    });
+
+    // Real-time subscription
+    const unsubscribe = provider.subscribe(
+      (newMessage) => {
+        if (!isMounted) return;
+        setMessages((prev) => {
+          const filtered = prev.filter(m => m.id !== newMessage.id);
+          const updated = [newMessage, ...filtered];
+          const unique = Array.from(new Map(updated.map(m => [m.id, m])).values());
+          const sorted = unique.sort((a, b) => b.timestamp - a.timestamp);
+          return isPreview ? sorted.slice(0, 5) : sorted.slice(0, 50);
+        });
+      },
+      (snapshot) => {
+        if (!isMounted) return;
+        setMessages(snapshot);
       }
-    };
+    );
 
-    loadInitialMessages();
-
-    let channel: any = null;
-    try {
-      const supabase = getSupabase();
-      channel = supabase
-        .channel(`messages-realtime-${targetId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'messages',
-            filter: `project_id=eq.${targetId}`
-          },
-          (payload) => {
-            const newMessage = payload.new as Message;
-            const eventType = payload.eventType;
-
-            if (newMessage.status === 'approved') {
-              setMessages((prev) => {
-                const filtered = prev.filter(m => m.id !== newMessage.id);
-                const updated = [newMessage, ...filtered];
-                const unique = Array.from(new Map(updated.map(m => [m.id, m])).values());
-                const sorted = unique.sort((a, b) => b.timestamp - a.timestamp);
-                return isPreview ? sorted.slice(0, 5) : sorted.slice(0, 50);
-              });
-            } else if (eventType === 'UPDATE' || eventType === 'DELETE') {
-              setMessages((prev) => prev.filter(m => m.id !== (newMessage.id || payload.old.id)));
-            }
-          }
-        )
-        .subscribe();
-    } catch (err) {
-      console.error('Realtime subscription error:', err);
-    }
-    
     return () => {
-      if (channel) {
-        const supabase = getSupabase();
-        supabase.removeChannel(channel);
-      }
+      isMounted = false;
+      unsubscribe();
     };
-  }, [project?.id, projectId, isPreview, isPreviewParam]);
+  }, [project?.id, projectId, isPreview, isDemo]);
 
   const displayConfig: MessageDisplayConfig = useMemo(() => {
     return project?.message_display_config || DEFAULT_MESSAGE_DISPLAY_CONFIG;
@@ -307,8 +262,17 @@ export default function Display() {
         </div>
       )}
       
+      {/* Unobtrusive Public Demo Indicator */}
+      {isDemo && (
+        <div className="fixed top-6 left-6 z-50 flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#252525]/90 text-white backdrop-blur-md border border-white/10 text-xs shadow-md">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="font-semibold tracking-wider text-[10px] uppercase font-mono">LIVE DEMO</span>
+          <span className="text-white/60 text-[10px] hidden sm:inline">• Shared Room: eventframe-public-demo</span>
+        </div>
+      )}
+
       {/* Agency Branding Overlay */}
-      {agency && (
+      {agency && !isDemo && (
         <div className={`fixed top-8 left-8 z-40 flex items-center gap-2.5 px-3.5 py-1.5 rounded-full text-[11px] backdrop-blur-md ${theme.agencyBadgeClass}`}>
           {agency.logo_url && <img src={agency.logo_url} alt={agency.name} className="h-4 w-auto rounded" />}
           <span className="font-medium opacity-85">Hosted by {agency.name}</span>

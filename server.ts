@@ -49,6 +49,16 @@ import {
   autoTranslateEvent,
   translateGuestMessage
 } from './server/translationService';
+import http from 'http';
+import { WebSocketServer } from 'ws';
+import {
+  PUBLIC_DEMO_ROOM_ID,
+  getDemoMessagesSnapshot,
+  addDemoGuestMessage,
+  registerWebSocketClient,
+  registerSSEClient,
+  getDemoRoomStats
+} from './server/demoMessageService';
 
 dotenv.config();
 
@@ -233,6 +243,62 @@ async function startServer() {
         has_google: !!process.env.GOOGLE_CLIENT_ID
       }
     });
+  });
+
+  // --- Public Demo Mode Routes (Strict In-Memory, Zero Production Database Writes) ---
+  apiRouter.get('/demo/messages', (req, res) => {
+    const room = (req.query.room as string) || PUBLIC_DEMO_ROOM_ID;
+    const messages = getDemoMessagesSnapshot(room);
+    res.json({ success: true, roomId: room, messages });
+  });
+
+  apiRouter.post('/demo/messages', (req, res) => {
+    const { roomId = PUBLIC_DEMO_ROOM_ID, name, message } = req.body || {};
+    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    
+    // Strict production database protection: reject non-demo rooms
+    if (roomId !== PUBLIC_DEMO_ROOM_ID) {
+      return res.status(400).json({ error: 'Invalid room. Public demo only accepts the shared demo room identifier.' });
+    }
+
+    const result = addDemoGuestMessage(roomId, name, message, clientIp);
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    res.status(201).json({ success: true, message: result.message });
+  });
+
+  // Server-Sent Events (SSE) Stream fallback for demo messages
+  apiRouter.get('/demo/stream', (req, res) => {
+    const room = (req.query.room as string) || PUBLIC_DEMO_ROOM_ID;
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    if (typeof (res as any).flushHeaders === 'function') {
+      (res as any).flushHeaders();
+    }
+
+    const cleanup = registerSSEClient(res, room);
+    req.on('close', () => {
+      cleanup();
+    });
+  });
+
+  apiRouter.get('/demo/stats', (req, res) => {
+    const room = (req.query.room as string) || PUBLIC_DEMO_ROOM_ID;
+    res.json(getDemoRoomStats(room));
+  });
+
+  // Strict Protection: Rejection of demo messages trying to hit production persistence
+  apiRouter.post('/messages', async (req, res, next) => {
+    const { project_id } = req.body || {};
+    if (project_id === PUBLIC_DEMO_ROOM_ID || project_id === 'demo' || project_id === 'demo-project') {
+      return res.status(400).json({
+        error: 'Demo messages cannot be persisted to production database. Use /api/demo/messages endpoint.'
+      });
+    }
+    next();
   });
 
   // --- Auth Routes ---
@@ -2940,7 +3006,24 @@ Return ONLY a valid JSON array of objects with the following schema:
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = http.createServer(app);
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (request, socket, head) => {
+    try {
+      const url = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`);
+      if (url.pathname === '/api/demo-ws') {
+        const room = url.searchParams.get('room') || PUBLIC_DEMO_ROOM_ID;
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          registerWebSocketClient(ws, room);
+        });
+      }
+    } catch (e) {
+      console.error('[WebSocket Upgrade Error]', e);
+    }
+  });
+
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Development server running on http://localhost:${PORT}`);
   });
 }
