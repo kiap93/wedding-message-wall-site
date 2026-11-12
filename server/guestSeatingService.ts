@@ -925,6 +925,17 @@ export async function getVenueLayout(projectId: string): Promise<VenueLayout> {
       id: defaultLayoutId,
       project_id: projectId,
       layout_name: 'Main Ballroom & Reception Hall',
+      venue_width: 30,
+      venue_height: 20,
+      venue_unit: 'm',
+      venue_orientation: 'landscape',
+      venue_name: 'Main Ballroom & Reception Hall',
+      venue_description: 'Spacious banquet ballroom with stage, dance floor, entrance and dining tables',
+      grid_unit_step: 0.5,
+      show_grid: true,
+      show_rulers: true,
+      coordinate_system: 'world',
+      is_migrated: true,
       canvas_width: 2000,
       canvas_height: 1400,
       grid_size: 40,
@@ -943,16 +954,51 @@ export async function saveVenueLayout(
   layoutData: {
     canvas_width?: number;
     canvas_height?: number;
+    venue_width?: number;
+    venue_height?: number;
+    venue_unit?: 'm' | 'ft';
+    venue_orientation?: 'landscape' | 'portrait';
+    venue_name?: string;
+    venue_description?: string;
+    grid_unit_step?: number;
+    show_grid?: boolean;
+    show_rulers?: boolean;
+    coordinate_system?: string;
+    is_migrated?: boolean;
     grid_size?: number;
     snap_to_grid?: boolean;
     objects?: VenueLayoutObject[];
   }
 ): Promise<VenueLayout> {
   const current = await getVenueLayout(projectId);
+
+  // Compute synchronized canvas dimensions if venue dimensions are updated
+  let resolvedCanvasW = layoutData.canvas_width ?? current.canvas_width;
+  let resolvedCanvasH = layoutData.canvas_height ?? current.canvas_height;
+  if (layoutData.venue_width && !layoutData.canvas_width) {
+    const pxPerUnit = layoutData.venue_unit === 'ft' ? (60 / 3.28084) : 60;
+    resolvedCanvasW = Math.round(layoutData.venue_width * pxPerUnit);
+  }
+  if (layoutData.venue_height && !layoutData.canvas_height) {
+    const pxPerUnit = layoutData.venue_unit === 'ft' ? (60 / 3.28084) : 60;
+    resolvedCanvasH = Math.round(layoutData.venue_height * pxPerUnit);
+  }
+
   const updatedLayout: VenueLayout = {
     ...current,
-    canvas_width: layoutData.canvas_width ?? current.canvas_width,
-    canvas_height: layoutData.canvas_height ?? current.canvas_height,
+    venue_width: layoutData.venue_width ?? current.venue_width ?? 30,
+    venue_height: layoutData.venue_height ?? current.venue_height ?? 20,
+    venue_unit: layoutData.venue_unit ?? current.venue_unit ?? 'm',
+    venue_orientation: layoutData.venue_orientation ?? current.venue_orientation ?? 'landscape',
+    venue_name: layoutData.venue_name ?? current.venue_name,
+    venue_description: layoutData.venue_description ?? current.venue_description,
+    grid_unit_step: layoutData.grid_unit_step ?? current.grid_unit_step ?? 0.5,
+    show_grid: layoutData.show_grid ?? current.show_grid ?? true,
+    show_rulers: layoutData.show_rulers ?? current.show_rulers ?? true,
+    coordinate_system: layoutData.coordinate_system ?? current.coordinate_system ?? 'world',
+    is_migrated: layoutData.is_migrated ?? current.is_migrated ?? true,
+    canvas_width: resolvedCanvasW,
+    canvas_height: resolvedCanvasH,
     grid_size: layoutData.grid_size ?? current.grid_size,
     snap_to_grid: layoutData.snap_to_grid ?? current.snap_to_grid,
     objects: layoutData.objects ?? current.objects,
@@ -967,6 +1013,17 @@ export async function saveVenueLayout(
         .upsert({
           id: current.id,
           project_id: projectId,
+          venue_width: updatedLayout.venue_width,
+          venue_height: updatedLayout.venue_height,
+          venue_unit: updatedLayout.venue_unit,
+          venue_orientation: updatedLayout.venue_orientation,
+          venue_name: updatedLayout.venue_name,
+          venue_description: updatedLayout.venue_description,
+          grid_unit_step: updatedLayout.grid_unit_step,
+          show_grid: updatedLayout.show_grid,
+          show_rulers: updatedLayout.show_rulers,
+          coordinate_system: updatedLayout.coordinate_system,
+          is_migrated: updatedLayout.is_migrated,
           canvas_width: updatedLayout.canvas_width,
           canvas_height: updatedLayout.canvas_height,
           grid_size: updatedLayout.grid_size,

@@ -38,7 +38,11 @@ import {
   Square,
   Compass,
   Download,
-  Printer
+  Printer,
+  Ruler,
+  AlertTriangle,
+  Sliders,
+  Building2
 } from 'lucide-react';
 import { 
   VenueLayout, 
@@ -52,6 +56,20 @@ import {
   calculateFitToScreenTransform, 
   calculateZoom100Transform 
 } from '../../utils/hallViewport';
+import {
+  VenueUnit,
+  VenueOrientation,
+  getPixelsPerUnit,
+  worldToScreen,
+  screenToWorld,
+  roundToDecimals,
+  formatVenueArea,
+  isLegacyLayout,
+  migrateVenueLayout,
+  getOutOfBoundsObjects,
+  repositionObjectsInsideVenue
+} from '../../utils/venueCoordinates';
+import { VenueSettingsModal } from './VenueSettingsModal';
 import { 
   fetchVenueLayout, 
   saveVenueLayout, 
@@ -96,9 +114,26 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
   const [containerHeight, setContainerHeight] = useState(700);
   const [showGrid, setShowGrid] = useState(true);
   const [snapToGrid, setSnapToGrid] = useState(true);
+  const [showRulers, setShowRulers] = useState(true);
+  const [isVenueSettingsOpen, setIsVenueSettingsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Dynamic Venue World Dimensions & Coordinate System (Layer A & B)
+  const currentUnit: VenueUnit = (layout?.venue_unit as VenueUnit) || 'm';
+  const pxPerUnit = getPixelsPerUnit(currentUnit);
+  const venueWidthM = layout?.venue_width || (currentUnit === 'm' ? 30 : 100);
+  const venueHeightM = layout?.venue_height || (currentUnit === 'm' ? 20 : 65);
+  const venueWidthPx = Math.round(venueWidthM * pxPerUnit);
+  const venueHeightPx = Math.round(venueHeightM * pxPerUnit);
+  const gridUnitStep = layout?.grid_unit_step || (currentUnit === 'm' ? 0.5 : 2.0);
+  const gridStepPx = Math.round(gridUnitStep * pxPerUnit);
+
+  // Out of Bounds Detection
+  const outOfBounds = layout?.objects 
+    ? getOutOfBoundsObjects(layout.objects, venueWidthM, venueHeightM) 
+    : { outOfBoundsIds: [], outOfBoundsObjects: [] };
 
   // Maximize Workspace & Collapsible Panels
   const [isMaximized, setIsMaximized] = useState(false);
@@ -272,13 +307,25 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
         fetchEventTables(projectId),
         fetchEventGuests(projectId)
       ]);
-      setLayout(lData);
+      let resolvedLayout = lData;
+      if (lData && isLegacyLayout(lData)) {
+        resolvedLayout = migrateVenueLayout(lData);
+        // Persist migrated layout once so repeated migration never occurs
+        saveVenueLayout(projectId, resolvedLayout).catch(err => {
+          console.warn('Auto-save migrated layout error:', err);
+        });
+      }
+
+      setLayout(resolvedLayout);
       setTables(tData);
       setGuests(gData);
+      setShowRulers(resolvedLayout?.show_rulers ?? true);
+      setShowGrid(resolvedLayout?.show_grid ?? true);
+      setSnapToGrid(resolvedLayout?.snap_to_grid ?? true);
 
       // Initialize history
-      if (lData && lData.objects) {
-        const initHist = [JSON.parse(JSON.stringify(lData.objects))];
+      if (resolvedLayout && resolvedLayout.objects) {
+        const initHist = [JSON.parse(JSON.stringify(resolvedLayout.objects))];
         setHistory(initHist);
         setHistoryIndex(0);
         historyRef.current = initHist;
@@ -286,7 +333,7 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
 
         // Automatically fit layout to screen on initial load
         setTimeout(() => {
-          handleFitToScreen(lData.objects, lData.canvas_width, lData.canvas_height);
+          handleFitToScreen(resolvedLayout.objects);
         }, 60);
       }
     } catch (err) {
@@ -488,13 +535,15 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
       arrowBatchInitialLayoutRef.current = JSON.parse(JSON.stringify(currentLayout.objects));
     }
 
+    const isWorld = currentLayout.coordinate_system === 'world' || (currentLayout.venue_width !== undefined);
+
     // Immediately update coordinates for 60fps responsive feel
     const updatedObjects = currentLayout.objects.map(obj => {
       if (selIds.includes(obj.id)) {
         return {
           ...obj,
-          position_x: Math.round(obj.position_x + dx),
-          position_y: Math.round(obj.position_y + dy)
+          position_x: isWorld ? roundToDecimals(obj.position_x + dx, 2) : Math.round(obj.position_x + dx),
+          position_y: isWorld ? roundToDecimals(obj.position_y + dy, 2) : Math.round(obj.position_y + dy)
         };
       }
       return obj;
@@ -653,7 +702,8 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
         if (selectedObjectIdsRef.current.length > 0) {
           e.preventDefault();
-          const step = e.shiftKey ? 10 : 1;
+          const isWorld = layoutRef.current?.coordinate_system === 'world' || (layoutRef.current?.venue_width !== undefined);
+          const step = isWorld ? (e.shiftKey ? 1.0 : 0.1) : (e.shiftKey ? 10 : 1);
           let dx = 0;
           let dy = 0;
           if (key === 'arrowup') dy = -step;
@@ -684,7 +734,7 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, [isMaximized]);
 
-  // Fit to Screen: centers and scales all elements inside viewport with 7% visual padding
+  // Fit to Screen: centers and scales entire venue boundary and all objects inside viewport with 7% visual padding
   const handleFitToScreen = (
     customObjects?: VenueLayoutObject[],
     customW?: number,
@@ -692,14 +742,31 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
   ) => {
     const curLayout = layoutRef.current;
     const objectsToFit = customObjects || curLayout?.objects || [];
-    const hallWidth = customW || curLayout?.canvas_width || 2000;
-    const hallHeight = customH || curLayout?.canvas_height || 1400;
+    const u: VenueUnit = (curLayout?.venue_unit as VenueUnit) || 'm';
+    const px = getPixelsPerUnit(u);
+    const hallWidth = customW || (curLayout?.venue_width ? Math.round(curLayout.venue_width * px) : curLayout?.canvas_width) || 1800;
+    const hallHeight = customH || (curLayout?.venue_height ? Math.round(curLayout.venue_height * px) : curLayout?.canvas_height) || 1200;
 
     const container = containerRef.current;
     const availWidth = container?.clientWidth || containerWidth || 900;
     const availHeight = container?.clientHeight || containerHeight || 700;
 
-    const bbox = calculateHallBoundingBox(objectsToFit, hallWidth, hallHeight);
+    // Convert world objects to screen coordinates for bounding box calculation
+    const screenObjects: VenueLayoutObject[] = objectsToFit.map(o => {
+      const isWorld = curLayout?.coordinate_system === 'world' || (o.width <= 25 && o.height <= 25);
+      if (isWorld) {
+        return {
+          ...o,
+          position_x: Math.round(o.position_x * px),
+          position_y: Math.round(o.position_y * px),
+          width: Math.round(o.width * px),
+          height: Math.round(o.height * px)
+        };
+      }
+      return o;
+    });
+
+    const bbox = calculateHallBoundingBox(screenObjects, hallWidth, hallHeight, true);
     const transform = calculateFitToScreenTransform({
       availableWidth: availWidth,
       availableHeight: availHeight,
@@ -784,15 +851,89 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
     }
   };
 
+  // Apply Venue Dimensions from VenueSettingsModal
+  const handleApplyVenueSettings = async (settings: {
+    venue_width: number;
+    venue_height: number;
+    venue_unit: VenueUnit;
+    venue_orientation: VenueOrientation;
+    venue_name?: string;
+    venue_description?: string;
+    grid_unit_step: number;
+    repositionOutOfBounds?: boolean;
+  }) => {
+    if (!layout) return;
+    let updatedObjects = layout.objects;
+    if (settings.repositionOutOfBounds) {
+      updatedObjects = repositionObjectsInsideVenue(
+        layout.objects,
+        settings.venue_width,
+        settings.venue_height
+      );
+    }
+
+    const px = getPixelsPerUnit(settings.venue_unit);
+    const newCanvasW = Math.round(settings.venue_width * px);
+    const newCanvasH = Math.round(settings.venue_height * px);
+
+    const updatedLayout: VenueLayout = {
+      ...layout,
+      venue_width: settings.venue_width,
+      venue_height: settings.venue_height,
+      venue_unit: settings.venue_unit,
+      venue_orientation: settings.venue_orientation,
+      venue_name: settings.venue_name,
+      venue_description: settings.venue_description,
+      grid_unit_step: settings.grid_unit_step,
+      canvas_width: newCanvasW,
+      canvas_height: newCanvasH,
+      grid_size: Math.round(settings.grid_unit_step * px),
+      coordinate_system: 'world',
+      is_migrated: true,
+      objects: updatedObjects
+    };
+
+    setLayout(updatedLayout);
+    commitObjectsChange(updatedObjects);
+
+    setTimeout(() => {
+      handleFitToScreen(updatedObjects, newCanvasW, newCanvasH);
+    }, 60);
+
+    try {
+      await saveVenueLayout(projectId, updatedLayout);
+    } catch (err: any) {
+      console.warn('Auto-save venue settings error:', err.message);
+    }
+  };
+
+  // Reposition Out of Bounds Objects Inside Venue
+  const handleRepositionOutOfBounds = () => {
+    if (!layout) return;
+    const repositioned = repositionObjectsInsideVenue(layout.objects, venueWidthM, venueHeightM);
+    commitObjectsChange(repositioned);
+  };
+
   // Save Layout to Backend
   const handleSave = async () => {
     if (!layout) return;
     setIsSaving(true);
     try {
       await saveVenueLayout(projectId, {
-        canvas_width: layout.canvas_width,
-        canvas_height: layout.canvas_height,
-        grid_size: layout.grid_size,
+        venue_width: layout.venue_width || venueWidthM,
+        venue_height: layout.venue_height || venueHeightM,
+        venue_unit: layout.venue_unit || currentUnit,
+        venue_orientation: layout.venue_orientation || (venueWidthM >= venueHeightM ? 'landscape' : 'portrait'),
+        venue_name: layout.venue_name,
+        venue_description: layout.venue_description,
+        grid_unit_step: gridUnitStep,
+        show_grid: showGrid,
+        show_rulers: showRulers,
+        coordinate_system: 'world',
+        is_migrated: true,
+        canvas_width: venueWidthPx,
+        canvas_height: venueHeightPx,
+        grid_size: gridStepPx,
         snap_to_grid: snapToGrid,
         objects: layout.objects
       });
@@ -812,16 +953,24 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
     const newId = `obj_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const gridSize = layout.grid_size || 40;
 
-    let width = 140;
-    let height = 140;
+    const isWorld = layout.coordinate_system === 'world' || (layout.venue_width !== undefined);
+    const u: VenueUnit = (layout.venue_unit as VenueUnit) || 'm';
+
+    let width = isWorld ? (u === 'm' ? 1.8 : 6.0) : 140;
+    let height = isWorld ? (u === 'm' ? 1.8 : 6.0) : 140;
     let label = 'New Element';
     let properties: any = {};
 
     if (type === 'table') {
       const targetTable = tables.find(t => t.id === refTableId);
       const isRect = targetTable?.table_type === 'rectangular';
-      width = isRect ? 180 : 130;
-      height = isRect ? 90 : 130;
+      if (isWorld) {
+        width = isRect ? (u === 'm' ? 2.4 : 8.0) : (u === 'm' ? 1.8 : 6.0);
+        height = isRect ? (u === 'm' ? 1.0 : 3.3) : (u === 'm' ? 1.8 : 6.0);
+      } else {
+        width = isRect ? 180 : 130;
+        height = isRect ? 90 : 130;
+      }
       label = targetTable ? `T${targetTable.table_number}: ${targetTable.table_name}` : 'Reception Table';
       properties = {
         tableShape: targetTable?.table_type || 'round',
@@ -829,45 +978,63 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
         tableNumber: targetTable?.table_number || '1'
       };
     } else if (type === 'stage') {
-      width = 500;
-      height = 120;
-      label = 'Main Stage';
+      width = isWorld ? (u === 'm' ? 8.0 : 26.0) : 500;
+      height = isWorld ? (u === 'm' ? 3.0 : 10.0) : 120;
+      label = 'Main Stage & Altar';
       properties = { color: '#252525', textColor: '#FFFFFF' };
     } else if (type === 'dance_floor') {
-      width = 360;
-      height = 260;
+      width = isWorld ? (u === 'm' ? 6.0 : 20.0) : 360;
+      height = isWorld ? (u === 'm' ? 5.0 : 16.0) : 260;
       label = 'Dance Floor';
       properties = { color: '#F2EFE9', textColor: '#252525' };
     } else if (type === 'entrance') {
-      width = 240;
-      height = 60;
+      width = isWorld ? (u === 'm' ? 4.0 : 13.0) : 240;
+      height = isWorld ? (u === 'm' ? 1.2 : 4.0) : 60;
       label = 'Grand Entrance';
       properties = { color: '#8B806F', textColor: '#FFFFFF' };
     } else if (type === 'buffet') {
-      width = 300;
-      height = 80;
-      label = 'Buffet & Catering';
+      width = isWorld ? (u === 'm' ? 5.0 : 16.0) : 300;
+      height = isWorld ? (u === 'm' ? 1.5 : 5.0) : 80;
+      label = 'Buffet Catering';
       properties = { color: '#4A3E3D', textColor: '#FFFFFF' };
     } else if (type === 'bar') {
-      width = 200;
-      height = 70;
+      width = isWorld ? (u === 'm' ? 3.0 : 10.0) : 200;
+      height = isWorld ? (u === 'm' ? 1.2 : 4.0) : 70;
       label = 'Cocktail Bar';
       properties = { color: '#3A443B', textColor: '#FFFFFF' };
     } else if (type === 'photo_booth') {
-      width = 150;
-      height = 150;
+      width = isWorld ? (u === 'm' ? 2.5 : 8.0) : 150;
+      height = isWorld ? (u === 'm' ? 2.5 : 8.0) : 150;
       label = 'Photo Booth';
       properties = { color: '#FAF9F7', textColor: '#252525' };
     } else if (type === 'pillar') {
-      width = 60;
-      height = 60;
+      width = isWorld ? (u === 'm' ? 0.8 : 2.6) : 60;
+      height = isWorld ? (u === 'm' ? 0.8 : 2.6) : 60;
       label = 'Pillar';
       properties = { color: '#CCCCCC' };
     } else if (type === 'wall') {
-      width = 400;
-      height = 20;
+      width = isWorld ? (u === 'm' ? 5.0 : 16.0) : 400;
+      height = isWorld ? (u === 'm' ? 0.3 : 1.0) : 20;
       label = 'Wall Partition';
       properties = { color: '#252525' };
+    }
+
+    let posX = 100;
+    let posY = 100;
+    if (isWorld) {
+      const centerScreenX = (-position.x + (containerRef.current?.clientWidth || 800) / 2) / scale;
+      const centerScreenY = (-position.y + (containerRef.current?.clientHeight || 600) / 2) / scale;
+      let rawWorldX = screenToWorld(centerScreenX, u);
+      let rawWorldY = screenToWorld(centerScreenY, u);
+      if (snapToGrid) {
+        rawWorldX = Math.round(rawWorldX / gridUnitStep) * gridUnitStep;
+        rawWorldY = Math.round(rawWorldY / gridUnitStep) * gridUnitStep;
+      }
+      posX = Math.max(0.5, Math.min(venueWidthM - width - 0.5, roundToDecimals(rawWorldX, 2)));
+      posY = Math.max(0.5, Math.min(venueHeightM - height - 0.5, roundToDecimals(rawWorldY, 2)));
+    } else {
+      posX = Math.round((-position.x + 300) / gridSize) * gridSize;
+      posY = Math.round((-position.y + 250) / gridSize) * gridSize;
     }
 
     const newObj: VenueLayoutObject = {
@@ -877,10 +1044,10 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
       object_type: type,
       object_reference_id: refTableId || null,
       label,
-      position_x: Math.round((-position.x + 300) / gridSize) * gridSize,
-      position_y: Math.round((-position.y + 250) / gridSize) * gridSize,
-      width,
-      height,
+      position_x: posX,
+      position_y: posY,
+      width: roundToDecimals(width, 2),
+      height: roundToDecimals(height, 2),
       rotation: 0,
       properties,
       z_index: type === 'table' ? 5 : 2,
@@ -902,16 +1069,35 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
 
   const selectedObject = layout?.objects.find(o => o.id === selectedObjectId);
 
+  // Helper to convert world object coordinates to screen-space render dimensions
+  const getObjectScreenRect = (obj: VenueLayoutObject) => {
+    const isWorld = layout?.coordinate_system === 'world' || (obj.width <= 25 && obj.height <= 25);
+    if (isWorld) {
+      return {
+        x: Math.round(obj.position_x * pxPerUnit),
+        y: Math.round(obj.position_y * pxPerUnit),
+        width: Math.max(20, Math.round(obj.width * pxPerUnit)),
+        height: Math.max(20, Math.round(obj.height * pxPerUnit))
+      };
+    }
+    return {
+      x: obj.position_x,
+      y: obj.position_y,
+      width: obj.width,
+      height: obj.height
+    };
+  };
+
   // Render Chairs around table visually
-  const renderChairs = (obj: VenueLayoutObject, capacity: number, isRect: boolean) => {
+  const renderChairs = (obj: VenueLayoutObject, capacity: number, isRect: boolean, screenW: number, screenH: number) => {
     const chairs: React.ReactNode[] = [];
     const count = Math.min(24, Math.max(2, capacity || 8));
-    const chairSize = 12;
+    const chairSize = Math.max(8, Math.round(0.38 * pxPerUnit));
 
     if (isRect) {
       // Chairs along top and bottom
       const perSide = Math.ceil(count / 2);
-      const step = obj.width / (perSide + 1);
+      const step = screenW / (perSide + 1);
       for (let i = 1; i <= perSide; i++) {
         chairs.push(
           <Circle
@@ -928,7 +1114,7 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
           <Circle
             key={`chair-bot-${i}`}
             x={step * i}
-            y={obj.height + chairSize / 2 + 2}
+            y={screenH + chairSize / 2 + 2}
             radius={chairSize / 2}
             fill="#8B806F"
             stroke="#252525"
@@ -938,7 +1124,7 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
       }
     } else {
       // Radial chairs around circle
-      const radius = obj.width / 2;
+      const radius = screenW / 2;
       const chairDistance = radius + chairSize / 2 + 4;
       for (let i = 0; i < count; i++) {
         const angle = (i / count) * 2 * Math.PI;
@@ -961,35 +1147,156 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
     return chairs;
   };
 
-  // Generate background grid lines
+  // Generate background grid lines scaled to venue dimensions
   const renderGridLines = () => {
     if (!showGrid || !layout) return null;
     const lines: React.ReactNode[] = [];
-    const gridSize = layout.grid_size || 40;
-    const width = layout.canvas_width || 2000;
-    const height = layout.canvas_height || 1400;
+    const stepPx = gridStepPx || 30;
+    const majorStepPx = stepPx * (currentUnit === 'm' ? (gridUnitStep === 0.5 ? 10 : 5) : 5);
 
-    for (let x = 0; x <= width; x += gridSize) {
+    for (let x = 0; x <= venueWidthPx; x += stepPx) {
+      const isMajor = x % majorStepPx === 0;
       lines.push(
         <Line
           key={`grid-x-${x}`}
-          points={[x, 0, x, height]}
-          stroke="#E8E8E5"
-          strokeWidth={x % (gridSize * 5) === 0 ? 1 : 0.5}
+          points={[x, 0, x, venueHeightPx]}
+          stroke={isMajor ? "#D4D4CE" : "#EAEAE5"}
+          strokeWidth={isMajor ? 1 : 0.5}
         />
       );
     }
-    for (let y = 0; y <= height; y += gridSize) {
+    for (let y = 0; y <= venueHeightPx; y += stepPx) {
+      const isMajor = y % majorStepPx === 0;
       lines.push(
         <Line
           key={`grid-y-${y}`}
-          points={[0, y, width, y]}
-          stroke="#E8E8E5"
-          strokeWidth={y % (gridSize * 5) === 0 ? 1 : 0.5}
+          points={[0, y, venueWidthPx, y]}
+          stroke={isMajor ? "#D4D4CE" : "#EAEAE5"}
+          strokeWidth={isMajor ? 1 : 0.5}
         />
       );
     }
     return lines;
+  };
+
+  // Render Horizontal & Vertical measurement rulers with real-world units
+  const renderRulers = () => {
+    if (!showRulers) return null;
+
+    const rulerThickness = 24;
+    const majorInterval = currentUnit === 'm' ? 5 : 10;
+    const hNodes: React.ReactNode[] = [];
+    const vNodes: React.ReactNode[] = [];
+
+    // Horizontal Ruler Ticks (along top)
+    for (let val = 0; val <= venueWidthM; val += gridUnitStep) {
+      const screenX = Math.round(val * pxPerUnit);
+      const isMajor = Math.abs(val % majorInterval) < 0.01 || val === 0 || val >= venueWidthM;
+      const isMedium = Math.abs(val % 1) < 0.01;
+
+      hNodes.push(
+        <Line
+          key={`hr-tick-${val}`}
+          points={[screenX, - (isMajor ? rulerThickness : (isMedium ? 12 : 6)), screenX, 0]}
+          stroke={isMajor ? "#78716C" : (isMedium ? "#A8A29E" : "#D6D3D1")}
+          strokeWidth={isMajor ? 1.2 : 0.8}
+        />
+      );
+
+      if (isMajor && screenX < venueWidthPx - 20) {
+        hNodes.push(
+          <KonvaText
+            key={`hr-txt-${val}`}
+            x={screenX + 3}
+            y={-20}
+            text={`${val}${currentUnit}`}
+            fontSize={9}
+            fontFamily="monospace"
+            fill="#44403C"
+            fontStyle="bold"
+          />
+        );
+      }
+    }
+
+    // Vertical Ruler Ticks (along left)
+    for (let val = 0; val <= venueHeightM; val += gridUnitStep) {
+      const screenY = Math.round(val * pxPerUnit);
+      const isMajor = Math.abs(val % majorInterval) < 0.01 || val === 0 || val >= venueHeightM;
+      const isMedium = Math.abs(val % 1) < 0.01;
+
+      vNodes.push(
+        <Line
+          key={`vr-tick-${val}`}
+          points={[- (isMajor ? rulerThickness : (isMedium ? 12 : 6)), screenY, 0, screenY]}
+          stroke={isMajor ? "#78716C" : (isMedium ? "#A8A29E" : "#D6D3D1")}
+          strokeWidth={isMajor ? 1.2 : 0.8}
+        />
+      );
+
+      if (isMajor && screenY < venueHeightPx - 15) {
+        vNodes.push(
+          <KonvaText
+            key={`vr-txt-${val}`}
+            x={-22}
+            y={screenY + 2}
+            text={`${val}`}
+            fontSize={9}
+            fontFamily="monospace"
+            fill="#44403C"
+            fontStyle="bold"
+          />
+        );
+      }
+    }
+
+    return (
+      <Layer id="rulers-layer">
+        {/* Horizontal Top Ruler Bar */}
+        <Rect
+          x={0}
+          y={-rulerThickness}
+          width={venueWidthPx}
+          height={rulerThickness}
+          fill="#FAF9F7"
+          stroke="#D4D4CE"
+          strokeWidth={1}
+        />
+        {hNodes}
+
+        {/* Vertical Left Ruler Bar */}
+        <Rect
+          x={-rulerThickness}
+          y={0}
+          width={rulerThickness}
+          height={venueHeightPx}
+          fill="#FAF9F7"
+          stroke="#D4D4CE"
+          strokeWidth={1}
+        />
+        {vNodes}
+
+        {/* Top-Left Corner Box with Unit Badge */}
+        <Rect
+          x={-rulerThickness}
+          y={-rulerThickness}
+          width={rulerThickness}
+          height={rulerThickness}
+          fill="#EAE8E3"
+          stroke="#D4D4CE"
+          strokeWidth={1}
+        />
+        <KonvaText
+          x={-20}
+          y={-17}
+          text={currentUnit}
+          fontSize={10}
+          fontFamily="monospace"
+          fill="#78716C"
+          fontStyle="bold"
+        />
+      </Layer>
+    );
   };
 
   return (
@@ -1056,6 +1363,20 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
             <option value="pillar">Pillar</option>
             <option value="wall">Wall Divider</option>
           </select>
+
+          {/* Venue Dimensions Settings Button */}
+          <button
+            type="button"
+            onClick={() => setIsVenueSettingsOpen(true)}
+            className="h-8 px-2.5 text-xs bg-[#FAF9F7] text-[#252525] hover:bg-white border border-[#E8E8E5] hover:border-[#8B806F] rounded-md font-medium transition-colors flex items-center gap-1.5"
+            title="Configure Venue Dimensions, Orientation & Units"
+          >
+            <Ruler className="w-3.5 h-3.5 text-[#8B806F]" />
+            <span className="font-semibold">{venueWidthM}{currentUnit} × {venueHeightM}{currentUnit}</span>
+            <span className="hidden xl:inline text-[10px] text-[#8B806F] font-mono">
+              ({formatVenueArea(venueWidthM, venueHeightM, currentUnit)})
+            </span>
+          </button>
         </div>
 
         {/* Center / Right Canvas Controls */}
@@ -1177,7 +1498,7 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
             </button>
           </div>
 
-          {/* Grid & Snap Toggles */}
+          {/* Grid, Snap & Rulers Toggles */}
           <button
             onClick={() => setShowGrid(prev => !prev)}
             className={`px-2 h-8 rounded-md text-xs font-medium border transition-colors flex items-center gap-1 ${
@@ -1198,6 +1519,17 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
           >
             <Magnet className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Snap</span>
+          </button>
+
+          <button
+            onClick={() => setShowRulers(prev => !prev)}
+            className={`px-2 h-8 rounded-md text-xs font-medium border transition-colors flex items-center gap-1 ${
+              showRulers ? 'bg-white text-[#252525] border-[#D4D4CE]' : 'bg-[#FAF9F7] text-stone-400 border-[#E8E8E5]'
+            }`}
+            title="Toggle measurement rulers"
+          >
+            <Ruler className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Rulers</span>
           </button>
 
           {/* Maximize / Restore Workspace Button */}
@@ -1270,6 +1602,34 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
           </Button>
         </div>
       </div>
+
+      {/* Out of Bounds Warning Alert Banner */}
+      {outOfBounds.outOfBoundsIds.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-xl flex items-center justify-between text-xs text-amber-900 shadow-xs flex-wrap gap-2 shrink-0">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>{outOfBounds.outOfBoundsIds.length} object{outOfBounds.outOfBoundsIds.length > 1 ? 's' : ''}</strong> currently placed outside the {venueWidthM}{currentUnit} × {venueHeightM}{currentUnit} venue boundary.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              type="button"
+              onClick={() => setSelectedObjectIds(outOfBounds.outOfBoundsIds)}
+              className="px-2.5 py-1 bg-white border border-amber-300 rounded text-[11px] font-medium text-amber-900 hover:bg-amber-100/50 transition-colors"
+            >
+              Select Affected
+            </button>
+            <button 
+              type="button"
+              onClick={handleRepositionOutOfBounds}
+              className="px-2.5 py-1 bg-[#252525] text-white rounded text-[11px] font-medium hover:bg-[#3E3E3E] transition-colors"
+            >
+              Auto-Fit Inside Venue
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Interactive Canvas Workspace with Contextual Inspector */}
       <div className={
@@ -1366,6 +1726,9 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                 }
               }}
             >
+              {/* Layer 0: Measurement Rulers */}
+              {renderRulers()}
+
               {/* Layer 1: Floor boundary & Grid */}
               <Layer id="grid-layer">
                 {/* Hall Boundary */}
@@ -1373,13 +1736,13 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                   id="floor-boundary"
                   x={0}
                   y={0}
-                  width={layout?.canvas_width || 2000}
-                  height={layout?.canvas_height || 1400}
+                  width={venueWidthPx}
+                  height={venueHeightPx}
                   fill="#FFFFFF"
-                  stroke="#D4D4CE"
+                  stroke="#252525"
                   strokeWidth={2}
-                  shadowColor="rgba(0,0,0,0.06)"
-                  shadowBlur={15}
+                  shadowColor="rgba(0,0,0,0.08)"
+                  shadowBlur={18}
                 />
                 {renderGridLines()}
               </Layer>
@@ -1393,15 +1756,17 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                   const assignedCount = targetTable?.assigned_count || 0;
                   const capacity = targetTable?.capacity || obj.properties?.capacity || 10;
                   const isRect = obj.properties?.tableShape === 'rectangular';
+                  const screenRect = getObjectScreenRect(obj);
+                  const isOut = outOfBounds.outOfBoundsIds.includes(obj.id);
 
                   return (
                     <Group
                       key={obj.id}
                       id={obj.id}
-                      x={obj.position_x}
-                      y={obj.position_y}
-                      width={obj.width}
-                      height={obj.height}
+                      x={screenRect.x}
+                      y={screenRect.y}
+                      width={screenRect.width}
+                      height={screenRect.height}
                       rotation={obj.rotation}
                       draggable={interactionState !== 'CANVAS_PANNING'}
                       onMouseDown={(e) => {
@@ -1437,12 +1802,13 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                           }
                           setInteractionState('OBJECT_DRAGGING');
 
-                          // Record start positions of all currently selected objects
+                          // Record start positions of all currently selected objects in screen coordinates
                           const map = new Map<string, { x: number; y: number }>();
                           if (layoutRef.current) {
                             layoutRef.current.objects.forEach(o => {
                               if (currentSel.includes(o.id)) {
-                                map.set(o.id, { x: o.position_x, y: o.position_y });
+                                const sRect = getObjectScreenRect(o);
+                                map.set(o.id, { x: sRect.x, y: sRect.y });
                               }
                             });
                           }
@@ -1481,11 +1847,30 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                         if (e.target.id() === obj.id) {
                           e.cancelBubble = true;
                           const origSelf = dragGroupStartPositionsRef.current.get(obj.id);
-                          const gridSize = layoutRef.current?.grid_size || 40;
+                          const isWorld = layoutRef.current?.coordinate_system === 'world' || (obj.width <= 25);
+                          const u: VenueUnit = (layoutRef.current?.venue_unit as VenueUnit) || 'm';
+                          const px = getPixelsPerUnit(u);
+                          const step = layoutRef.current?.grid_unit_step || 0.5;
 
                           if (origSelf && layoutRef.current) {
-                            const snappedSelfX = snapToGrid ? snapVal(e.target.x(), gridSize) : Math.round(e.target.x());
-                            const snappedSelfY = snapToGrid ? snapVal(e.target.y(), gridSize) : Math.round(e.target.y());
+                            let snappedSelfX = e.target.x();
+                            let snappedSelfY = e.target.y();
+
+                            if (snapToGrid) {
+                              if (isWorld) {
+                                let worldX = snappedSelfX / px;
+                                let worldY = snappedSelfY / px;
+                                worldX = Math.round(worldX / step) * step;
+                                worldY = Math.round(worldY / step) * step;
+                                snappedSelfX = Math.round(worldX * px);
+                                snappedSelfY = Math.round(worldY * px);
+                              } else {
+                                const gridSize = layoutRef.current.grid_size || 40;
+                                snappedSelfX = Math.round(snappedSelfX / gridSize) * gridSize;
+                                snappedSelfY = Math.round(snappedSelfY / gridSize) * gridSize;
+                              }
+                            }
+
                             const dx = snappedSelfX - origSelf.x;
                             const dy = snappedSelfY - origSelf.y;
 
@@ -1496,14 +1881,18 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                               if (selIds.includes(o.id)) {
                                 const origPos = dragGroupStartPositionsRef.current.get(o.id);
                                 if (origPos) {
-                                  const finalX = o.id === obj.id ? snappedSelfX : Math.round(origPos.x + dx);
-                                  const finalY = o.id === obj.id ? snappedSelfY : Math.round(origPos.y + dy);
+                                  const finalScreenX = o.id === obj.id ? snappedSelfX : Math.round(origPos.x + dx);
+                                  const finalScreenY = o.id === obj.id ? snappedSelfY : Math.round(origPos.y + dy);
                                   const otherNode = stageRef.current?.findOne(`#${o.id}`);
-                                  if (otherNode) otherNode.position({ x: finalX, y: finalY });
+                                  if (otherNode) otherNode.position({ x: finalScreenX, y: finalScreenY });
+
+                                  const finalWorldX = isWorld ? roundToDecimals(finalScreenX / px, 2) : finalScreenX;
+                                  const finalWorldY = isWorld ? roundToDecimals(finalScreenY / px, 2) : finalScreenY;
+
                                   return {
                                     ...o,
-                                    position_x: finalX,
-                                    position_y: finalY
+                                    position_x: finalWorldX,
+                                    position_y: finalWorldY
                                   };
                                 }
                               }
@@ -1527,13 +1916,27 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                         node.scaleY(1);
 
                         if (layoutRef.current) {
+                          const isWorld = layoutRef.current.coordinate_system === 'world' || (obj.width <= 25);
+                          const u: VenueUnit = (layoutRef.current.venue_unit as VenueUnit) || 'm';
+                          const px = getPixelsPerUnit(u);
+
+                          const finalScreenW = Math.max(20, Math.round(node.width() * scaleX));
+                          const finalScreenH = Math.max(20, Math.round(node.height() * scaleY));
+                          const finalScreenX = Math.round(node.x());
+                          const finalScreenY = Math.round(node.y());
+
+                          const finalWorldX = isWorld ? roundToDecimals(finalScreenX / px, 2) : finalScreenX;
+                          const finalWorldY = isWorld ? roundToDecimals(finalScreenY / px, 2) : finalScreenY;
+                          const finalWorldW = isWorld ? roundToDecimals(finalScreenW / px, 2) : finalScreenW;
+                          const finalWorldH = isWorld ? roundToDecimals(finalScreenH / px, 2) : finalScreenH;
+
                           const newObjects = layoutRef.current.objects.map(o => 
                             o.id === obj.id ? {
                               ...o,
-                              position_x: Math.round(node.x()),
-                              position_y: Math.round(node.y()),
-                              width: Math.max(40, Math.round(node.width() * scaleX)),
-                              height: Math.max(30, Math.round(node.height() * scaleY)),
+                              position_x: finalWorldX,
+                              position_y: finalWorldY,
+                              width: finalWorldW,
+                              height: finalWorldH,
                               rotation: Math.round(node.rotation())
                             } : o
                           );
@@ -1544,17 +1947,32 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                         }
                       }}
                     >
+                      {/* Out of Bounds Warning Outline */}
+                      {isOut && (
+                        <Rect
+                          x={-6}
+                          y={-6}
+                          width={screenRect.width + 12}
+                          height={screenRect.height + 12}
+                          stroke="#EF4444"
+                          strokeWidth={2}
+                          dash={[6, 3]}
+                          cornerRadius={6}
+                          listening={false}
+                        />
+                      )}
+
                       {/* Render Visual Object Based on Type */}
                       {isTable ? (
                         <>
                           {/* Chairs around table */}
-                          {renderChairs(obj, capacity, isRect)}
+                          {renderChairs(obj, capacity, isRect, screenRect.width, screenRect.height)}
 
                           {/* Table Body */}
                           {isRect ? (
                             <Rect
-                              width={obj.width}
-                              height={obj.height}
+                              width={screenRect.width}
+                              height={screenRect.height}
                               cornerRadius={8}
                               fill="#FFFFFF"
                               stroke={isSelected ? "#8B806F" : "#252525"}
@@ -1564,9 +1982,9 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                             />
                           ) : (
                             <Circle
-                              x={obj.width / 2}
-                              y={obj.width / 2}
-                              radius={obj.width / 2}
+                              x={screenRect.width / 2}
+                              y={screenRect.width / 2}
+                              radius={screenRect.width / 2}
                               fill="#FFFFFF"
                               stroke={isSelected ? "#8B806F" : "#252525"}
                               strokeWidth={isSelected ? 3 : 1.5}
@@ -1583,8 +2001,8 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                             fontFamily="Inter, sans-serif"
                             fill="#252525"
                             align="center"
-                            width={obj.width}
-                            y={isRect ? obj.height / 2 - 14 : obj.width / 2 - 14}
+                            width={screenRect.width}
+                            y={isRect ? screenRect.height / 2 - 14 : screenRect.width / 2 - 14}
                           />
 
                           <KonvaText
@@ -1593,16 +2011,16 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                             fontFamily="monospace"
                             fill={assignedCount >= capacity ? "#DC2626" : "#059669"}
                             align="center"
-                            width={obj.width}
-                            y={isRect ? obj.height / 2 + 2 : obj.width / 2 + 2}
+                            width={screenRect.width}
+                            y={isRect ? screenRect.height / 2 + 2 : screenRect.width / 2 + 2}
                           />
                         </>
                       ) : (
                         /* Architectural & Venue Objects */
                         <>
                           <Rect
-                            width={obj.width}
-                            height={obj.height}
+                            width={screenRect.width}
+                            height={screenRect.height}
                             cornerRadius={obj.object_type === 'pillar' ? 30 : 6}
                             fill={obj.properties?.color || "#FAF9F7"}
                             stroke={isSelected ? "#8B806F" : "#252525"}
@@ -1617,8 +2035,8 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                             fontFamily="Inter, sans-serif"
                             fill={obj.properties?.textColor || "#252525"}
                             align="center"
-                            width={obj.width}
-                            y={obj.height / 2 - 6}
+                            width={screenRect.width}
+                            y={screenRect.height / 2 - 6}
                           />
                         </>
                       )}
@@ -1793,29 +2211,97 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                 )}
 
                 {/* Coordinates & Dimensions */}
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-[10px] text-[#777777] block font-mono">X Pos</span>
-                    <div className="font-mono text-[11px] p-1.5 bg-[#FAF9F7] rounded border border-[#E8E8E5]">
-                      {Math.round(selectedObject.position_x)}px
-                    </div>
+                <div className="space-y-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-[#8B806F]">
+                    Real-World Geometry ({currentUnit})
                   </div>
-                  <div>
-                    <span className="text-[10px] text-[#777777] block font-mono">Y Pos</span>
-                    <div className="font-mono text-[11px] p-1.5 bg-[#FAF9F7] rounded border border-[#E8E8E5]">
-                      {Math.round(selectedObject.position_y)}px
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-[10px] text-[#777777] block font-mono">X ({currentUnit})</span>
+                      <input
+                        type="number"
+                        step={gridUnitStep}
+                        value={roundToDecimals(selectedObject.position_x, 2)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const newObjects = layout!.objects.map(o => 
+                            o.id === selectedObject.id ? { ...o, position_x: roundToDecimals(val, 2) } : o
+                          );
+                          commitObjectsChange(newObjects);
+                        }}
+                        className="w-full h-7 px-2 font-mono text-[11px] bg-[#FAF9F7] rounded border border-[#E8E8E5] text-[#252525] focus:outline-none focus:border-[#252525]"
+                      />
                     </div>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-[#777777] block font-mono">Width</span>
-                    <div className="font-mono text-[11px] p-1.5 bg-[#FAF9F7] rounded border border-[#E8E8E5]">
-                      {Math.round(selectedObject.width)}px
+                    <div>
+                      <span className="text-[10px] text-[#777777] block font-mono">Y ({currentUnit})</span>
+                      <input
+                        type="number"
+                        step={gridUnitStep}
+                        value={roundToDecimals(selectedObject.position_y, 2)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const newObjects = layout!.objects.map(o => 
+                            o.id === selectedObject.id ? { ...o, position_y: roundToDecimals(val, 2) } : o
+                          );
+                          commitObjectsChange(newObjects);
+                        }}
+                        className="w-full h-7 px-2 font-mono text-[11px] bg-[#FAF9F7] rounded border border-[#E8E8E5] text-[#252525] focus:outline-none focus:border-[#252525]"
+                      />
                     </div>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-[#777777] block font-mono">Rotation</span>
-                    <div className="font-mono text-[11px] p-1.5 bg-[#FAF9F7] rounded border border-[#E8E8E5]">
-                      {Math.round(selectedObject.rotation)}°
+                    <div>
+                      <span className="text-[10px] text-[#777777] block font-mono">Width ({currentUnit})</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.2"
+                        value={roundToDecimals(selectedObject.width, 2)}
+                        onChange={(e) => {
+                          const val = Math.max(0.2, parseFloat(e.target.value) || 0.2);
+                          const newObjects = layout!.objects.map(o => 
+                            o.id === selectedObject.id ? { ...o, width: roundToDecimals(val, 2) } : o
+                          );
+                          commitObjectsChange(newObjects);
+                        }}
+                        className="w-full h-7 px-2 font-mono text-[11px] bg-[#FAF9F7] rounded border border-[#E8E8E5] text-[#252525] focus:outline-none focus:border-[#252525]"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-[#777777] block font-mono">Height ({currentUnit})</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.2"
+                        value={roundToDecimals(selectedObject.height, 2)}
+                        onChange={(e) => {
+                          const val = Math.max(0.2, parseFloat(e.target.value) || 0.2);
+                          const newObjects = layout!.objects.map(o => 
+                            o.id === selectedObject.id ? { ...o, height: roundToDecimals(val, 2) } : o
+                          );
+                          commitObjectsChange(newObjects);
+                        }}
+                        className="w-full h-7 px-2 font-mono text-[11px] bg-[#FAF9F7] rounded border border-[#E8E8E5] text-[#252525] focus:outline-none focus:border-[#252525]"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-[10px] text-[#777777] block font-mono">Rotation (Degrees)</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="0"
+                          max="360"
+                          step="5"
+                          value={selectedObject.rotation || 0}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10) || 0;
+                            const newObjects = layout!.objects.map(o => 
+                              o.id === selectedObject.id ? { ...o, rotation: val } : o
+                            );
+                            commitObjectsChange(newObjects);
+                          }}
+                          className="flex-1 accent-[#252525]"
+                        />
+                        <span className="font-mono text-xs w-10 text-right">{selectedObject.rotation || 0}°</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1846,30 +2332,77 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
             ) : (
               /* Case 3: Blueprint Overview */
               <div className="space-y-4 text-xs text-[#777777]">
-                <p className="leading-relaxed">
-                  Click any table, stage, or venue element on the canvas to inspect coordinates, change dimensions, or delete it.
-                </p>
+                <div className="p-3.5 rounded-xl bg-[#FAF9F7] border border-[#E8E8E5] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-xs text-[#252525] flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-[#8B806F]" />
+                      Venue Configuration
+                    </span>
+                    <Badge variant="taupe" size="sm">
+                      {layout?.venue_orientation || (venueWidthM >= venueHeightM ? 'Landscape' : 'Portrait')}
+                    </Badge>
+                  </div>
 
-                <div className="p-3 rounded-lg bg-[#FAF9F7] border border-[#E8E8E5] space-y-2">
-                  <div className="font-semibold text-[#252525]">Venue Layout Dimensions</div>
-                  <div className="flex justify-between text-[11px]">
-                    <span>Hall Canvas:</span>
-                    <span className="font-mono">{layout?.canvas_width || 2000} x {layout?.canvas_height || 1400}px</span>
+                  <div className="space-y-1.5 text-[11px]">
+                    <div className="flex justify-between">
+                      <span className="text-[#777777]">Venue Name:</span>
+                      <span className="font-medium text-[#252525] truncate max-w-[150px]">
+                        {layout?.venue_name || layout?.layout_name || 'Main Ballroom'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#777777]">Dimensions:</span>
+                      <span className="font-mono font-semibold text-[#252525]">
+                        {venueWidthM}{currentUnit} × {venueHeightM}{currentUnit}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#777777]">Total Floor Area:</span>
+                      <span className="font-mono text-[#252525]">
+                        {formatVenueArea(venueWidthM, venueHeightM, currentUnit)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#777777]">Grid Step:</span>
+                      <span className="font-mono text-[#252525]">
+                        {gridUnitStep} {currentUnit}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#777777]">Placed Elements:</span>
+                      <span className="font-mono text-[#252525]">{layout?.objects.length || 0}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-[11px]">
-                    <span>Grid Step:</span>
-                    <span className="font-mono">{layout?.grid_size || 40}px</span>
-                  </div>
-                  <div className="flex justify-between text-[11px]">
-                    <span>Total Placed Objects:</span>
-                    <span className="font-mono">{layout?.objects.length || 0}</span>
-                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsVenueSettingsOpen(true)}
+                    leftIcon={<Sliders className="w-3.5 h-3.5 text-[#8B806F]" />}
+                    className="w-full !h-8 !text-xs !bg-white"
+                  >
+                    Edit Venue Dimensions & Presets
+                  </Button>
                 </div>
+
+                <p className="leading-relaxed text-[11px] text-[#8B806F]">
+                  Click any table, stage, or element on the canvas to inspect coordinates, change dimensions, or delete it.
+                </p>
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* Venue Settings Modal */}
+      {layout && (
+        <VenueSettingsModal
+          isOpen={isVenueSettingsOpen}
+          onClose={() => setIsVenueSettingsOpen(false)}
+          layout={layout}
+          onApplySettings={handleApplyVenueSettings}
+        />
+      )}
 
       {/* Keyboard Shortcuts Cheat-Sheet Modal */}
       {showShortcutsModal && (

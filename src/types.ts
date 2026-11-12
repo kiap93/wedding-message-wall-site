@@ -268,6 +268,17 @@ export interface VenueLayout {
   id: string;
   project_id: string;
   layout_name: string;
+  venue_width?: number;
+  venue_height?: number;
+  venue_unit?: 'm' | 'ft';
+  venue_orientation?: 'landscape' | 'portrait';
+  venue_name?: string;
+  venue_description?: string;
+  grid_unit_step?: number;
+  show_grid?: boolean;
+  show_rulers?: boolean;
+  coordinate_system?: string;
+  is_migrated?: boolean;
   canvas_width: number;
   canvas_height: number;
   grid_size: number;

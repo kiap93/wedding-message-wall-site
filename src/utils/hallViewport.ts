@@ -20,7 +20,8 @@ export interface HallBoundingBox {
 export function calculateHallBoundingBox(
   objects?: VenueLayoutObject[] | null,
   defaultWidth: number = 2000,
-  defaultHeight: number = 1400
+  defaultHeight: number = 1400,
+  includeVenueBoundary: boolean = false
 ): HallBoundingBox {
   if (!objects || objects.length === 0) {
     return {
@@ -83,6 +84,14 @@ export function calculateHallBoundingBox(
         if (wy > maxY) maxY = wy;
       }
     }
+  }
+
+  // If requested or if bounds are invalid, ensure venue boundary is encompassed
+  if (includeVenueBoundary) {
+    minX = Math.min(minX, 0);
+    minY = Math.min(minY, 0);
+    maxX = Math.max(maxX, defaultWidth);
+    maxY = Math.max(maxY, defaultHeight);
   }
 
   // Safety fallback if invalid bounds
