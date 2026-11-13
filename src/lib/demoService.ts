@@ -37,7 +37,9 @@ export const PUBLIC_DEMO_AGENCY: Agency = {
  */
 export async function fetchDemoMessages(roomId: string = PUBLIC_DEMO_ROOM_ID): Promise<Message[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/demo/messages?room=${encodeURIComponent(roomId)}`);
+    const res = await fetch(`${API_BASE}/api/demo/messages?room=${encodeURIComponent(roomId)}`, {
+      cache: 'no-store'
+    });
     if (!res.ok) {
       console.warn(`Failed to fetch demo messages: HTTP ${res.status}`);
       return [];
@@ -101,6 +103,7 @@ export function subscribeToDemoMessages(
 
   const handleSnapshot = (messages: Message[]) => {
     if (!Array.isArray(messages)) return;
+    seenIds.clear();
     for (const m of messages) {
       if (m?.id) seenIds.add(m.id);
     }
@@ -148,6 +151,16 @@ export function subscribeToDemoMessages(
       if (isClosed) return;
       try {
         const msgs = await fetchDemoMessages(roomId);
+        if (msgs.length === 0) return;
+
+        // Detect controlled reset (previously seen IDs removed) or initial population
+        const incomingIds = new Set(msgs.map(m => m.id));
+        const hasRemovedIds = seenIds.size > 0 && Array.from(seenIds).some(id => !incomingIds.has(id));
+        if (hasRemovedIds || seenIds.size === 0) {
+          handleSnapshot(msgs);
+          return;
+        }
+
         for (const m of msgs) {
           if (!seenIds.has(m.id)) {
             handleMessage(m);
@@ -156,7 +169,7 @@ export function subscribeToDemoMessages(
       } catch {
         // Silent polling error
       }
-    }, 4000);
+    }, 3000);
   };
 
   // 1. Try WebSocket first

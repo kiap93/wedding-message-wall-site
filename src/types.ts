@@ -87,10 +87,12 @@ export interface Message {
   message: string;
   timestamp: number;
   project_id?: string;
+  room_id?: string;
   status?: 'pending' | 'approved' | 'rejected';
   classification?: MessageClassification;
   is_featured?: boolean;
   is_pinned?: boolean;
+  isDemoSample?: boolean;
   ai_highlight_reason?: string;
   guest_category?: string;
 }

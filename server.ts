@@ -53,8 +53,11 @@ import http from 'http';
 import { WebSocketServer } from 'ws';
 import {
   PUBLIC_DEMO_ROOM_ID,
+  isAllowedDemoRoom,
+  normalizeDemoRoomId,
   getDemoMessagesSnapshot,
   addDemoGuestMessage,
+  resetPublicDemoRoom,
   registerWebSocketClient,
   registerSSEClient,
   getDemoRoomStats
@@ -247,31 +250,55 @@ async function startServer() {
 
   // --- Public Demo Mode Routes (Strict In-Memory, Zero Production Database Writes) ---
   apiRouter.get('/demo/messages', (req, res) => {
-    const room = (req.query.room as string) || PUBLIC_DEMO_ROOM_ID;
+    const room = normalizeDemoRoomId(req.query.room as string);
+    if (!isAllowedDemoRoom(room)) {
+      return res.status(400).json({ error: 'Invalid room. Public demo only accepts the shared demo room identifier.' });
+    }
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     const messages = getDemoMessagesSnapshot(room);
     res.json({ success: true, roomId: room, messages });
   });
 
   apiRouter.post('/demo/messages', (req, res) => {
-    const { roomId = PUBLIC_DEMO_ROOM_ID, name, message } = req.body || {};
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
-    
+    const body = req.body || {};
+    const room = normalizeDemoRoomId(body.roomId || body.room || (req.query.room as string));
+    const { name, message } = body;
+    const forwardedFor = req.headers['x-forwarded-for'] as string | undefined;
+    const clientIp = (forwardedFor ? forwardedFor.split(',')[0].trim() : '') || req.socket.remoteAddress || '127.0.0.1';
+
     // Strict production database protection: reject non-demo rooms
-    if (roomId !== PUBLIC_DEMO_ROOM_ID) {
+    if (!isAllowedDemoRoom(room)) {
       return res.status(400).json({ error: 'Invalid room. Public demo only accepts the shared demo room identifier.' });
     }
 
-    const result = addDemoGuestMessage(roomId, name, message, clientIp);
+    const result = addDemoGuestMessage(room, name, message, clientIp);
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json({ error: result.error });
+    }
+
+    res.status(201).json({ success: true, roomId: room, message: result.message });
+  });
+
+  apiRouter.delete('/demo/messages', (req, res) => {
+    const room = normalizeDemoRoomId((req.query.room as string) || req.body?.roomId || req.body?.room);
+    if (!isAllowedDemoRoom(room)) {
+      return res.status(400).json({ error: 'Invalid room. Only the public demo room can be reset.' });
+    }
+
+    const result = resetPublicDemoRoom(room);
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }
 
-    res.status(201).json({ success: true, message: result.message });
+    res.json({ success: true, roomId: room, messages: result.messages });
   });
 
   // Server-Sent Events (SSE) Stream fallback for demo messages
   apiRouter.get('/demo/stream', (req, res) => {
-    const room = (req.query.room as string) || PUBLIC_DEMO_ROOM_ID;
+    const room = normalizeDemoRoomId(req.query.room as string);
+    if (!isAllowedDemoRoom(room)) {
+      return res.status(400).json({ error: 'Invalid room. Public demo only accepts the shared demo room identifier.' });
+    }
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -286,7 +313,10 @@ async function startServer() {
   });
 
   apiRouter.get('/demo/stats', (req, res) => {
-    const room = (req.query.room as string) || PUBLIC_DEMO_ROOM_ID;
+    const room = normalizeDemoRoomId(req.query.room as string);
+    if (!isAllowedDemoRoom(room)) {
+      return res.status(400).json({ error: 'Invalid room. Public demo only accepts the shared demo room identifier.' });
+    }
     res.json(getDemoRoomStats(room));
   });
 

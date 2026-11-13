@@ -49,10 +49,12 @@ export default function Display() {
 
   useEffect(() => {
     if (isLoadingWorkspace) return;
-    const urlProjectId = projectId || searchParams.get('id') || searchParams.get('projectId');
+    const urlProjectId = projectId || searchParams.get('id') || searchParams.get('projectId') || searchParams.get('room');
     const normalizedProjectId = (urlProjectId && urlProjectId !== 'undefined') ? urlProjectId : undefined;
 
-    if (!normalizedProjectId && !slug && workspace) {
+    if (normalizedProjectId === PUBLIC_DEMO_ROOM_ID || normalizedProjectId === 'demo') {
+      initDemoMode();
+    } else if (!normalizedProjectId && !slug && workspace) {
       loadProjectByWorkspace(workspace.id);
     } else if (normalizedProjectId || slug) {
       loadProject(normalizedProjectId, slug);

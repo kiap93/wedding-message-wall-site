@@ -141,6 +141,9 @@ export async function postMessage(
   autoApprove: boolean = false,
   guestCategory?: string
 ): Promise<void> {
+  if (!projectId || projectId === 'eventframe-public-demo' || projectId === 'demo' || projectId === 'demo-project') {
+    throw new Error('Demo messages cannot be persisted to production database. Use /api/demo/messages endpoint.');
+  }
   try {
     const supabase = getSupabase();
     const isVip = guestCategory === 'VIP' || guestCategory === 'Family' || guestCategory === 'Bridal Party';

@@ -28,6 +28,18 @@ import {
   saveVenueLayout,
   getEventAssignments
 } from '../server/guestSeatingService';
+import {
+  PUBLIC_DEMO_ROOM_ID,
+  DemoRoomState,
+  isAllowedDemoRoom,
+  normalizeDemoRoomId,
+  hydrateDemoRoom,
+  exportDemoRoomState,
+  getDemoMessagesSnapshot,
+  addDemoGuestMessageCore,
+  resetPublicDemoRoom,
+  getDemoRoomCoreStats
+} from '../server/demoMessageCore';
 
 type Bindings = {
   ASSETS?: { fetch: typeof fetch };
@@ -97,6 +109,176 @@ app.get('/api/config', (c) => c.json({
   supabaseUrl: c.env.VITE_SUPABASE_URL || c.env.SUPABASE_URL || '',
   supabaseAnonKey: c.env.VITE_SUPABASE_ANON_KEY || c.env.SUPABASE_ANON_KEY || '',
 }));
+
+// --- Public Demo Mode Routes (Isolated Ephemeral Store, Zero Production DB Writes) ---
+function getCloudflareDefaultCache(): Cache | null {
+  try {
+    if (typeof caches !== 'undefined' && 'default' in caches && (caches as any).default) {
+      return (caches as any).default as Cache;
+    }
+  } catch {
+    // Non-Cloudflare runtime fallback (e.g. Vitest / Node Hono tests)
+  }
+  return null;
+}
+
+async function syncDemoRoomFromEdgeCache(roomId: string): Promise<boolean> {
+  const cache = getCloudflareDefaultCache();
+  if (!cache) return false;
+  try {
+    const cacheKey = new Request(`https://demo-cache.eventframe.internal/rooms/${encodeURIComponent(roomId)}`);
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      const data = (await cached.json()) as DemoRoomState;
+      hydrateDemoRoom(roomId, data);
+      return true;
+    }
+  } catch {
+    // Fallback to in-memory room state
+  }
+  return false;
+}
+
+async function saveDemoRoomToEdgeCache(roomId: string): Promise<void> {
+  const cache = getCloudflareDefaultCache();
+  if (!cache) return;
+  try {
+    const cacheKey = new Request(`https://demo-cache.eventframe.internal/rooms/${encodeURIComponent(roomId)}`);
+    const state = exportDemoRoomState(roomId);
+    await cache.put(
+      cacheKey,
+      new Response(JSON.stringify(state), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=1800'
+        }
+      })
+    );
+  } catch {
+    // Ignore cache write failures
+  }
+}
+
+app.get('/api/demo/messages', async (c) => {
+  const room = normalizeDemoRoomId(c.req.query('room'));
+  if (!isAllowedDemoRoom(room)) {
+    return c.json({ error: 'Invalid room. Public demo only accepts the shared demo room identifier.' }, 400);
+  }
+
+  const hadCachedState = await syncDemoRoomFromEdgeCache(room);
+  const messages = getDemoMessagesSnapshot(room);
+  if (!hadCachedState) {
+    await saveDemoRoomToEdgeCache(room);
+  }
+
+  return c.json(
+    { success: true, roomId: room, messages },
+    200,
+    { 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+  );
+});
+
+app.post('/api/demo/messages', async (c) => {
+  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+  const room = normalizeDemoRoomId(
+    (typeof body?.roomId === 'string' ? body.roomId : undefined) ||
+    (typeof body?.room === 'string' ? body.room : undefined) ||
+    c.req.query('room')
+  );
+
+  if (!isAllowedDemoRoom(room)) {
+    return c.json({ error: 'Invalid room. Public demo only accepts the shared demo room identifier.' }, 400);
+  }
+
+  await syncDemoRoomFromEdgeCache(room);
+
+  const clientIp =
+    c.req.header('cf-connecting-ip') ||
+    (c.req.header('x-forwarded-for') || '').split(',')[0].trim() ||
+    '127.0.0.1';
+
+  const result = addDemoGuestMessageCore(room, body?.name, body?.message, clientIp);
+  if (!result.success) {
+    return c.json({ error: result.error }, (result.statusCode || 400) as any);
+  }
+
+  await saveDemoRoomToEdgeCache(room);
+
+  return c.json(
+    { success: true, roomId: room, message: result.message },
+    201,
+    { 'Cache-Control': 'no-store' }
+  );
+});
+
+app.delete('/api/demo/messages', async (c) => {
+  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+  const room = normalizeDemoRoomId(
+    c.req.query('room') ||
+    (typeof body?.roomId === 'string' ? body.roomId : undefined) ||
+    (typeof body?.room === 'string' ? body.room : undefined)
+  );
+
+  if (!isAllowedDemoRoom(room)) {
+    return c.json({ error: 'Invalid room. Only the public demo room can be reset.' }, 400);
+  }
+
+  const result = resetPublicDemoRoom(room);
+  if (!result.success) {
+    return c.json({ error: result.error }, 400);
+  }
+
+  await saveDemoRoomToEdgeCache(room);
+
+  return c.json(
+    { success: true, roomId: room, messages: result.messages },
+    200,
+    { 'Cache-Control': 'no-store' }
+  );
+});
+
+app.get('/api/demo/stream', async (c) => {
+  const room = normalizeDemoRoomId(c.req.query('room'));
+  if (!isAllowedDemoRoom(room)) {
+    return c.json({ error: 'Invalid room. Public demo only accepts the shared demo room identifier.' }, 400);
+  }
+
+  await syncDemoRoomFromEdgeCache(room);
+  const snapshot = getDemoMessagesSnapshot(room);
+  const sseBody = `retry: 3000\ndata: ${JSON.stringify({ type: 'snapshot', roomId: room, messages: snapshot })}\n\n`;
+
+  return new Response(sseBody, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache',
+      'Connection': 'keep-alive'
+    }
+  });
+});
+
+app.get('/api/demo/stats', async (c) => {
+  const room = normalizeDemoRoomId(c.req.query('room'));
+  if (!isAllowedDemoRoom(room)) {
+    return c.json({ error: 'Invalid room. Public demo only accepts the shared demo room identifier.' }, 400);
+  }
+
+  await syncDemoRoomFromEdgeCache(room);
+  return c.json(getDemoRoomCoreStats(room), 200, { 'Cache-Control': 'no-store' });
+});
+
+// Strict Protection: Reject demo messages trying to target production persistence
+app.post('/api/messages', async (c) => {
+  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+  const projectId = body?.project_id;
+  if (projectId === PUBLIC_DEMO_ROOM_ID || projectId === 'demo' || projectId === 'demo-project') {
+    return c.json(
+      { error: 'Demo messages cannot be persisted to production database. Use /api/demo/messages endpoint.' },
+      400
+    );
+  }
+  return c.json({ error: 'Production guest messages are submitted directly via event workspace configuration.' }, 400);
+});
 
 // 1. Redirect to Google
 app.get('/api/auth/google', async (c) => {

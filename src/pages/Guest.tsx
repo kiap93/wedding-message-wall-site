@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, CheckCircle2, QrCode, Zap, Calendar, MapPin } from 'lucide-react';
+import { Send, CheckCircle2, QrCode, Zap, Calendar, MapPin, Heart } from 'lucide-react';
 import { postMessage } from '../lib/api';
 import confetti from 'canvas-confetti';
-import { WeddingEvent, WeddingTemplate, Agency } from '../types';
+import { WeddingEvent, WeddingTemplate, Agency, Message } from '../types';
 import { resolveEventTheme, ResolvedEventTheme } from '../lib/eventTheme';
 import { ThemeOverlay } from '../components/ThemeDecorations';
 import { QRCodeSVG } from 'qrcode.react';
@@ -30,13 +30,18 @@ export default function Guest() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoadingDemoMessages, setIsLoadingDemoMessages] = useState(false);
   const [rsvpCount, setRsvpCount] = useState(0);
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
 
   const [searchParams] = useSearchParams();
   const isPreviewParam = searchParams.get('preview') === 'true';
-  const isDemo = project?.id === PUBLIC_DEMO_ROOM_ID || projectId === 'demo' || slug === 'demo';
+  const isDemo =
+    project?.id === PUBLIC_DEMO_ROOM_ID ||
+    projectId === 'demo' ||
+    slug === 'demo' ||
+    searchParams.get('room') === PUBLIC_DEMO_ROOM_ID;
 
   useEffect(() => {
     async function load() {
@@ -49,16 +54,17 @@ export default function Guest() {
   const initDemoMode = () => {
     setProject(PUBLIC_DEMO_PROJECT);
     setAgency(PUBLIC_DEMO_AGENCY);
-    setMessages([{ id: 1 }, { id: 2 }, { id: 3 }]);
     setIsLoading(false);
   };
 
   useEffect(() => {
     if (isLoadingWorkspace) return;
-    const urlProjectId = projectId || searchParams.get('id') || searchParams.get('projectId');
+    const urlProjectId = projectId || searchParams.get('id') || searchParams.get('projectId') || searchParams.get('room');
     const normalizedProjectId = (urlProjectId && urlProjectId !== 'undefined') ? urlProjectId : undefined;
 
-    if (!normalizedProjectId && !slug && workspace) {
+    if (normalizedProjectId === PUBLIC_DEMO_ROOM_ID || normalizedProjectId === 'demo') {
+      initDemoMode();
+    } else if (!normalizedProjectId && !slug && workspace) {
       loadProjectByWorkspace(workspace.id);
     } else if (normalizedProjectId || slug) {
       loadProject(normalizedProjectId, slug);
@@ -67,6 +73,46 @@ export default function Guest() {
       initDemoMode();
     }
   }, [projectId, slug, searchParams, isLoadingWorkspace, workspace?.id]);
+
+  // Load and subscribe to live demo messages when in public demo mode
+  useEffect(() => {
+    if (!isDemo) return;
+    let isMounted = true;
+    const provider = createGuestMessageProvider(PUBLIC_DEMO_ROOM_ID, true);
+
+    setIsLoadingDemoMessages(true);
+    provider
+      .loadInitialMessages()
+      .then((data) => {
+        if (!isMounted) return;
+        setMessages(data);
+      })
+      .catch((err) => {
+        console.error('Error loading demo messages:', err);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingDemoMessages(false);
+      });
+
+    const unsubscribe = provider.subscribe(
+      (newMessage) => {
+        if (!isMounted) return;
+        setMessages((prev) => {
+          const filtered = prev.filter((m) => m.id !== newMessage.id);
+          return [newMessage, ...filtered].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        });
+      },
+      (snapshot) => {
+        if (!isMounted) return;
+        setMessages(snapshot);
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [isDemo]);
 
   const loadProjectByWorkspace = async (agencyId: string) => {
     try {
@@ -94,7 +140,14 @@ export default function Guest() {
           .from('messages')
           .select('*', { count: 'exact', head: true })
           .eq('project_id', projectData.id);
-        setMessages(new Array(msgCount || 0).fill({}));
+        setMessages(
+          Array.from({ length: msgCount || 0 }, (_, idx) => ({
+            id: `count-${idx}`,
+            name: '',
+            message: '',
+            timestamp: 0
+          }))
+        );
 
         const { count: rsvpCountVal } = await supabase
           .from('rsvps')
@@ -177,7 +230,14 @@ export default function Guest() {
           .from('messages')
           .select('*', { count: 'exact', head: true })
           .eq('project_id', projectData.id);
-        setMessages(new Array(msgCount || 0).fill({}));
+        setMessages(
+          Array.from({ length: msgCount || 0 }, (_, idx) => ({
+            id: `count-${idx}`,
+            name: '',
+            message: '',
+            timestamp: 0
+          }))
+        );
 
         const { count: rsvpCountVal } = await supabase
           .from('rsvps')
@@ -215,7 +275,18 @@ export default function Guest() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim()) return;
+    const trimmedName = name.trim();
+    const trimmedMessage = message.trim();
+
+    if (!trimmedName) {
+      setError('Please enter your name.');
+      return;
+    }
+
+    if (!trimmedMessage) {
+      setError('Please enter a message.');
+      return;
+    }
 
     if (!project?.id) {
       setError("Event not found. Please refresh the page.");
@@ -238,7 +309,6 @@ export default function Guest() {
       if (!isDemo) {
         try {
           const supabase = getSupabase();
-          const trimmedName = name.trim();
           if (trimmedName && project.id) {
             const { data: vipRsvps } = await supabase
               .from('rsvps')
@@ -257,12 +327,28 @@ export default function Guest() {
         }
       }
 
-      await provider.submitMessage(name, message, {
+      const created = await provider.submitMessage(trimmedName, trimmedMessage, {
         autoApprove: !!project?.auto_approve_messages,
         guestCategory: designatedCategory
       });
-      setMessages(prev => [...prev, { id: Date.now() }]);
-      
+
+      if (isDemo && created && created.id) {
+        setMessages((prev) => {
+          const filtered = prev.filter((m) => m.id !== created.id);
+          return [created, ...filtered];
+        });
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: String(Date.now()),
+            name: trimmedName,
+            message: trimmedMessage,
+            timestamp: Date.now()
+          }
+        ]);
+      }
+
       // Fire theme-specific celebratory confetti
       confetti({
         particleCount: 110,
@@ -473,6 +559,54 @@ export default function Guest() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Live Demo Message Wall */}
+        {isDemo && (
+          <div className={`mt-5 ${theme.card.surface} ${theme.card.border} ${theme.card.radius} ${theme.card.shadow} p-5`}>
+            <div className="flex items-center justify-between mb-3.5">
+              <div className="flex items-center gap-2">
+                <Heart className={`w-4 h-4 ${theme.colors.accent}`} />
+                <h2 className={`text-base ${theme.fontHeading} ${theme.colors.headerText} font-normal`}>
+                  Live Guest Wishes
+                </h2>
+              </div>
+              <span className={`text-[11px] font-mono tabular-nums ${theme.colors.subtleText}`}>
+                {messages.length} {messages.length === 1 ? 'wish' : 'wishes'}
+              </span>
+            </div>
+
+            {isLoadingDemoMessages && messages.length === 0 ? (
+              <div className="py-6 text-center text-xs opacity-60">Loading wedding wishes...</div>
+            ) : messages.length === 0 ? (
+              <div className="py-6 text-center text-xs opacity-60">
+                Be the first to leave a wish for the couple.
+              </div>
+            ) : (
+              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                {messages.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3 rounded-xl border border-black/5 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className={`text-xs font-semibold ${theme.colors.headerText} truncate`}>
+                        {item.name}
+                      </span>
+                      {!item.isDemoSample && (
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 shrink-0">
+                          Just posted
+                        </span>
+                      )}
+                    </div>
+                    <p className={`text-xs leading-relaxed ${theme.colors.text} opacity-90`}>
+                      {item.message}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </motion.div>
 
       {/* Subtle Footer */}
