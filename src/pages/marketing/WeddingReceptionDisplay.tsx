@@ -1,73 +1,72 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  ArrowRight, 
-  Check, 
-  Monitor, 
-  QrCode, 
-  Camera, 
-  Sparkles, 
-  Palette, 
-  ShieldCheck, 
-  ChevronDown, 
-  ExternalLink,
-  Maximize2
+import {
+  ArrowRight,
+  Check,
+  Monitor,
+  QrCode,
+  Palette,
+  ShieldCheck,
+  ChevronDown,
 } from 'lucide-react';
 import MarketingLayout from '../../layouts/MarketingLayout';
 import Button from '../../design-system/components/Button';
+import { useMarketingTranslation } from '../../lib/i18n/MarketingTranslationContext';
 import celebrationVenueImage from '../../assets/images/celebration_venue_mood_1793501242406.jpg';
 
 export default function WeddingReceptionDisplay() {
   const navigate = useNavigate();
+  const { t, getLocalizedPath } = useMarketingTranslation();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+
+  const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    e.preventDefault();
+    navigate(getLocalizedPath(href));
+  };
 
   const displayFeatures = [
     {
-      title: 'Universal Hardware Compatibility',
-      description: 'Open the live display URL on any browser-equipped laptop or smart TV. Connect via HDMI or wireless screen mirroring to venue projectors and LED ballroom video walls.',
+      title: t('displayPage.features.f1Title'),
+      description: t('displayPage.features.f1Desc'),
       icon: <Monitor className="w-5 h-5 text-[#8B806F]" />,
     },
     {
-      title: 'Instant Table QR Code Scanning',
-      description: 'Display an on-screen QR code or print tabletop cards. Guests scan with their phone camera to instantly upload banquet photos and warm wishes without downloading an app.',
+      title: t('displayPage.features.f2Title'),
+      description: t('displayPage.features.f2Desc'),
       icon: <QrCode className="w-5 h-5 text-[#8B806F]" />,
     },
     {
-      title: '8 Curated Display Art Aesthetics',
-      description: 'Choose from 8 distinct visual themes (Minimal Luxury, Natural Garden, Romantic Love, Postal Archive, Polaroid Wall, Starry Dream, Vintage Noir, Digital Edge) tailored to your floral decor.',
+      title: t('displayPage.features.f3Title'),
+      description: t('displayPage.features.f3Desc'),
       icon: <Palette className="w-5 h-5 text-[#8B806F]" />,
     },
     {
-      title: 'Live Banquet Moderation Queue',
-      description: 'Maintain complete decorum. Event planners or designated bridal party members approve incoming photos and notes from their phones before they broadcast to the screen.',
+      title: t('displayPage.features.f4Title'),
+      description: t('displayPage.features.f4Desc'),
       icon: <ShieldCheck className="w-5 h-5 text-[#8B806F]" />,
     },
   ];
 
   const animationLayouts = [
-    { name: 'Masonry Stream', desc: 'Continuous flowing stream of cards, ideal for high-volume photo uploads and varied note lengths.' },
-    { name: 'Hanging Garden', desc: 'Suspended cards with gentle organic swaying animations, ideal for botanical and outdoor venue aesthetics.' },
-    { name: 'Floating Cosmos', desc: 'Ethereal floating cards against deep starry backgrounds, perfect for evening dance floors and romantic lighting.' },
-    { name: 'Editorial Grid', desc: 'Architectural, clean-lined grid layout that pairs letterpress typography with instant photo polaroids.' },
+    { name: t('displayPage.layouts.l1Name'), desc: t('displayPage.layouts.l1Desc') },
+    { name: t('displayPage.layouts.l2Name'), desc: t('displayPage.layouts.l2Desc') },
+    { name: t('displayPage.layouts.l3Name'), desc: t('displayPage.layouts.l3Desc') },
+    { name: t('displayPage.layouts.l4Name'), desc: t('displayPage.layouts.l4Desc') },
   ];
 
   const faqs = [
-    {
-      q: 'What hardware is required to run the wedding reception display?',
-      a: 'Any standard laptop (Mac, Windows, or Chromebook) connected to a projector, large smart TV, or LED wall via HDMI or AirPlay. The display runs inside full-screen Chrome, Safari, or Edge.'
-    },
-    {
-      q: 'How quickly do guest photos appear on screen?',
-      a: 'Submissions sync in real-time. Once approved in the moderation dashboard, photos and notes animate onto the screen within seconds.'
-    },
-    {
-      q: 'What happens if venue Wi-Fi is slow?',
-      a: 'EventFrame uses lightweight vector styling and progressive image loading. Once the display URL is loaded in full-screen, incoming messages stream smoothly with low bandwidth consumption.'
-    },
-    {
-      q: 'Can couples download the full gallery of guest photos after the wedding?',
-      a: 'Yes. All submitted guest messages, candid reception photos, and timestamps are permanently stored in the couple portal for high-resolution download.'
-    }
+    { q: t('displayPage.faqs.q1'), a: t('displayPage.faqs.a1') },
+    { q: t('displayPage.faqs.q2'), a: t('displayPage.faqs.a2') },
+    { q: t('displayPage.faqs.q3'), a: t('displayPage.faqs.a3') },
+    { q: t('displayPage.faqs.q4'), a: t('displayPage.faqs.a4') },
+  ];
+
+  const relatedLinks = [
+    { href: '/templates', title: t('common.cards.themes.title'), desc: t('common.cards.themes.desc') },
+    { href: '/digital-wedding-invitations', title: t('common.cards.invitations.title'), desc: t('common.cards.invitations.desc') },
+    { href: '/wedding-guest-management', title: t('common.cards.guest.title'), desc: t('common.cards.guest.desc') },
+    { href: '/wedding-rsvp-management', title: t('common.cards.rsvp.title'), desc: t('common.cards.rsvp.desc') },
+    { href: '/wedding-planner-software', title: t('common.cards.studio.title'), desc: t('common.cards.studio.desc') },
   ];
 
   return (
@@ -78,49 +77,49 @@ export default function WeddingReceptionDisplay() {
           <div className="grid lg:grid-cols-12 gap-12 items-center">
             <div className="lg:col-span-7 space-y-6">
               <div className="inline-flex items-center gap-2 text-xs font-medium text-[#736959] bg-[#EFECE6] px-2.5 py-1 rounded">
-                <span>Interactive Venue Displays</span>
+                <span>{t('displayPage.hero.badgeLeft')}</span>
                 <span className="text-[#8B806F]">·</span>
-                <span>Live Projector Memory Wall</span>
+                <span>{t('displayPage.hero.badgeRight')}</span>
               </div>
 
               <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-normal tracking-tight text-[#252525] leading-[1.12]">
-                Make Your Wedding Reception More Interactive
+                {t('displayPage.hero.title')}
               </h1>
 
               <p className="text-sm md:text-base text-[#777777] max-w-xl leading-relaxed">
-                Connect any venue display, projector, or LED screen to broadcast guest photos and warm wishes in real-time. Curated with editorial typography and planner moderation.
+                {t('displayPage.hero.subtitle')}
               </p>
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <Button
                   variant="primary"
                   size="lg"
-                  onClick={() => navigate('/templates')}
+                  onClick={() => navigate(getLocalizedPath('/templates'))}
                   rightIcon={<ArrowRight className="w-4 h-4" />}
                 >
-                  Explore Display Themes
+                  {t('displayPage.hero.primaryCta')}
                 </Button>
                 <Button
                   variant="outline"
                   size="lg"
                   onClick={() => navigate('/login')}
                 >
-                  Configure Live Screen
+                  {t('displayPage.hero.secondaryCta')}
                 </Button>
               </div>
 
               <div className="pt-6 flex flex-wrap items-center gap-6 text-xs text-[#777777]">
                 <div className="flex items-center gap-1.5">
                   <Check className="w-4 h-4 text-[#8B806F]" />
-                  <span>Works with any HDMI projector</span>
+                  <span>{t('displayPage.hero.bullet1')}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Check className="w-4 h-4 text-[#8B806F]" />
-                  <span>Instant QR code table access</span>
+                  <span>{t('displayPage.hero.bullet2')}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Check className="w-4 h-4 text-[#8B806F]" />
-                  <span>Real-time photo moderation</span>
+                  <span>{t('displayPage.hero.bullet3')}</span>
                 </div>
               </div>
             </div>
@@ -131,7 +130,7 @@ export default function WeddingReceptionDisplay() {
                 <div className="aspect-[16/10] rounded overflow-hidden relative border border-[#E8E8E5]">
                   <img
                     src={celebrationVenueImage}
-                    alt="Live wedding reception screen display projected on ballroom wall"
+                    alt={t('displayPage.hero.imageAlt')}
                     className="w-full h-full object-cover"
                     loading="eager"
                     fetchPriority="high"
@@ -143,26 +142,26 @@ export default function WeddingReceptionDisplay() {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent flex flex-col justify-between p-4">
                     <div className="flex justify-between items-center text-white">
                       <span className="text-[10px] font-mono tracking-wider bg-black/40 backdrop-blur-xs px-2 py-0.5 rounded border border-white/20">
-                        RECEPTION SCREEN 01
+                        {t('displayPage.hero.screenTag')}
                       </span>
                       <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> LIVE STREAM
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> {t('displayPage.hero.liveStream')}
                       </span>
                     </div>
                     <div className="text-white space-y-1">
-                      <div className="text-sm font-medium">“Wishing Celia & Elias an eternity of laughter and shared horizons.”</div>
-                      <div className="text-[11px] text-white/70">— The Sterling Family</div>
+                      <div className="text-sm font-medium">{t('displayPage.hero.quote')}</div>
+                      <div className="text-[11px] text-white/70">{t('displayPage.hero.author')}</div>
                     </div>
                   </div>
                 </div>
 
-                <div className="p-3 bg-[#FAF9F7] rounded text-xs flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <QrCode className="w-4 h-4 text-[#8B806F]" />
-                    <span className="text-[#252525] font-medium">Guests Scan to Post: eventframe.io/g/celia-elias</span>
+                <div className="p-3 bg-[#FAF9F7] rounded text-xs flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <QrCode className="w-4 h-4 text-[#8B806F] shrink-0" />
+                    <span className="text-[#252525] font-medium truncate">{t('displayPage.hero.scanPrompt')}</span>
                   </div>
-                  <span className="text-[10px] font-mono text-[#8B806F] bg-white px-2 py-0.5 rounded border border-[#E8E8E5]">
-                    SCAN READY
+                  <span className="text-[10px] font-mono text-[#8B806F] bg-white px-2 py-0.5 rounded border border-[#E8E8E5] shrink-0">
+                    {t('displayPage.hero.scanReady')}
                   </span>
                 </div>
               </div>
@@ -175,19 +174,21 @@ export default function WeddingReceptionDisplay() {
       <section className="py-20 md:py-28 border-b border-[#E8E8E5] bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="max-w-2xl mb-16">
-            <span className="text-xs font-medium text-[#8B806F] tracking-wide uppercase">Venue Technology</span>
+            <span className="text-xs font-medium text-[#8B806F] tracking-wide uppercase">
+              {t('displayPage.features.eyebrow')}
+            </span>
             <h2 className="font-serif text-3xl md:text-4xl font-normal tracking-tight text-[#252525] mt-2 leading-tight">
-              An immersive digital guestbook that comes alive during dinner.
+              {t('displayPage.features.title')}
             </h2>
             <p className="text-xs md:text-sm text-[#777777] mt-3 leading-relaxed">
-              Traditional guestbooks are often forgotten on a table by the entrance. EventFrame turns well-wishes into a shared visual focal point for the entire room.
+              {t('displayPage.features.subtitle')}
             </p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {displayFeatures.map((feat, idx) => (
-              <div 
-                key={idx} 
+              <div
+                key={idx}
                 className="p-6 bg-[#FAF9F7] border border-[#E8E8E5] rounded-lg shadow-subtle flex flex-col justify-between"
               >
                 <div className="space-y-3">
@@ -208,25 +209,27 @@ export default function WeddingReceptionDisplay() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-12">
             <div>
-              <span className="text-xs font-medium text-[#8B806F] tracking-wide uppercase">Dynamic Layout Styles</span>
+              <span className="text-xs font-medium text-[#8B806F] tracking-wide uppercase">
+                {t('displayPage.layouts.eyebrow')}
+              </span>
               <h2 className="font-serif text-3xl md:text-4xl font-normal text-[#252525] mt-1">
-                Calibrated animations that never distract from speeches.
+                {t('displayPage.layouts.title')}
               </h2>
             </div>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate('/templates')}
+              onClick={() => navigate(getLocalizedPath('/templates'))}
               rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
             >
-              Preview Themes
+              {t('displayPage.layouts.previewBtn')}
             </Button>
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {animationLayouts.map((layout, idx) => (
-              <div 
-                key={idx} 
+              <div
+                key={idx}
                 className="bg-white border border-[#E8E8E5] rounded-lg p-6 shadow-subtle flex flex-col justify-between space-y-4"
               >
                 <div>
@@ -234,8 +237,8 @@ export default function WeddingReceptionDisplay() {
                   <p className="text-xs text-[#777777] leading-relaxed mt-2">{layout.desc}</p>
                 </div>
                 <div className="pt-3 border-t border-[#EFEFEA] flex justify-between items-center text-[11px] text-[#8B806F]">
-                  <span>Supports Photos + Notes</span>
-                  <span className="font-mono capitalize">Auto-loop</span>
+                  <span>{t('displayPage.layouts.supports')}</span>
+                  <span className="font-mono">{t('displayPage.layouts.autoLoop')}</span>
                 </div>
               </div>
             ))}
@@ -247,30 +250,23 @@ export default function WeddingReceptionDisplay() {
       <section className="py-16 border-b border-[#E8E8E5] bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="mb-8">
-            <h3 className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">Related Solutions</h3>
-            <p className="text-base font-serif text-[#252525] mt-1">Integrated wedding software tools</p>
+            <h3 className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">
+              {t('common.relatedSolutions')}
+            </h3>
+            <p className="text-base font-serif text-[#252525] mt-1">{t('displayPage.relatedSubtitle')}</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            <a href="/templates" className="p-4 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded transition-colors text-xs space-y-1">
-              <div className="font-semibold text-[#252525]">Theme Catalog</div>
-              <div className="text-[11px] text-[#777777]">Display aesthetics & layouts</div>
-            </a>
-            <a href="/digital-wedding-invitations" className="p-4 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded transition-colors text-xs space-y-1">
-              <div className="font-semibold text-[#252525]">Digital Invitations</div>
-              <div className="text-[11px] text-[#777777]">Canvas stationery editor</div>
-            </a>
-            <a href="/wedding-guest-management" className="p-4 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded transition-colors text-xs space-y-1">
-              <div className="font-semibold text-[#252525]">Guest Management</div>
-              <div className="text-[11px] text-[#777777]">Attendee records & moderation</div>
-            </a>
-            <a href="/wedding-rsvp-management" className="p-4 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded transition-colors text-xs space-y-1">
-              <div className="font-semibold text-[#252525]">RSVP Management</div>
-              <div className="text-[11px] text-[#777777]">Conditional questionnaires</div>
-            </a>
-            <a href="/wedding-planner-software" className="p-4 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded transition-colors text-xs space-y-1">
-              <div className="font-semibold text-[#252525]">Studio Software</div>
-              <div className="text-[11px] text-[#777777]">Multi-client workspace</div>
-            </a>
+            {relatedLinks.map((link) => (
+              <a
+                key={link.href}
+                href={getLocalizedPath(link.href)}
+                onClick={(e) => handleLinkClick(e, link.href)}
+                className="p-4 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded transition-colors text-xs space-y-1"
+              >
+                <div className="font-semibold text-[#252525]">{link.title}</div>
+                <div className="text-[11px] text-[#777777]">{link.desc}</div>
+              </a>
+            ))}
           </div>
         </div>
       </section>
@@ -279,9 +275,11 @@ export default function WeddingReceptionDisplay() {
       <section className="py-20 md:py-28 bg-[#FAF9F7]">
         <div className="max-w-4xl mx-auto px-6">
           <div className="text-center space-y-2 mb-12">
-            <span className="text-xs font-medium text-[#8B806F] tracking-wider uppercase">Frequently Asked Questions</span>
+            <span className="text-xs font-medium text-[#8B806F] tracking-wider uppercase">
+              {t('common.faqEyebrow')}
+            </span>
             <h2 className="font-serif text-3xl md:text-4xl font-normal text-[#252525]">
-              Wedding Reception Screens
+              {t('displayPage.faqTitle')}
             </h2>
           </div>
 
@@ -294,6 +292,7 @@ export default function WeddingReceptionDisplay() {
                   className="bg-white border border-[#E8E8E5] rounded-lg overflow-hidden transition-colors"
                 >
                   <button
+                    type="button"
                     onClick={() => setOpenFaq(isOpen ? null : idx)}
                     className="w-full p-5 text-left flex items-center justify-between gap-4"
                   >
@@ -311,9 +310,9 @@ export default function WeddingReceptionDisplay() {
           </div>
 
           <div className="mt-16 text-center space-y-4">
-            <h3 className="font-serif text-2xl text-[#252525]">Ready to light up your reception ballroom?</h3>
+            <h3 className="font-serif text-2xl text-[#252525]">{t('displayPage.bottomCta.title')}</h3>
             <p className="text-xs sm:text-sm text-[#777777] max-w-md mx-auto">
-              Configure your live display theme in minutes and test on any monitor before the wedding day.
+              {t('displayPage.bottomCta.subtitle')}
             </p>
             <div className="flex justify-center gap-3 pt-2">
               <Button
@@ -322,14 +321,14 @@ export default function WeddingReceptionDisplay() {
                 onClick={() => navigate('/login')}
                 rightIcon={<ArrowRight className="w-4 h-4" />}
               >
-                Launch Display Setup
+                {t('displayPage.bottomCta.cta')}
               </Button>
               <Button
                 variant="outline"
                 size="md"
-                onClick={() => navigate('/templates')}
+                onClick={() => navigate(getLocalizedPath('/templates'))}
               >
-                Browse Theme Gallery
+                {t('common.browseThemeGallery')}
               </Button>
             </div>
           </div>

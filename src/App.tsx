@@ -27,6 +27,7 @@ import { getUserWorkspaces, getCurrentSubdomain } from './lib/workspace';
 import Home from './pages/Home';
 import Subscription from './pages/Subscription';
 import SEO from './components/SEO';
+import { MarketingTranslationProvider } from './lib/i18n/MarketingTranslationContext';
 import WeddingPlannerSoftware from './pages/marketing/WeddingPlannerSoftware';
 import WhiteLabelWeddingSoftware from './pages/marketing/WhiteLabelWeddingSoftware';
 import DigitalWeddingInvitations from './pages/marketing/DigitalWeddingInvitations';
@@ -158,62 +159,64 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <SEO />
-      <UserProvider>
-        <WorkspaceProvider>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/verify" element={<Verify />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
-            <Route path="/templates/manage" element={<AuthGuard><StaffTemplates /></AuthGuard>} />
-            <Route path="/templates" element={<TemplateSelector />} />
-            <Route path="/pricing" element={<Home />} />
-            <Route path="/wedding-planner-software" element={<WeddingPlannerSoftware />} />
-            <Route path="/white-label-wedding-software" element={<WhiteLabelWeddingSoftware />} />
-            <Route path="/digital-wedding-invitations" element={<DigitalWeddingInvitations />} />
-            <Route path="/wedding-rsvp-management" element={<WeddingRsvpManagement />} />
-            <Route path="/wedding-guest-management" element={<WeddingGuestManagement />} />
-            <Route path="/wedding-reception-display" element={<WeddingReceptionDisplay />} />
-            <Route path="/workspace" element={<AuthGuard><Workspace /></AuthGuard>} />
-            <Route path="/editor/:projectId" element={<AuthGuard><InvitationEditor /></AuthGuard>} />
-            <Route path="/website-studio/:projectId" element={<AuthGuard><WebsiteStudio /></AuthGuard>} />
-            <Route path="/website-studio" element={<AuthGuard><WebsiteStudio /></AuthGuard>} />
-            
-            {/* Couple Login & Dashboard */}
-            <Route path="/couple/login" element={<CoupleLogin />} />
-            <Route path="/couple/:eventId" element={<CoupleDashboard />} />
-            <Route path="/:slug/dashboard" element={<CoupleDashboard />} />
-            
-            {/* New Event Slug based routes */}
-            <Route path="/:slug/display" element={<Display />} />
-            <Route path="/:slug/guest" element={<Guest />} />
-            <Route path="/:slug/rsvp" element={<RSVPPage />} />
-            <Route path="/:slug/invitation" element={<InvitationViewer />} />
-            <Route path="/:slug/website" element={<WeddingWebsite />} />
-            <Route path="/:slug" element={<Display />} />
+      <MarketingTranslationProvider>
+        <SEO />
+        <UserProvider>
+          <WorkspaceProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/verify" element={<Verify />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
+              <Route path="/templates/manage" element={<AuthGuard><StaffTemplates /></AuthGuard>} />
+              <Route path="/templates" element={<TemplateSelector />} />
+              <Route path="/pricing" element={<Home />} />
+              <Route path="/wedding-planner-software" element={<WeddingPlannerSoftware />} />
+              <Route path="/white-label-wedding-software" element={<WhiteLabelWeddingSoftware />} />
+              <Route path="/digital-wedding-invitations" element={<DigitalWeddingInvitations />} />
+              <Route path="/wedding-rsvp-management" element={<WeddingRsvpManagement />} />
+              <Route path="/wedding-guest-management" element={<WeddingGuestManagement />} />
+              <Route path="/wedding-reception-display" element={<WeddingReceptionDisplay />} />
+              <Route path="/workspace" element={<AuthGuard><Workspace /></AuthGuard>} />
+              <Route path="/editor/:projectId" element={<AuthGuard><InvitationEditor /></AuthGuard>} />
+              <Route path="/website-studio/:projectId" element={<AuthGuard><WebsiteStudio /></AuthGuard>} />
+              <Route path="/website-studio" element={<AuthGuard><WebsiteStudio /></AuthGuard>} />
+              
+              {/* Couple Login & Dashboard */}
+              <Route path="/couple/login" element={<CoupleLogin />} />
+              <Route path="/couple/:eventId" element={<CoupleDashboard />} />
+              <Route path="/:slug/dashboard" element={<CoupleDashboard />} />
+              
+              {/* New Event Slug based routes */}
+              <Route path="/:slug/display" element={<Display />} />
+              <Route path="/:slug/guest" element={<Guest />} />
+              <Route path="/:slug/rsvp" element={<RSVPPage />} />
+              <Route path="/:slug/invitation" element={<InvitationViewer />} />
+              <Route path="/:slug/website" element={<WeddingWebsite />} />
+              <Route path="/:slug" element={<Display />} />
 
-            {/* Legacy/Compat routes */}
-            <Route path="/guest/:projectId" element={<Guest />} />
-            <Route path="/rsvp/:projectId" element={<RSVPPage />} />
-            <Route path="/display/:projectId" element={<Display />} />
-            <Route path="/e/:slug" element={<Display />} />
-            <Route path="/g/:slug" element={<Guest />} />
-            <Route path="/r/:slug" element={<RSVPPage />} />
-            <Route path="/event/:projectId/display" element={<Display />} />
-            <Route path="/event/:projectId/guest" element={<Guest />} />
-            <Route path="/event/:projectId/rsvp" element={<RSVPPage />} />
-            <Route path="/agency/:agencySlug" element={<TemplateSelector />} />
-            <Route path="/guest" element={<Guest />} />
-            <Route path="/rsvp" element={<RSVPPage />} />
-            <Route path="/display" element={<Display />} />
-            <Route path="/subscription" element={<Subscription />} />
-            
-            <Route path="/" element={<Home />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </WorkspaceProvider>
-      </UserProvider>
+              {/* Legacy/Compat routes */}
+              <Route path="/guest/:projectId" element={<Guest />} />
+              <Route path="/rsvp/:projectId" element={<RSVPPage />} />
+              <Route path="/display/:projectId" element={<Display />} />
+              <Route path="/e/:slug" element={<Display />} />
+              <Route path="/g/:slug" element={<Guest />} />
+              <Route path="/r/:slug" element={<RSVPPage />} />
+              <Route path="/event/:projectId/display" element={<Display />} />
+              <Route path="/event/:projectId/guest" element={<Guest />} />
+              <Route path="/event/:projectId/rsvp" element={<RSVPPage />} />
+              <Route path="/agency/:agencySlug" element={<TemplateSelector />} />
+              <Route path="/guest" element={<Guest />} />
+              <Route path="/rsvp" element={<RSVPPage />} />
+              <Route path="/display" element={<Display />} />
+              <Route path="/subscription" element={<Subscription />} />
+              
+              <Route path="/" element={<Home />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </WorkspaceProvider>
+        </UserProvider>
+      </MarketingTranslationProvider>
     </BrowserRouter>
   );
 }

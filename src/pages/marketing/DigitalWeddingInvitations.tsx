@@ -1,76 +1,75 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  ArrowRight, 
-  Check, 
-  Smartphone, 
-  Monitor, 
-  Layers, 
-  Type, 
-  Sparkles, 
-  ChevronDown, 
-  Sliders, 
+import {
+  ArrowRight,
+  Check,
+  Smartphone,
+  Layers,
+  Type,
+  ChevronDown,
+  Sliders,
   ExternalLink,
-  MapPin
 } from 'lucide-react';
 import MarketingLayout from '../../layouts/MarketingLayout';
 import Button from '../../design-system/components/Button';
+import { useMarketingTranslation } from '../../lib/i18n/MarketingTranslationContext';
 import invitationCraftImage from '../../assets/images/invitation_craft_showcase_1793501242453.jpg';
-import heroWeddingImage from '../../assets/images/hero_wedding_editorial_1793501242401.jpg';
 
 export default function DigitalWeddingInvitations() {
   const navigate = useNavigate();
+  const { t, getLocalizedPath } = useMarketingTranslation();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+
+  const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    e.preventDefault();
+    navigate(getLocalizedPath(href));
+  };
 
   const invitationFeatures = [
     {
-      title: 'Precision Stationery Canvas',
-      description: 'Fine-tune typography, monograms, schedule timelines, and photos on a coordinate-based drag-and-drop canvas designed for high-end wedding aesthetics.',
+      title: t('invitations.capabilities.f1Title'),
+      description: t('invitations.capabilities.f1Desc'),
       icon: <Layers className="w-5 h-5 text-[#8B806F]" />,
     },
     {
-      title: 'Mobile-Optimized Guest Viewports',
-      description: 'Preview exactly how guests will experience your invitation on iPhone and Android screens, as well as widescreen desktop monitors, before publishing.',
+      title: t('invitations.capabilities.f2Title'),
+      description: t('invitations.capabilities.f2Desc'),
       icon: <Smartphone className="w-5 h-5 text-[#8B806F]" />,
     },
     {
-      title: 'Integrated RSVP Action',
-      description: 'Guests can read ceremony details, view venue directions, and immediately submit their RSVP questionnaire in one continuous, friction-free flow.',
+      title: t('invitations.capabilities.f3Title'),
+      description: t('invitations.capabilities.f3Desc'),
       icon: <Sliders className="w-5 h-5 text-[#8B806F]" />,
     },
     {
-      title: 'Editorial Typography Presets',
-      description: 'Pair Cormorant Garamond serif headings with crisp Inter body copy and clean JetBrains Mono details for an archival stationery feel without paper waste.',
+      title: t('invitations.capabilities.f4Title'),
+      description: t('invitations.capabilities.f4Desc'),
       icon: <Type className="w-5 h-5 text-[#8B806F]" />,
     },
   ];
 
   const stationeryAesthetics = [
-    { name: 'Minimal Luxury', desc: 'Metallic gold accents, high-contrast serif headlines, and marble-inspired serenity.', variant: 'Masonry' },
-    { name: 'Natural Garden', desc: 'Eucalyptus greens, earth tones, and clean organic textures for vineyard celebrations.', variant: 'Hanging' },
-    { name: 'Romantic Love', desc: 'Blush pink hues, dreamy serif titles, and soft floral undertones.', variant: 'Masonry' },
-    { name: 'Postal Archive', desc: 'Vintage postal stamps, wax seal aesthetics, and archival letterpress layouts.', variant: 'Grid' },
-    { name: 'Vintage Noir', desc: 'Cinematic film nostalgia, sepia palettes, and retro typography.', variant: 'Masonry' },
-    { name: 'Starry Dream', desc: 'Midnight blues, celestial gold sparkles, and evening banquet atmosphere.', variant: 'Floating' },
+    { name: t('invitations.themes.a1Name'), desc: t('invitations.themes.a1Desc'), variant: t('templates.variants.masonry') },
+    { name: t('invitations.themes.a2Name'), desc: t('invitations.themes.a2Desc'), variant: t('templates.variants.hanging') },
+    { name: t('invitations.themes.a3Name'), desc: t('invitations.themes.a3Desc'), variant: t('templates.variants.masonry') },
+    { name: t('invitations.themes.a4Name'), desc: t('invitations.themes.a4Desc'), variant: t('templates.variants.grid') },
+    { name: t('invitations.themes.a5Name'), desc: t('invitations.themes.a5Desc'), variant: t('templates.variants.masonry') },
+    { name: t('invitations.themes.a6Name'), desc: t('invitations.themes.a6Desc'), variant: t('templates.variants.floating') },
   ];
 
   const faqs = [
-    {
-      q: 'How do guests receive and open their digital invitation?',
-      a: 'Guests receive a clean web link (e.g., yourstudio.eventframe.io/wedding-name/invitation or eventframe.io/wedding-name/invitation). They can tap it on any mobile device without logging in or downloading an app.'
-    },
-    {
-      q: 'Can we change the invitation design after sending it out?',
-      a: 'Yes. Since EventFrame invitations are digital, you can update schedule details, shuttle departure times, or weather guidance at any moment. Changes reflect instantly for all guests.'
-    },
-    {
-      q: 'Does the invitation link directly to the RSVP questionnaire?',
-      a: 'Yes. The digital invitation includes an integrated RSVP button that transitions smoothly into your custom questions (dietary preferences, attendance headcount, transport options).'
-    },
-    {
-      q: 'Can we password-protect our digital wedding invitation?',
-      a: 'Yes. EventFrame allows you to set an optional access PIN so only invited friends and family can view ceremony details.'
-    }
+    { q: t('invitations.faqs.q1'), a: t('invitations.faqs.a1') },
+    { q: t('invitations.faqs.q2'), a: t('invitations.faqs.a2') },
+    { q: t('invitations.faqs.q3'), a: t('invitations.faqs.a3') },
+    { q: t('invitations.faqs.q4'), a: t('invitations.faqs.a4') },
+  ];
+
+  const relatedLinks = [
+    { href: '/wedding-rsvp-management', title: t('common.cards.rsvp.title'), desc: t('common.cards.rsvp.desc') },
+    { href: '/wedding-guest-management', title: t('common.cards.guest.title'), desc: t('common.cards.guest.desc') },
+    { href: '/wedding-reception-display', title: t('common.cards.display.title'), desc: t('common.cards.display.desc') },
+    { href: '/wedding-planner-software', title: t('common.cards.studio.title'), desc: t('common.cards.studio.desc') },
+    { href: '/white-label-wedding-software', title: t('common.cards.whiteLabel.title'), desc: t('common.cards.whiteLabel.desc') },
   ];
 
   return (
@@ -81,49 +80,49 @@ export default function DigitalWeddingInvitations() {
           <div className="grid lg:grid-cols-12 gap-12 items-center">
             <div className="lg:col-span-7 space-y-6">
               <div className="inline-flex items-center gap-2 text-xs font-medium text-[#736959] bg-[#EFECE6] px-2.5 py-1 rounded">
-                <span>Digital Wedding Stationery</span>
+                <span>{t('invitations.hero.badgeLeft')}</span>
                 <span className="text-[#8B806F]">·</span>
-                <span>Responsive Canvas & Real-Time RSVP</span>
+                <span>{t('invitations.hero.badgeRight')}</span>
               </div>
 
               <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-normal tracking-tight text-[#252525] leading-[1.12]">
-                Beautiful Digital Wedding Invitations, Made Personal
+                {t('invitations.hero.title')}
               </h1>
 
               <p className="text-sm md:text-base text-[#777777] max-w-xl leading-relaxed">
-                Design bespoke online wedding invitations with editorial typography, interactive venue maps, and integrated RSVP collection. The modern alternative to generic paper suites.
+                {t('invitations.hero.subtitle')}
               </p>
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <Button
                   variant="primary"
                   size="lg"
-                  onClick={() => navigate('/templates')}
+                  onClick={() => navigate(getLocalizedPath('/templates'))}
                   rightIcon={<ArrowRight className="w-4 h-4" />}
                 >
-                  Explore Invitation Templates
+                  {t('invitations.hero.primaryCta')}
                 </Button>
                 <Button
                   variant="outline"
                   size="lg"
                   onClick={() => navigate('/login')}
                 >
-                  Create Your Invitation
+                  {t('invitations.hero.secondaryCta')}
                 </Button>
               </div>
 
               <div className="pt-6 flex flex-wrap items-center gap-6 text-xs text-[#777777]">
                 <div className="flex items-center gap-1.5">
                   <Check className="w-4 h-4 text-[#8B806F]" />
-                  <span>Instant mobile loading</span>
+                  <span>{t('invitations.hero.bullet1')}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Check className="w-4 h-4 text-[#8B806F]" />
-                  <span>Integrated RSVP buttons</span>
+                  <span>{t('invitations.hero.bullet2')}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Check className="w-4 h-4 text-[#8B806F]" />
-                  <span>Interactive venue maps</span>
+                  <span>{t('invitations.hero.bullet3')}</span>
                 </div>
               </div>
             </div>
@@ -134,7 +133,7 @@ export default function DigitalWeddingInvitations() {
                 <div className="aspect-[4/3] rounded overflow-hidden relative border border-[#E8E8E5] bg-[#FAF9F7]">
                   <img
                     src={invitationCraftImage}
-                    alt="Luxury digital wedding stationery showcase with letterpress typography"
+                    alt={t('invitations.hero.imageAlt')}
                     className="w-full h-full object-cover"
                     loading="eager"
                     fetchPriority="high"
@@ -144,16 +143,16 @@ export default function DigitalWeddingInvitations() {
                     referrerPolicy="no-referrer"
                   />
                   <div className="absolute top-3 right-3 bg-white/95 px-2.5 py-1 rounded text-[11px] font-mono text-[#8B806F] border border-[#E8E8E5] shadow-xs">
-                    CANVAS STUDIO
+                    {t('invitations.hero.badgeTag')}
                   </div>
                 </div>
                 <div className="p-3 bg-[#FAF9F7] rounded text-xs flex items-center justify-between">
                   <div>
-                    <span className="font-semibold text-[#252525]">Celia & Elias</span>
-                    <span className="text-[11px] text-[#777777] block">Sonoma Valley · Saturday, October 18</span>
+                    <span className="font-semibold text-[#252525]">{t('invitations.hero.cardCouple')}</span>
+                    <span className="text-[11px] text-[#777777] block">{t('invitations.hero.cardMeta')}</span>
                   </div>
                   <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    RSVP READY
+                    {t('invitations.hero.rsvpReady')}
                   </span>
                 </div>
               </div>
@@ -166,19 +165,21 @@ export default function DigitalWeddingInvitations() {
       <section className="py-20 md:py-28 border-b border-[#E8E8E5] bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="max-w-2xl mb-16">
-            <span className="text-xs font-medium text-[#8B806F] tracking-wide uppercase">Crafted With Intent</span>
+            <span className="text-xs font-medium text-[#8B806F] tracking-wide uppercase">
+              {t('invitations.capabilities.eyebrow')}
+            </span>
             <h2 className="font-serif text-3xl md:text-4xl font-normal tracking-tight text-[#252525] mt-2 leading-tight">
-              A dedicated digital stationery studio for modern ceremonies.
+              {t('invitations.capabilities.title')}
             </h2>
             <p className="text-xs md:text-sm text-[#777777] mt-3 leading-relaxed">
-              Every invitation is rendered in clean web technology that loads instantly across smartphones and tablets, while maintaining exquisite typographical hierarchy.
+              {t('invitations.capabilities.subtitle')}
             </p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {invitationFeatures.map((feat, idx) => (
-              <div 
-                key={idx} 
+              <div
+                key={idx}
                 className="p-6 bg-[#FAF9F7] border border-[#E8E8E5] rounded-lg shadow-subtle flex flex-col justify-between"
               >
                 <div className="space-y-3">
@@ -199,25 +200,27 @@ export default function DigitalWeddingInvitations() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-12">
             <div>
-              <span className="text-xs font-medium text-[#8B806F] tracking-wide uppercase">Curated Aesthetic Themes</span>
+              <span className="text-xs font-medium text-[#8B806F] tracking-wide uppercase">
+                {t('invitations.themes.eyebrow')}
+              </span>
               <h2 className="font-serif text-3xl md:text-4xl font-normal text-[#252525] mt-1">
-                Aesthetics that match your wedding floral and stationery design.
+                {t('invitations.themes.title')}
               </h2>
             </div>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate('/templates')}
+              onClick={() => navigate(getLocalizedPath('/templates'))}
               rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
             >
-              Browse Full Catalog
+              {t('invitations.themes.browseBtn')}
             </Button>
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {stationeryAesthetics.map((style, idx) => (
-              <div 
-                key={idx} 
+              <div
+                key={idx}
                 className="bg-white border border-[#E8E8E5] rounded-lg p-6 shadow-subtle flex flex-col justify-between space-y-4 hover:border-[#252525] transition-colors"
               >
                 <div>
@@ -230,9 +233,13 @@ export default function DigitalWeddingInvitations() {
                   <p className="text-xs text-[#777777] leading-relaxed">{style.desc}</p>
                 </div>
                 <div className="pt-3 border-t border-[#EFEFEA] flex items-center justify-between text-xs text-[#777777]">
-                  <span className="text-[11px]">Includes Mobile RSVP</span>
-                  <a href="/templates" className="text-[#252525] font-medium hover:underline flex items-center gap-1 text-[11px]">
-                    Preview Suite <ExternalLink className="w-3 h-3" />
+                  <span className="text-[11px]">{t('invitations.themes.includesRsvp')}</span>
+                  <a
+                    href={getLocalizedPath('/templates')}
+                    onClick={(e) => handleLinkClick(e, '/templates')}
+                    className="text-[#252525] font-medium hover:underline flex items-center gap-1 text-[11px]"
+                  >
+                    {t('invitations.themes.previewSuite')} <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
               </div>
@@ -245,30 +252,23 @@ export default function DigitalWeddingInvitations() {
       <section className="py-16 border-b border-[#E8E8E5] bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="mb-8">
-            <h3 className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">Related Solutions</h3>
-            <p className="text-base font-serif text-[#252525] mt-1">Complementary features for your wedding celebration</p>
+            <h3 className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">
+              {t('common.relatedSolutions')}
+            </h3>
+            <p className="text-base font-serif text-[#252525] mt-1">{t('invitations.relatedSubtitle')}</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            <a href="/wedding-rsvp-management" className="p-4 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded transition-colors text-xs space-y-1">
-              <div className="font-semibold text-[#252525]">RSVP Management</div>
-              <div className="text-[11px] text-[#777777]">Conditional questionnaires</div>
-            </a>
-            <a href="/wedding-guest-management" className="p-4 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded transition-colors text-xs space-y-1">
-              <div className="font-semibold text-[#252525]">Guest Management</div>
-              <div className="text-[11px] text-[#777777]">Attendee records & moderation</div>
-            </a>
-            <a href="/wedding-reception-display" className="p-4 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded transition-colors text-xs space-y-1">
-              <div className="font-semibold text-[#252525]">Reception Displays</div>
-              <div className="text-[11px] text-[#777777]">Live ballroom screen stream</div>
-            </a>
-            <a href="/wedding-planner-software" className="p-4 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded transition-colors text-xs space-y-1">
-              <div className="font-semibold text-[#252525]">Studio Software</div>
-              <div className="text-[11px] text-[#777777]">Multi-client workspace</div>
-            </a>
-            <a href="/white-label-wedding-software" className="p-4 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded transition-colors text-xs space-y-1">
-              <div className="font-semibold text-[#252525]">White-Label Software</div>
-              <div className="text-[11px] text-[#777777]">Studio branding & subdomains</div>
-            </a>
+            {relatedLinks.map((link) => (
+              <a
+                key={link.href}
+                href={getLocalizedPath(link.href)}
+                onClick={(e) => handleLinkClick(e, link.href)}
+                className="p-4 bg-[#FAF9F7] hover:bg-[#F2EFE9] border border-[#E8E8E5] rounded transition-colors text-xs space-y-1"
+              >
+                <div className="font-semibold text-[#252525]">{link.title}</div>
+                <div className="text-[11px] text-[#777777]">{link.desc}</div>
+              </a>
+            ))}
           </div>
         </div>
       </section>
@@ -277,9 +277,11 @@ export default function DigitalWeddingInvitations() {
       <section className="py-20 md:py-28 bg-[#FAF9F7]">
         <div className="max-w-4xl mx-auto px-6">
           <div className="text-center space-y-2 mb-12">
-            <span className="text-xs font-medium text-[#8B806F] tracking-wider uppercase">Frequently Asked Questions</span>
+            <span className="text-xs font-medium text-[#8B806F] tracking-wider uppercase">
+              {t('common.faqEyebrow')}
+            </span>
             <h2 className="font-serif text-3xl md:text-4xl font-normal text-[#252525]">
-              Digital Wedding Invitations
+              {t('invitations.faqTitle')}
             </h2>
           </div>
 
@@ -292,6 +294,7 @@ export default function DigitalWeddingInvitations() {
                   className="bg-white border border-[#E8E8E5] rounded-lg overflow-hidden transition-colors"
                 >
                   <button
+                    type="button"
                     onClick={() => setOpenFaq(isOpen ? null : idx)}
                     className="w-full p-5 text-left flex items-center justify-between gap-4"
                   >
@@ -309,25 +312,25 @@ export default function DigitalWeddingInvitations() {
           </div>
 
           <div className="mt-16 text-center space-y-4">
-            <h3 className="font-serif text-2xl text-[#252525]">Ready to create your wedding invitation?</h3>
+            <h3 className="font-serif text-2xl text-[#252525]">{t('invitations.bottomCta.title')}</h3>
             <p className="text-xs sm:text-sm text-[#777777] max-w-md mx-auto">
-              Select an aesthetic template and customize your wedding suite with coordinate snapping and live preview.
+              {t('invitations.bottomCta.subtitle')}
             </p>
             <div className="flex justify-center gap-3 pt-2">
               <Button
                 variant="primary"
                 size="md"
-                onClick={() => navigate('/templates')}
+                onClick={() => navigate(getLocalizedPath('/templates'))}
                 rightIcon={<ArrowRight className="w-4 h-4" />}
               >
-                Browse Invitation Templates
+                {t('invitations.bottomCta.primaryCta')}
               </Button>
               <Button
                 variant="outline"
                 size="md"
                 onClick={() => navigate('/login')}
               >
-                Start Creating Free
+                {t('invitations.bottomCta.secondaryCta')}
               </Button>
             </div>
           </div>

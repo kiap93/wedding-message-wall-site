@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { SEO_CONFIG } from '../src/seo/config.ts';
 import { PUBLIC_SEO_ROUTES } from '../src/seo/routes.ts';
-import { buildCanonicalUrl } from '../src/seo/canonical.ts';
+import { buildCanonicalUrl, buildMarketingHreflangLinks } from '../src/seo/canonical.ts';
 import { getStructuredDataForType } from '../src/seo/structuredData.ts';
 import { DEFAULT_TEMPLATES } from '../src/types.ts';
 
@@ -512,7 +512,14 @@ async function prerender() {
   for (const route of routesToPrerender) {
     const meta = PUBLIC_SEO_ROUTES[route] || PUBLIC_SEO_ROUTES['/'];
     const prerenderData = PRERENDER_CONTENT[route] || PRERENDER_CONTENT['/'];
-    const canonicalUrl = buildCanonicalUrl(meta.canonicalPath || route);
+    const canonicalPath = meta.canonicalPath || route;
+    const canonicalUrl = buildCanonicalUrl(canonicalPath);
+    const hreflangTags = buildMarketingHreflangLinks(canonicalPath)
+      .map(
+        ({ hreflang, href }) =>
+          `<link rel="alternate" hreflang="${hreflang}" href="${href}" data-ef-marketing-hreflang="true" />`
+      )
+      .join('\n    ');
 
     const schemas = getStructuredDataForType(meta.structuredDataType);
     const jsonLdString = JSON.stringify(schemas);
@@ -530,11 +537,13 @@ async function prerender() {
     const metaTags = `
     <meta name="description" content="${meta.description}" />
     <link rel="canonical" href="${canonicalUrl}" />
+    ${hreflangTags}
     <meta name="robots" content="${meta.noindex ? 'noindex, nofollow' : 'index, follow'}" />
     <meta property="og:title" content="${meta.title}" />
     <meta property="og:description" content="${meta.description}" />
     <meta property="og:url" content="${canonicalUrl}" />
     <meta property="og:type" content="${meta.ogType || 'website'}" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:site_name" content="${SEO_CONFIG.siteName}" />
     <meta property="og:image" content="${meta.ogImage || SEO_CONFIG.defaultOgImage}" />
     <meta property="og:image:alt" content="${meta.ogImageAlt || SEO_CONFIG.defaultOgImageAlt}" />
@@ -550,6 +559,7 @@ async function prerender() {
     html = html.replace(/<meta name="description"[\s\S]*?>/i, '');
     html = html.replace(/<meta property="og:[\s\S]*?>/gi, '');
     html = html.replace(/<link rel="canonical"[\s\S]*?>/i, '');
+    html = html.replace(/<link rel="alternate"[\s\S]*?>/gi, '');
 
     html = html.replace('</head>', `${metaTags}\n</head>`);
 

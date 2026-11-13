@@ -1,0 +1,708 @@
+{
+  "nav": {
+    "solutions": "Solutions",
+    "themesSuites": "Themes & Suites",
+    "pricing": "Pricing",
+    "signIn": "Sign In",
+    "getStarted": "Get Started",
+    "languageLabel": "Language",
+    "selectLanguage": "Select Language",
+    "menu": "Menu",
+    "solutionsMenu": {
+      "planner": {
+        "title": "Wedding Planner Software",
+        "desc": "Studio management & client workflows"
+      },
+      "whiteLabel": {
+        "title": "White-Label Software",
+        "desc": "Custom agency subdomains & branding"
+      },
+      "invitations": {
+        "title": "Digital Wedding Invitations",
+        "desc": "Canvas stationery studio & RSVP links"
+      },
+      "rsvp": {
+        "title": "Wedding RSVP Management",
+        "desc": "Conditional questionnaires & CSV export"
+      },
+      "guest": {
+        "title": "Wedding Guest Management",
+        "desc": "Attendance tracking & live moderation"
+      },
+      "display": {
+        "title": "Wedding Reception Display",
+        "desc": "Ballroom projector memory wall"
+      }
+    }
+  },
+  "footer": {
+    "description": "The integrated wedding platform for modern studios, planners and couples. Unifying digital stationery, custom RSVP logic, guest moderation, and live reception screens.",
+    "tagline": "White-label infrastructure for luxury ceremonies.",
+    "columns": {
+      "solutions": "Solutions",
+      "themes": "Themes & Suites",
+      "portals": "Portals & Plans"
+    },
+    "links": {
+      "plannerSoftware": "Planner Software",
+      "whiteLabelSoftware": "White-Label Software",
+      "digitalInvitations": "Digital Invitations",
+      "rsvpManagement": "RSVP Management",
+      "guestManagement": "Guest Management",
+      "receptionDisplays": "Reception Displays",
+      "allDisplayThemes": "All Display Themes",
+      "minimalLuxury": "Minimal Luxury",
+      "naturalGarden": "Natural Garden",
+      "romanticLove": "Romantic Love",
+      "postalArchive": "Postal Archive",
+      "vintageNoir": "Vintage Noir",
+      "pricingPlans": "Pricing & Plans",
+      "studioSignIn": "Studio Sign In",
+      "couplePortalLogin": "Couple Portal Login",
+      "startTrial": "Start 30-Day Trial",
+      "subscriptionTerms": "Subscription Terms",
+      "agencyPortal": "Agency Portal"
+    },
+    "copyright": "© {{year}} EventFrame.io. All rights reserved.",
+    "crafted": "Crafted for luxury wedding studios"
+  },
+  "home": {
+    "hero": {
+      "badgeLeft": "EventFrame Studio Platform",
+      "badgeRight": "White-Label Wedding OS",
+      "title": "Wedding Planning Software for Modern Wedding Studios",
+      "subtitle": "Bring digital wedding invitations, guest RSVPs, guest experiences and live reception displays together in one platform.",
+      "primaryCta": "Create Agency Workspace",
+      "secondaryCta": "Browse Invitation Suites",
+      "bullet1": "White-label subdomain",
+      "bullet2": "Real-time guest moderation",
+      "bullet3": "Instant RSVP export",
+      "imageAlt": "Editorial wedding photography of bride and groom in Sonoma Valley",
+      "cardCouple": "Celia & Elias",
+      "cardMeta": "Sonoma Valley · 142 Confirmed RSVPs",
+      "cardBadge": "LIVE SUITE"
+    },
+    "ecosystem": {
+      "eyebrow": "Integrated Wedding Software",
+      "title": "A unified ecosystem for modern studios and couples.",
+      "subtitle": "Six dedicated tools engineered to work seamlessly together — from initial digital stationery to live ballroom displays.",
+      "cards": {
+        "planner": {
+          "tag": "Studio Management",
+          "title": "Wedding Planner Software",
+          "desc": "Coordinate multiple client weddings, schedule calendars, and manage guest experiences from one studio command center.",
+          "cta": "Learn about planner software →"
+        },
+        "whiteLabel": {
+          "tag": "Agency Branding",
+          "title": "White-Label Wedding Software",
+          "desc": "Operate under your studio's custom subdomain with branded digital stationery and private client PIN logins.",
+          "cta": "Explore white-label features →"
+        },
+        "invitations": {
+          "tag": "Design Studio",
+          "title": "Digital Wedding Invitations",
+          "desc": "Design bespoke online invitations with drag-and-drop coordinates, editorial typography, and integrated RSVP buttons.",
+          "cta": "Design wedding invitations →"
+        },
+        "rsvp": {
+          "tag": "Guest Responses",
+          "title": "Wedding RSVP Management",
+          "desc": "Collect attendance, meal choices, plus-one names, and dietary allergies with conditional questionnaire fields.",
+          "cta": "Manage wedding RSVPs →"
+        },
+        "guest": {
+          "tag": "Operations",
+          "title": "Wedding Guest Management",
+          "desc": "Maintain confirmed headcount records, review dietary needs, and moderate live reception messages and photo uploads.",
+          "cta": "Explore guest operations →"
+        },
+        "display": {
+          "tag": "Ballroom Experience",
+          "title": "Wedding Reception Displays",
+          "desc": "Project live guest photo walls and well-wishes on ballroom screens with table QR code scanning and 8 curated themes.",
+          "cta": "Set up reception display →"
+        }
+      }
+    },
+    "craft": {
+      "eyebrow": "ARCHITECTURE & CRAFT",
+      "title": "Designed for studios who refuse generic wedding software.",
+      "subtitle": "Every detail is calibrated to maintain the aesthetic integrity of high-end ceremonies. From typographical balance to guest moderation, EventFrame delivers quiet luxury.",
+      "imageAlt": "Luxury wedding invitation stationery showcase with letterpress typography",
+      "features": {
+        "stationeryTitle": "Digital Stationery Suite",
+        "stationeryDesc": "Precision typography and canvas customization. Deliver digital wedding invitations with custom RSVP flows matching your exact agency aesthetic.",
+        "moderationTitle": "Real-Time Guest Moderation",
+        "moderationDesc": "Stream guest wishes and photos to venue displays with instant live moderation to ensure every moment on screen is tasteful and approved.",
+        "subdomainTitle": "White-Label Subdomains",
+        "subdomainDesc": "Operate entirely under your studio name. Clients access their wedding dashboards through your customized subdomain with your logo and palette.",
+        "rsvpTitle": "Custom RSVP Logic",
+        "rsvpDesc": "Collect dietary restrictions, plus-one names, meal selections, and transport requirements with custom conditional questionnaire fields."
+      }
+    },
+    "spotlight": {
+      "eyebrow": "VENUE STREAMING",
+      "title": "An immersive visual memory wall for the reception ballroom.",
+      "subtitle": "Connect any venue display, projector, or LED screen. Guests upload photos and warm wishes from their phones, while studio operators or bridal party members review entries before they broadcast.",
+      "cta": "Configure Live Display",
+      "imageAlt": "Evening wedding reception venue display showcasing live guest memories",
+      "screenTag": "RECEPTION SCREEN 01 · CONNECTED",
+      "quote": "“Wishing Celia and Elias an eternity of laughter and shared horizons.”",
+      "author": "— The Sterling Family"
+    },
+    "pricing": {
+      "eyebrow": "PAY-PER-EVENT LICENSING",
+      "title": "One Event. One Payment. {{price}}.",
+      "subtitle": "No recurring monthly retainers, no credit bundles, and no surprise renewals. Couples and wedding agencies pay once per active celebration with 12 full months of platform access.",
+      "ribbon": "12 MONTHS ACCESS INCLUDED",
+      "cardEyebrow": "ALL-INCLUSIVE LICENSE",
+      "cardTitle": "Wedding Event License",
+      "cardDesc": "Complete digital suite for invitations, guestbook uploads, live ballroom display, and attendee RSVPs.",
+      "perEvent": "/ event",
+      "feat1": "12 Full Calendar Months Validity",
+      "feat2": "Interactive Digital Invitation Suite",
+      "feat3": "Custom RSVP & Dietary Questionnaire",
+      "feat4": "Real-Time Guest Wishes & Photo Wall",
+      "feat5": "Live Reception Display Moderation",
+      "feat6": "Bespoke Typography & Color Aesthetics",
+      "feat7": "Dedicated Couple PIN Access Portal",
+      "feat8": "CSV Records Export & Lifetime Archive",
+      "multiTitle": "TRANSPARENT MULTI-EVENT PRICING",
+      "tier1Label": "1 Event",
+      "tier1Sub": "One-time",
+      "tier2Label": "2 Events",
+      "tier2Sub": "12 mos each",
+      "tier3Label": "5 Events",
+      "tier3Sub": "12 mos each",
+      "tier4Label": "10 Events",
+      "tier4Sub": "12 mos each",
+      "freeDraftNote": "Agency account creation is 100% free. Create and design draft weddings with zero payment required.",
+      "cta": "Create Free Draft Event"
+    },
+    "faq": {
+      "eyebrow": "FREQUENTLY ASKED QUESTIONS",
+      "title": "Everything you need to know.",
+      "items": {
+        "q1": "Can agencies brand the client experience under their own domain?",
+        "a1": "Yes. EventFrame is built specifically for wedding studios and planners. Your clients see your agency name, logo, and subdomain (e.g., yourstudio.eventframe.io).",
+        "q2": "How does live guest moderation work during the reception?",
+        "a2": "Guests scan a QR code on the table to post photos and well-wishes from their mobile browser. The studio or bridal party can approve or decline messages in real-time from the dashboard before they appear on the ballroom projector.",
+        "q3": "Do guests need to install an app to RSVP or post photos?",
+        "a3": "No app download is required. Everything runs in the mobile browser with responsive, lightweight, touch-optimized interfaces.",
+        "q4": "Can couples edit their wedding pages directly?",
+        "a4": "Yes. Couples receive a secure event access PIN that gives them access to their private dashboard to view RSVPs, download guest lists, and moderate celebration messages.",
+        "q5": "How does EventFrame pay-per-event pricing work?",
+        "a5": "EventFrame operates on a pure pay-per-event model. You pay once per wedding event, which includes 12 full calendar months of access. There are no mandatory monthly subscriptions, no bulk credits, and no recurring commitments. User signup and draft creation are always free."
+      }
+    },
+    "finalCta": {
+      "title": "Elevate your wedding agency experience today.",
+      "subtitle": "Join hundreds of premier studios delivering bespoke digital stationery and seamless celebration moderation.",
+      "cta": "Start Free Agency Trial"
+    }
+  },
+  "common": {
+    "relatedSolutions": "Related Solutions",
+    "exploreSuite": "Explore all tools built into the EventFrame studio suite",
+    "faqEyebrow": "Frequently Asked Questions",
+    "viewPlansPricing": "View Plans & Pricing",
+    "browseThemeGallery": "Browse Theme Gallery",
+    "cards": {
+      "whiteLabel": { "title": "White-Label Software", "desc": "Studio branding & subdomains" },
+      "invitations": { "title": "Digital Invitations", "desc": "Canvas stationery editor" },
+      "rsvp": { "title": "RSVP Management", "desc": "Conditional questionnaires" },
+      "guest": { "title": "Guest Management", "desc": "Attendee lists & moderation" },
+      "display": { "title": "Reception Displays", "desc": "Live ballroom screen stream" },
+      "planner": { "title": "Wedding Planner Software", "desc": "Full studio management" },
+      "studio": { "title": "Studio Software", "desc": "Multi-client workspace" },
+      "themes": { "title": "Theme Catalog", "desc": "Display aesthetics & layouts" }
+    }
+  },
+  "planners": {
+    "hero": {
+      "badgeLeft": "EventFrame for Studios",
+      "badgeRight": "Complete Wedding Guest Operating System",
+      "title": "A Better Way to Manage the Wedding Experience",
+      "subtitle": "Modern wedding planners and luxury studios use EventFrame to orchestrate digital stationery, custom RSVP flows, and live reception screen experiences under one coordinated roof.",
+      "primaryCta": "Create Studio Workspace",
+      "secondaryCta": "Explore Theme Catalog",
+      "bullet1": "White-label agency subdomains",
+      "bullet2": "Live banquet moderation",
+      "bullet3": "Real-time CSV export",
+      "imageAlt": "Wedding planning software interface showcasing studio event management",
+      "cardTitle": "The Glasshouse Pavilion",
+      "cardMeta": "Studio Roster · 18 Active Client Weddings",
+      "cardBadge": "STUDIO PRO"
+    },
+    "capabilities": {
+      "eyebrow": "Integrated Studio Tools",
+      "title": "Crafted specifically for event studios who refuse generic wedding tools.",
+      "subtitle": "Every feature in EventFrame is calibrated to maintain aesthetic balance while handling the real-world operational complexities of luxury weddings.",
+      "c1Title": "Multi-Wedding Studio Workspace",
+      "c1Desc": "Manage multiple concurrent client celebrations from a single command center. View upcoming dates on an interactive calendar, monitor RSVP counts, and organize client assets.",
+      "c2Title": "Bespoke Digital Invitations",
+      "c2Desc": "Design editorial stationery with drag-and-drop coordinates, elegant serif typography, venue directions, and integrated RSVP buttons tailored to each couple.",
+      "c3Title": "Conditional RSVP Collection",
+      "c3Desc": "Eliminate manual spreadsheet entry. Collect meal choices, dietary needs, plus-ones, and lodging information with intelligent questions shown only to attending guests.",
+      "c4Title": "Live Reception Screen Moderation",
+      "c4Desc": "Provide an unforgettable interactive guestbook during the banquet. Guests stream photos and heartfelt wishes directly to venue projectors after planner approval."
+    },
+    "workflow": {
+      "eyebrow": "Unified Guest Architecture",
+      "title": "From first digital save-the-date to the midnight ballroom sendoff.",
+      "subtitle": "Wedding planners spend countless hours following up on dietary restrictions, tracking party sizes, and setting up reception activities. EventFrame connects the entire journey:",
+      "s1Title": "Publish the Digital Stationery",
+      "s1Desc": "Send custom responsive invitations with maps, schedule, dress code, and wedding story.",
+      "s2Title": "Capture RSVPs with Conditional Precision",
+      "s2Desc": "Tailor custom questions based on attendance status, party headcount, and dinner options.",
+      "s3Title": "Broadcast Live Guest Memories at Reception",
+      "s3Desc": "Project live attendee wishes and photos in ballroom display themes with real-time approval.",
+      "link1": "Explore White-Label Agency Features →",
+      "link2": "Learn About RSVP Questionnaires →",
+      "imageAlt": "Live wedding reception wall displayed on venue projector",
+      "screenTag": "LIVE MODERATION ACTIVE",
+      "quote": "“To many decades of spontaneous joy, Celia and Elias.”",
+      "author": "— The Montgomery Family · Approved by Planner"
+    },
+    "crossLinksTitle": "Explore Platform Solutions",
+    "crossLinksSubtitle": "Specialized capabilities across the EventFrame ecosystem",
+    "faqEyebrow": "Answers for Studios & Planners",
+    "faqTitle": "Frequently Asked Questions",
+    "faqs": {
+      "q1": "How does EventFrame replace disconnected wedding planning tools?",
+      "a1": "Instead of combining third-party RSVP forms, generic stationery websites, and disjointed photo-sharing apps, EventFrame unifies client invitations, custom RSVP questionnaires, attendee management, and live ballroom reception displays in one elegant studio platform.",
+      "q2": "Can our studio manage dozens of weddings in one season?",
+      "a2": "Yes. The agency dashboard gives you a calendar schedule and instant access to all active client events. You can switch between couples in seconds, duplicate event settings, and export attendee data.",
+      "q3": "Can client couples access their own wedding dashboard?",
+      "a3": "Yes. Planners can share a private couple portal link protected with an event access PIN. Couples can review RSVP attendance lists and moderate live banquet messages without accessing other agency clients.",
+      "q4": "Does EventFrame require guests to download an app?",
+      "a4": "No app download is required. Guests simply tap an invitation link or scan a table QR code in their mobile browser to RSVP and share celebratory photos."
+    },
+    "bottomCta": {
+      "title": "Ready to upgrade your studio's wedding workflow?",
+      "subtitle": "Start with a 30-day studio trial or activate a single celebration license.",
+      "cta": "Start Studio Trial"
+    }
+  },
+  "whiteLabel": {
+    "hero": {
+      "badgeLeft": "Agency White-Label Infrastructure",
+      "badgeRight": "Custom Subdomains & Client Portals",
+      "title": "Your Wedding Platform. Your Brand.",
+      "subtitle": "Elevate your wedding agency by offering bespoke digital invitations, custom RSVP tracking, and live reception screens hosted entirely under your own studio identity.",
+      "primaryCta": "Build Your Branded Workspace",
+      "secondaryCta": "View Agency Tiers",
+      "bullet1": "Custom studio subdomain",
+      "bullet2": "Private client PIN logins",
+      "bullet3": "Zero third-party branding",
+      "imageAlt": "Agency white-label wedding platform dashboard preview",
+      "statusBadge": "AGENCY ACTIVE",
+      "studioName": "Atelier Wedding Studio",
+      "clientMeta": "Client: Madeleine & Christopher · Sonoma",
+      "livePortal": "LIVE PORTAL",
+      "clientLinkLabel": "Client Access Link:"
+    },
+    "pillars": {
+      "eyebrow": "Built for Agency Scale",
+      "title": "Deliver software that matches the prestige of your event design.",
+      "subtitle": "When high-net-worth couples hire an editorial wedding studio, every detail matters — including the digital RSVP form and reception technology.",
+      "p1Title": "Dedicated Agency Subdomains",
+      "p1Desc": "Host all client portals, invitation viewer links, and RSVP pages under your custom studio subdomain (e.g., yourstudio.eventframe.io). Maintain client trust with consistent branding.",
+      "p2Title": "Agency Identity & Palette",
+      "p2Desc": "Display your studio name, monogram, and curated theme palette across client touchpoints. Clients perceive the platform as your proprietary high-tech service offering.",
+      "p3Title": "Private Couple PIN Portals",
+      "p3Desc": "Provide each couple with a streamlined client hub. Couples access their guest list and moderate banquet notes using an event access PIN without seeing other studio accounts.",
+      "p4Title": "Studio-Branded Guest Touchpoints",
+      "p4Desc": "From mobile-friendly digital invitations to live reception screens, the guest experience reflects the high-touch editorial standard your agency is hired for."
+    },
+    "coupleExp": {
+      "eyebrow": "Client Onboarding",
+      "title": "Simple, secure PIN access for your couples.",
+      "subtitle": "Rather than asking your clients to create complex passwords or manage third-party software accounts, EventFrame generates a unique event access PIN for every wedding on your roster.",
+      "li1": "Couples view live RSVP headcounts and meal requests 24/7",
+      "li2": "Couples can approve or review live banquet messages during dinner",
+      "li3": "Export attendee spreadsheets with one click for caterers and venue staff",
+      "link1": "Learn About Guest List Tools →",
+      "link2": "Explore Digital Stationery Studio →",
+      "imageAlt": "Wedding stationery craft preview showing luxury editorial branding",
+      "captionLeft": "Custom Typography & Palette",
+      "captionRight": "Cormorant Garamond + Inter"
+    },
+    "faqTitle": "Agency White-Label Details",
+    "faqs": {
+      "q1": "How does the agency subdomain setup work?",
+      "a1": "During agency workspace creation, you select your studio slug (e.g. \"atelier-events\"). Your client invitations, RSVP links, and couple dashboards immediately operate at atelier-events.eventframe.io with cookie isolation and custom branding.",
+      "q2": "Will our couples see EventFrame branding or ads?",
+      "a2": "No. On agency plans, client-facing pages (digital invitations, RSVP questionnaires, live reception display, and the couple portal) are presented cleanly with your studio identity and zero external advertisements.",
+      "q3": "Can couples accidentally alter our agency settings?",
+      "a3": "No. EventFrame enforces strict role separation. Couple portals are scoped exclusively to their individual wedding event via their unique access PIN. They cannot view your agency billing, other couples, or studio settings.",
+      "q4": "Can we customize the look and feel for each individual couple?",
+      "a4": "Yes. Each wedding event within your agency workspace can have its own Display Art Aesthetic (Natural Garden, Minimal Luxury, Romantic Love, Vintage Noir, and more) along with custom invitation canvas layouts."
+    },
+    "bottomCta": {
+      "title": "Ready to establish your agency's branded wedding platform?",
+      "subtitle": "Create your agency workspace in under 60 seconds with full access to subdomains and multi-event tools.",
+      "cta": "Launch Studio Workspace"
+    }
+  },
+  "invitations": {
+    "hero": {
+      "badgeLeft": "Digital Wedding Stationery",
+      "badgeRight": "Responsive Canvas & Real-Time RSVP",
+      "title": "Beautiful Digital Wedding Invitations, Made Personal",
+      "subtitle": "Design bespoke online wedding invitations with editorial typography, interactive venue maps, and integrated RSVP collection. The modern alternative to generic paper suites.",
+      "primaryCta": "Explore Invitation Templates",
+      "secondaryCta": "Create Your Invitation",
+      "bullet1": "Instant mobile loading",
+      "bullet2": "Integrated RSVP buttons",
+      "bullet3": "Interactive venue maps",
+      "imageAlt": "Luxury digital wedding stationery showcase with letterpress typography",
+      "badgeTag": "CANVAS STUDIO",
+      "cardCouple": "Celia & Elias",
+      "cardMeta": "Sonoma Valley · Saturday, October 18",
+      "rsvpReady": "RSVP READY"
+    },
+    "capabilities": {
+      "eyebrow": "Crafted With Intent",
+      "title": "A dedicated digital stationery studio for modern ceremonies.",
+      "subtitle": "Every invitation is rendered in clean web technology that loads instantly across smartphones and tablets, while maintaining exquisite typographical hierarchy.",
+      "f1Title": "Precision Stationery Canvas",
+      "f1Desc": "Fine-tune typography, monograms, schedule timelines, and photos on a coordinate-based drag-and-drop canvas designed for high-end wedding aesthetics.",
+      "f2Title": "Mobile-Optimized Guest Viewports",
+      "f2Desc": "Preview exactly how guests will experience your invitation on iPhone and Android screens, as well as widescreen desktop monitors, before publishing.",
+      "f3Title": "Integrated RSVP Action",
+      "f3Desc": "Guests can read ceremony details, view venue directions, and immediately submit their RSVP questionnaire in one continuous, friction-free flow.",
+      "f4Title": "Editorial Typography Presets",
+      "f4Desc": "Pair Cormorant Garamond serif headings with crisp Inter body copy and clean JetBrains Mono details for an archival stationery feel without paper waste."
+    },
+    "themes": {
+      "eyebrow": "Curated Aesthetic Themes",
+      "title": "Aesthetics that match your wedding floral and stationery design.",
+      "browseBtn": "Browse Full Catalog",
+      "includesRsvp": "Includes Mobile RSVP",
+      "previewSuite": "Preview Suite",
+      "a1Name": "Minimal Luxury",
+      "a1Desc": "Metallic gold accents, high-contrast serif headlines, and marble-inspired serenity.",
+      "a2Name": "Natural Garden",
+      "a2Desc": "Eucalyptus greens, earth tones, and clean organic textures for vineyard celebrations.",
+      "a3Name": "Romantic Love",
+      "a3Desc": "Blush pink hues, dreamy serif titles, and soft floral undertones.",
+      "a4Name": "Postal Archive",
+      "a4Desc": "Vintage postal stamps, wax seal aesthetics, and archival letterpress layouts.",
+      "a5Name": "Vintage Noir",
+      "a5Desc": "Cinematic film nostalgia, sepia palettes, and retro typography.",
+      "a6Name": "Starry Dream",
+      "a6Desc": "Midnight blues, celestial gold sparkles, and evening banquet atmosphere."
+    },
+    "relatedSubtitle": "Complementary features for your wedding celebration",
+    "faqTitle": "Digital Wedding Invitations",
+    "faqs": {
+      "q1": "How do guests receive and open their digital invitation?",
+      "a1": "Guests receive a clean web link (e.g., yourstudio.eventframe.io/wedding-name/invitation or eventframe.io/wedding-name/invitation). They can tap it on any mobile device without logging in or downloading an app.",
+      "q2": "Can we change the invitation design after sending it out?",
+      "a2": "Yes. Since EventFrame invitations are digital, you can update schedule details, shuttle departure times, or weather guidance at any moment. Changes reflect instantly for all guests.",
+      "q3": "Does the invitation link directly to the RSVP questionnaire?",
+      "a3": "Yes. The digital invitation includes an integrated RSVP button that transitions smoothly into your custom questions (dietary preferences, attendance headcount, transport options).",
+      "q4": "Can we password-protect our digital wedding invitation?",
+      "a4": "Yes. EventFrame allows you to set an optional access PIN so only invited friends and family can view ceremony details."
+    },
+    "bottomCta": {
+      "title": "Ready to create your wedding invitation?",
+      "subtitle": "Select an aesthetic template and customize your wedding suite with coordinate snapping and live preview.",
+      "primaryCta": "Browse Invitation Templates",
+      "secondaryCta": "Start Creating Free"
+    }
+  },
+  "rsvp": {
+    "hero": {
+      "badgeLeft": "Wedding RSVP Automation",
+      "badgeRight": "Conditional Questionnaires & Real-Time Sync",
+      "title": "A Simpler Way to Manage Wedding RSVPs",
+      "subtitle": "Replace messy text messages and lost paper reply cards. Collect wedding guest attendance, meal selections, plus-ones, and dietary restrictions with beautiful online questionnaires.",
+      "primaryCta": "Create RSVP Questionnaire",
+      "secondaryCta": "Explore Guest Management",
+      "bullet1": "Conditional field logic",
+      "bullet2": "Instant CSV export",
+      "bullet3": "No guest account needed",
+      "cardTitle": "Celia & Elias Wedding",
+      "cardSubtitle": "Sonoma Valley · RSVP Questionnaire",
+      "live": "LIVE",
+      "labelName": "Your Full Name",
+      "sampleName": "Sarah & David Sterling",
+      "labelAttending": "Will you be attending?",
+      "attendingBtn": "Attending (2)",
+      "decliningBtn": "Regretfully Decline",
+      "conditionalTag": "Conditional Question",
+      "mealSelectionsLabel": "Meal Selections:",
+      "mealLine1": "• Guest 1: Grilled Halibut w/ Asparagus",
+      "mealLine2": "• Guest 2: Prime Ribeye w/ Truffle Potato",
+      "totalResponses": "Total Responses: 142 Confirmed",
+      "turnout": "94% Turnout"
+    },
+    "features": {
+      "eyebrow": "Intelligent Data Collection",
+      "title": "Collect exactly what your vendors and venue coordinators need.",
+      "subtitle": "Never follow up three times about food allergies or plus-one spelling. EventFrame collects clean, structured responses from day one.",
+      "f1Title": "Conditional Questionnaires",
+      "f1Desc": "Show meal preferences, shuttle pickup locations, and lodging questions only to guests who confirm attendance. Keep regrets short and polite.",
+      "f2Title": "Custom Field Types",
+      "f2Desc": "Collect exact information with dropdown menus, checkboxes, multiple choice, number counters for party sizes, and open text areas for dietary allergies.",
+      "f3Title": "Instant CSV & Caterer Export",
+      "f3Desc": "Export clean spreadsheets with full attendee names, party counts, meal choices, and custom questionnaire answers ready for caterers and seating planners.",
+      "f4Title": "Aesthetic Visual Harmony",
+      "f4Desc": "Your RSVP questionnaire automatically adopts the event’s Display Art Aesthetic (Natural Garden, Minimal Luxury, Romantic Love) so guests enjoy a cohesive visual journey."
+    },
+    "logic": {
+      "eyebrow": "Field Editor",
+      "title": "Flexible Question Logic",
+      "subtitle": "Configure custom questions tailored to your wedding itinerary, lodging arrangements, and catering requirements.",
+      "colField": "Question / Field",
+      "colType": "Input Type",
+      "colCondition": "Display Condition",
+      "rows": {
+        "r1Field": "Attendance Status",
+        "r1Type": "Attending / Regretfully Declining",
+        "r1Cond": "All guests",
+        "r2Field": "Total Party Size",
+        "r2Type": "Number counter (1–6 guests)",
+        "r2Cond": "Shown if attending",
+        "r3Field": "Entrée Selection",
+        "r3Type": "Dropdown (Wagyu, Chilean Sea Bass, Wild Mushroom)",
+        "r3Cond": "Shown if attending",
+        "r4Field": "Dietary Restrictions & Allergies",
+        "r4Type": "Text field (Gluten-free, vegan, nut allergy)",
+        "r4Cond": "Shown if attending",
+        "r5Field": "Saturday Shuttle Service",
+        "r5Type": "Checkbox (Downtown Hotel ↔ Vineyard)",
+        "r5Cond": "Shown if attending",
+        "r6Field": "Song Request for DJ",
+        "r6Type": "Optional text field",
+        "r6Cond": "Shown if attending"
+      }
+    },
+    "relatedSubtitle": "Discover other integrated tools in EventFrame",
+    "faqTitle": "Wedding RSVP Questions",
+    "faqs": {
+      "q1": "Do guests need an account or password to submit an RSVP?",
+      "a1": "No. Guests simply open the wedding RSVP link on their smartphone or computer, type their name, and answer the questions. The process takes less than 60 seconds.",
+      "q2": "Can planners or couples add custom questions to the RSVP form?",
+      "a2": "Yes. In the event configuration editor, you can create custom fields with custom labels, field types (dropdown, radio, checkbox, text, number), and mark them as required or optional.",
+      "q3": "How are meal selections and dietary requirements tracked?",
+      "a3": "All responses are logged in real-time in your workspace dashboard. You can review submissions by guest, filter by attending status, and export the entire dataset to CSV at any time.",
+      "q4": "Can couples update an RSVP on behalf of a guest?",
+      "a4": "Yes. Studio planners and couples can manually view, update, or edit guest RSVP details directly from the dashboard if someone calls or messages with changes."
+    },
+    "bottomCta": {
+      "title": "Ready to collect RSVPs effortlessly?",
+      "subtitle": "Set up your custom wedding RSVP questionnaire in minutes and invite guests with a simple link.",
+      "cta": "Create Your RSVP Form"
+    }
+  },
+  "guestMgmt": {
+    "hero": {
+      "badgeLeft": "Unified Guest Operations",
+      "badgeRight": "Attendee Lists & Live Moderation",
+      "title": "Bring Your Wedding Guest Experience Together",
+      "subtitle": "Coordinate RSVP headcounts, dietary restrictions, and live reception memory moderation in one elegant dashboard designed for wedding planners and couples.",
+      "primaryCta": "Manage Wedding Guests",
+      "secondaryCta": "Explore Reception Displays",
+      "bullet1": "Real-time guest moderation",
+      "bullet2": "Private couple PIN access",
+      "bullet3": "Permanent memory archive",
+      "queueTitle": "Reception Moderation Queue",
+      "queueSub": "Live banquet updates",
+      "pendingBadge": "3 PENDING",
+      "msg1Author": "Marcus & Elena Vance",
+      "msg1Meta": "Table 4 · 2m ago",
+      "msg1Text": "“The vows were breathtaking! Dancing the night away with you both.”",
+      "declineBtn": "Decline",
+      "approveBtn": "Broadcast to Screen",
+      "msg2Author": "The Sterling Family",
+      "approvedBadge": "APPROVED",
+      "msg2Text": "“Wishing Celia & Elias endless happiness!”",
+      "autoApproveOff": "Auto-Approve: OFF",
+      "confirmedCount": "142 Confirmed RSVPs"
+    },
+    "tools": {
+      "eyebrow": "Guest Lifecycle Management",
+      "title": "Hospitality tools that keep everyone informed and welcomed.",
+      "subtitle": "From managing dietary restrictions with the caterer to curating which guest selfies appear on the reception projector, EventFrame puts you in control.",
+      "t1Title": "Attendee Roster & Headcount Sync",
+      "t1Desc": "Track total confirmed guests, regrets, party sizes, and meal counts in real-time. Keep a clean record of who has responded and who needs a gentle reminder.",
+      "t2Title": "Live Banquet Moderation Queue",
+      "t2Desc": "Review photos and messages submitted by guests before they appear on the ballroom projector screen. Approve warm wishes and filter out accidental uploads with one tap.",
+      "t3Title": "Dedicated Couple Access Portal",
+      "t3Desc": "Share a private couple hub protected with a secure PIN. Couples can browse their guest list, check RSVPs, and moderate memories without needing agency login credentials.",
+      "t4Title": "Permanent Memory Archive",
+      "t4Desc": "All guest congratulations, intimate reception notes, and candid photos remain safely preserved in the wedding dashboard for couples to cherish for years."
+    },
+    "relatedSubtitle": "Explore all capabilities across EventFrame",
+    "faqTitle": "Guest Management Questions",
+    "faqs": {
+      "q1": "How does live message and photo moderation work?",
+      "a1": "During the celebration, guests upload photos and notes from their phones. If auto-approve is disabled, submissions enter a live moderation queue in the dashboard where planners or couples can tap \"Approve\" or \"Reject\" before anything reaches the screen.",
+      "q2": "Can couples check guest responses from their smartphones?",
+      "a2": "Yes. The couple portal is fully responsive and touch-optimized. Couples can log in from their phones using their event access PIN to view attendee counts and approve live photos during the reception.",
+      "q3": "Can we turn on auto-approve for trusted guest messages?",
+      "a3": "Yes. In the event configuration settings, you can toggle \"Auto-Approve Messages\" on or off at any point during the event.",
+      "q4": "Can guest lists be exported for place cards and caterers?",
+      "a4": "Yes. You can export the entire guest list to CSV with names, attending status, party counts, meal preferences, and dietary requirements in seconds."
+    },
+    "bottomCta": {
+      "title": "Organize your guest experience with confidence",
+      "subtitle": "Everything needed to manage attendees, dietary restrictions, and reception memories.",
+      "cta": "Start Free Trial"
+    }
+  },
+  "displayPage": {
+    "hero": {
+      "badgeLeft": "Interactive Venue Displays",
+      "badgeRight": "Live Projector Memory Wall",
+      "title": "Make Your Wedding Reception More Interactive",
+      "subtitle": "Connect any venue display, projector, or LED screen to broadcast guest photos and warm wishes in real-time. Curated with editorial typography and planner moderation.",
+      "primaryCta": "Explore Display Themes",
+      "secondaryCta": "Configure Live Screen",
+      "bullet1": "Works with any HDMI projector",
+      "bullet2": "Instant QR code table access",
+      "bullet3": "Real-time photo moderation",
+      "imageAlt": "Live wedding reception screen display projected on ballroom wall",
+      "screenTag": "RECEPTION SCREEN 01",
+      "liveStream": "LIVE STREAM",
+      "quote": "“Wishing Celia & Elias an eternity of laughter and shared horizons.”",
+      "author": "— The Sterling Family",
+      "scanPrompt": "Guests Scan to Post: eventframe.io/g/celia-elias",
+      "scanReady": "SCAN READY"
+    },
+    "features": {
+      "eyebrow": "Venue Technology",
+      "title": "An immersive digital guestbook that comes alive during dinner.",
+      "subtitle": "Traditional guestbooks are often forgotten on a table by the entrance. EventFrame turns well-wishes into a shared visual focal point for the entire room.",
+      "f1Title": "Universal Hardware Compatibility",
+      "f1Desc": "Open the live display URL on any browser-equipped laptop or smart TV. Connect via HDMI or wireless screen mirroring to venue projectors and LED ballroom video walls.",
+      "f2Title": "Instant Table QR Code Scanning",
+      "f2Desc": "Display an on-screen QR code or print tabletop cards. Guests scan with their phone camera to instantly upload banquet photos and warm wishes without downloading an app.",
+      "f3Title": "8 Curated Display Art Aesthetics",
+      "f3Desc": "Choose from 8 distinct visual themes (Minimal Luxury, Natural Garden, Romantic Love, Postal Archive, Polaroid Wall, Starry Dream, Vintage Noir, Digital Edge) tailored to your floral decor.",
+      "f4Title": "Live Banquet Moderation Queue",
+      "f4Desc": "Maintain complete decorum. Event planners or designated bridal party members approve incoming photos and notes from their phones before they broadcast to the screen."
+    },
+    "layouts": {
+      "eyebrow": "Dynamic Layout Styles",
+      "title": "Calibrated animations that never distract from speeches.",
+      "previewBtn": "Preview Themes",
+      "supports": "Supports Photos + Notes",
+      "autoLoop": "Auto-loop",
+      "l1Name": "Masonry Stream",
+      "l1Desc": "Continuous flowing stream of cards, ideal for high-volume photo uploads and varied note lengths.",
+      "l2Name": "Hanging Garden",
+      "l2Desc": "Suspended cards with gentle organic swaying animations, ideal for botanical and outdoor venue aesthetics.",
+      "l3Name": "Floating Cosmos",
+      "l3Desc": "Ethereal floating cards against deep starry backgrounds, perfect for evening dance floors and romantic lighting.",
+      "l4Name": "Editorial Grid",
+      "l4Desc": "Architectural, clean-lined grid layout that pairs letterpress typography with instant photo polaroids."
+    },
+    "relatedSubtitle": "Integrated wedding software tools",
+    "faqTitle": "Wedding Reception Screens",
+    "faqs": {
+      "q1": "What hardware is required to run the wedding reception display?",
+      "a1": "Any standard laptop (Mac, Windows, or Chromebook) connected to a projector, large smart TV, or LED wall via HDMI or AirPlay. The display runs inside full-screen Chrome, Safari, or Edge.",
+      "q2": "How quickly do guest photos appear on screen?",
+      "a2": "Submissions sync in real-time. Once approved in the moderation dashboard, photos and notes animate onto the screen within seconds.",
+      "q3": "What happens if venue Wi-Fi is slow?",
+      "a3": "EventFrame uses lightweight vector styling and progressive image loading. Once the display URL is loaded in full-screen, incoming messages stream smoothly with low bandwidth consumption.",
+      "q4": "Can couples download the full gallery of guest photos after the wedding?",
+      "a4": "Yes. All submitted guest messages, candid reception photos, and timestamps are permanently stored in the couple portal for high-resolution download."
+    },
+    "bottomCta": {
+      "title": "Ready to light up your reception ballroom?",
+      "subtitle": "Configure your live display theme in minutes and test on any monitor before the wedding day.",
+      "cta": "Launch Display Setup"
+    }
+  },
+  "templates": {
+    "badge": "Display Art Aesthetics & Digital Stationery",
+    "title": "Curated Wedding Display Themes & Invitation Suite Catalog",
+    "subtitle": "Explore our architectural visual aesthetics and typography suites. Each theme powers the entire wedding journey — from mobile digital invitations and RSVP forms to live banquet projector screens.",
+    "linkStudio": "Customize in Digital Stationery Studio →",
+    "linkDisplay": "Learn About Live Ballroom Displays →",
+    "filterLabel": "Filter by Layout:",
+    "variants": {
+      "all": "All",
+      "masonry": "Masonry",
+      "hanging": "Hanging",
+      "floating": "Floating",
+      "grid": "Grid"
+    },
+    "showingPrefix": "Showing",
+    "showingSuffix": "themes",
+    "customBadge": "Custom",
+    "standardBadge": "Standard",
+    "layoutSuffix": "layout",
+    "previewTheme": "Preview Theme",
+    "applyToWedding": "Apply to Wedding",
+    "defaultDesc": "Editorial layout tailored for digital wedding displays and responsive guest invitations.",
+    "bannerEyebrow": "Complete Aesthetic Consistency",
+    "bannerTitle": "One visual aesthetic across all screens.",
+    "bannerDesc": "When you select a theme in EventFrame, your decision propagates across the guest RSVP page, the mobile photo upload portal, the digital invitation suite, and the ballroom projector screen.",
+    "createAccount": "Create Studio Account",
+    "items": {
+      "garden": { "name": "Natural Garden", "desc": "Hanging branches, botanical leaves, and rustic floral elegance." },
+      "minimal_luxury": { "name": "Minimal Luxury", "desc": "Marble patterns, metallic frames, and high-end elegance." },
+      "romantic": { "name": "Romantic Love", "desc": "Warm pinks, roses, and dreamy lanterns." },
+      "postal": { "name": "Postal Archive", "desc": "Envelopes, stamps, and letter-writing rituals." },
+      "polaroid": { "name": "Polaroid Wall", "desc": "Instant film frames and casual interactive memories." },
+      "starry": { "name": "Starry Dream", "desc": "Midnight blues, sparkling lights, and celestial magic." },
+      "vintage": { "name": "Vintage Noir", "desc": "Retro cameras, kraft paper, and cinematic nostalgia." },
+      "digital": { "name": "Digital Edge", "desc": "High-tech displays and real-time social streams." },
+      "cute": { "name": "Playful Fun", "desc": "Cute illustrations, stickers, and vibrant joy." },
+      "minimalist": { "name": "Pure Minimal", "desc": "Clean lines, neutral palette, and pure focus." },
+      "gallery": { "name": "Art Gallery", "desc": "Curated frames and storytelling narrative." },
+      "creative": { "name": "Creative Canvas", "desc": "Artistic doodles, mixed textures, and unique shapes." }
+    }
+  },
+  "seo": {
+    "routes": {
+      "/": {
+        "title": "Wedding Planning & Digital Stationery Platform for Studios | EventFrame",
+        "description": "The editorial software platform for modern wedding studios and planners. Bespoke digital stationery suites, real-time live guest moderation, and custom RSVP questionnaires."
+      },
+      "/templates": {
+        "title": "Wedding Display Themes & Invitation Suite Catalog | EventFrame",
+        "description": "Explore curated wedding display themes and typography suites for live venue projectors, digital guestbooks, and luxury wedding stationery."
+      },
+      "/pricing": {
+        "title": "EventFrame Pricing — Plans for Wedding Studios & Couples",
+        "description": "Simple, transparent pricing for luxury wedding studios and couples. Unlimited wedding invitations, live reception displays, and custom RSVP questionnaires."
+      },
+      "/wedding-planner-software": {
+        "title": "Wedding Planner Software for Modern Studios | EventFrame",
+        "description": "All-in-one wedding software for studios and planners. Coordinate digital invitations, custom RSVP questionnaires, guest moderation, and live reception displays."
+      },
+      "/white-label-wedding-software": {
+        "title": "White Label Wedding Software for Agencies | EventFrame",
+        "description": "Offer branded digital wedding suites under your studio name. Custom agency subdomains, personalized couple portals, and bespoke digital stationery."
+      },
+      "/digital-wedding-invitations": {
+        "title": "Digital Wedding Invitations & Designs | EventFrame",
+        "description": "Design editorial digital wedding invitations with precision typography, responsive mobile previews, and seamless online RSVP collection."
+      },
+      "/wedding-rsvp-management": {
+        "title": "Wedding RSVP Management Made Simple | EventFrame",
+        "description": "Streamline wedding attendance tracking with custom questionnaire fields, dietary preferences, real-time submission metrics, and instant CSV export."
+      },
+      "/wedding-guest-management": {
+        "title": "Wedding Guest Management Software | EventFrame",
+        "description": "Bring guest list coordination, RSVP tracking, contact info, and live photo/message moderation together in one unified wedding portal."
+      },
+      "/wedding-reception-display": {
+        "title": "Wedding Reception Displays & Guest Experiences | EventFrame",
+        "description": "Transform venue ballrooms with live projected guest photo walls, warm wishes, dynamic QR code sharing, and curated aesthetic themes."
+      },
+      "/subscription": {
+        "title": "EventFrame Pricing — Plans for Wedding Studios & Couples",
+        "description": "Simple, transparent pricing for luxury wedding studios and couples. Unlimited wedding invitations, live reception displays, and custom RSVP questionnaires."
+      }
+    }
+  }
+}

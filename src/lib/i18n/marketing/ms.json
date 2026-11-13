@@ -1,0 +1,708 @@
+{
+  "nav": {
+    "solutions": "Penyelesaian",
+    "themesSuites": "Tema & Jemputan",
+    "pricing": "Harga",
+    "signIn": "Log Masuk",
+    "getStarted": "Mula Sekarang",
+    "languageLabel": "Bahasa",
+    "selectLanguage": "Pilih Bahasa",
+    "menu": "Menu",
+    "solutionsMenu": {
+      "planner": {
+        "title": "Perisian Perancang Perkahwinan",
+        "desc": "Pengurusan studio & aliran kerja pelanggan"
+      },
+      "whiteLabel": {
+        "title": "Perisian Label Putih",
+        "desc": "Subdomain agensi tersuai & penjenamaan"
+      },
+      "invitations": {
+        "title": "Kad Jemputan Digital",
+        "desc": "Studio kanvas jemputan & pautan RSVP"
+      },
+      "rsvp": {
+        "title": "Pengurusan RSVP Perkahwinan",
+        "desc": "Soal selidik bersyarat & eksport CSV"
+      },
+      "guest": {
+        "title": "Pengurusan Tetamu Perkahwinan",
+        "desc": "Penjejakan kehadiran & moderasi langsung"
+      },
+      "display": {
+        "title": "Paparan Resepsi Perkahwinan",
+        "desc": "Dinding memori projektor dewan majlis"
+      }
+    }
+  },
+  "footer": {
+    "description": "Platform perkahwinan bersepadu untuk studio moden, perancang majlis dan pasangan pengantin. Menyatukan kad jemputan digital, logik RSVP tersuai, moderasi tetamu dan paparan skrin resepsi secara langsung.",
+    "tagline": "Infrastruktur label putih untuk majlis perkahwinan mewah.",
+    "columns": {
+      "solutions": "Penyelesaian",
+      "themes": "Tema & Suite",
+      "portals": "Portal & Pelan"
+    },
+    "links": {
+      "plannerSoftware": "Perisian Perancang",
+      "whiteLabelSoftware": "Perisian Label Putih",
+      "digitalInvitations": "Jemputan Digital",
+      "rsvpManagement": "Pengurusan RSVP",
+      "guestManagement": "Pengurusan Tetamu",
+      "receptionDisplays": "Paparan Resepsi",
+      "allDisplayThemes": "Semua Tema Paparan",
+      "minimalLuxury": "Minimal Luxury",
+      "naturalGarden": "Natural Garden",
+      "romanticLove": "Romantic Love",
+      "postalArchive": "Postal Archive",
+      "vintageNoir": "Vintage Noir",
+      "pricingPlans": "Harga & Pelan",
+      "studioSignIn": "Log Masuk Studio",
+      "couplePortalLogin": "Log Masuk Portal Pasangan",
+      "startTrial": "Mula Percubaan 30 Hari",
+      "subscriptionTerms": "Terma Langganan",
+      "agencyPortal": "Portal Agensi"
+    },
+    "copyright": "© {{year}} EventFrame.io. Hak cipta terpelihara.",
+    "crafted": "Direka khas untuk studio perkahwinan mewah"
+  },
+  "home": {
+    "hero": {
+      "badgeLeft": "Platform Studio EventFrame",
+      "badgeRight": "OS Perkahwinan Label Putih",
+      "title": "Perisian Perancangan Perkahwinan untuk Studio Moden",
+      "subtitle": "Satukan kad jemputan perkahwinan digital, RSVP tetamu, pengalaman tetamu dan paparan skrin resepsi secara langsung dalam satu platform.",
+      "primaryCta": "Cipta Ruang Kerja Agensi",
+      "secondaryCta": "Teroka Suite Jemputan",
+      "bullet1": "Subdomain label putih",
+      "bullet2": "Moderasi tetamu masa nyata",
+      "bullet3": "Eksport RSVP serta-merta",
+      "imageAlt": "Fotografi perkahwinan editorial pengantin di Lembah Sonoma",
+      "cardCouple": "Celia & Elias",
+      "cardMeta": "Lembah Sonoma · 142 RSVP Disahkan",
+      "cardBadge": "SUITE LANGSUNG"
+    },
+    "ecosystem": {
+      "eyebrow": "Perisian Perkahwinan Bersepadu",
+      "title": "Ekosistem bersepadu untuk studio moden dan pasangan pengantin.",
+      "subtitle": "Enam alat khusus yang dibina untuk berfungsi bersama dengan lancar — daripada jemputan digital awal hingga paparan skrin dewan resepsi.",
+      "cards": {
+        "planner": {
+          "tag": "Pengurusan Studio",
+          "title": "Perisian Perancang Perkahwinan",
+          "desc": "Selaraskan pelbagai majlis pelanggan, jadual kalendar dan pengalaman tetamu daripada satu pusat kawalan studio.",
+          "cta": "Ketahui perisian perancang →"
+        },
+        "whiteLabel": {
+          "tag": "Penjenamaan Agensi",
+          "title": "Perisian Perkahwinan Label Putih",
+          "desc": "Beroperasi di bawah subdomain tersuai studio anda dengan kad jemputan berjenama dan log masuk PIN peribadi pelanggan.",
+          "cta": "Teroka ciri label putih →"
+        },
+        "invitations": {
+          "tag": "Studio Rekaan",
+          "title": "Kad Jemputan Perkahwinan Digital",
+          "desc": "Reka kad jemputan dalam talian eksklusif dengan kanvas seret-dan-lepas, tipografi editorial dan butang RSVP bersepadu.",
+          "cta": "Reka jemputan perkahwinan →"
+        },
+        "rsvp": {
+          "tag": "Maklum Balas Tetamu",
+          "title": "Pengurusan RSVP Perkahwinan",
+          "desc": "Kumpul pengesahan kehadiran, pilihan hidangan, nama tetamu tambahan dan alahan makanan dengan medan soal selidik bersyarat.",
+          "cta": "Urus RSVP perkahwinan →"
+        },
+        "guest": {
+          "tag": "Operasi",
+          "title": "Pengurusan Tetamu Perkahwinan",
+          "desc": "Simpan rekod jumlah tetamu disahkan, semak keperluan diet dan tapis ucapan serta muat naik foto resepsi secara langsung.",
+          "cta": "Teroka operasi tetamu →"
+        },
+        "display": {
+          "tag": "Pengalaman Dewan",
+          "title": "Paparan Resepsi Perkahwinan",
+          "desc": "Tayangkan dinding foto tetamu dan ucapan mesra secara langsung pada skrin dewan dengan imbasan kod QR meja dan 8 tema pilihan.",
+          "cta": "Sediakan paparan resepsi →"
+        }
+      }
+    },
+    "craft": {
+      "eyebrow": "SENI BINA & KUALITI",
+      "title": "Direka untuk studio yang menolak perisian perkahwinan generik.",
+      "subtitle": "Setiap perincian diteliti bagi mengekalkan integriti estetika majlis bertaraf tinggi. Daripada keseimbangan tipografi hingga moderasi tetamu, EventFrame menampilkan kemewahan yang tenang.",
+      "imageAlt": "Paparan suite kad jemputan perkahwinan mewah dengan tipografi klasik",
+      "features": {
+        "stationeryTitle": "Suite Kad Jemputan Digital",
+        "stationeryDesc": "Tipografi berketepatan tinggi dan penyesuaian kanvas. Sampaikan jemputan perkahwinan digital dengan aliran RSVP tersuai yang sepadan dengan estetika agensi anda.",
+        "moderationTitle": "Moderasi Tetamu Masa Nyata",
+        "moderationDesc": "Strim ucapan dan foto tetamu ke paparan majlis dengan moderasi langsung serta-merta agar setiap detik di skrin kekal sopan dan diluluskan.",
+        "subdomainTitle": "Subdomain Label Putih",
+        "subdomainDesc": "Beroperasi sepenuhnya di bawah nama studio anda. Pelanggan mengakses papan pemuka perkahwinan mereka melalui subdomain tersuai dengan logo dan palet anda.",
+        "rsvpTitle": "Logik RSVP Tersuai",
+        "rsvpDesc": "Kumpul sekatan diet, nama pasangan tambahan, pilihan hidangan dan keperluan pengangkutan dengan medan soal selidik bersyarat."
+      }
+    },
+    "spotlight": {
+      "eyebrow": "PENSTRIMAN MAJLIS",
+      "title": "Dinding memori visual yang mengasyikkan untuk dewan resepsi.",
+      "subtitle": "Sambungkan mana-mana skrin majlis, projektor atau paparan LED. Tetamu memuat naik foto dan ucapan mesra daripada telefon mereka, manakala pengendali studio atau pengapit menapis kiriman sebelum disiarkan.",
+      "cta": "Konfigurasi Paparan Langsung",
+      "imageAlt": "Paparan skrin resepsi perkahwinan malam yang memancarkan memori tetamu langsung",
+      "screenTag": "SKRIN RESEPSI 01 · DISAMBUNG",
+      "quote": "“Mendoakan Celia dan Elias kegembiraan abadi serta perjalanan hidup bersama yang indah.”",
+      "author": "— Keluarga Sterling"
+    },
+    "pricing": {
+      "eyebrow": "PELESENAN BAYAR-PER-MAJLIS",
+      "title": "Satu Majlis. Satu Bayaran. {{price}}.",
+      "subtitle": "Tiada yuran bulanan berulang, tiada himpunan kredit dan tiada pembaharuan mengejut. Pasangan dan agensi perkahwinan hanya membayar sekali bagi setiap majlis aktif dengan akses penuh selama 12 bulan.",
+      "ribbon": "AKSES 12 BULAN DISERTAKAN",
+      "cardEyebrow": "LESEN LENGKAP SEMUA DALAM SATU",
+      "cardTitle": "Lesen Majlis Perkahwinan",
+      "cardDesc": "Suite digital lengkap untuk kad jemputan, muat naik buku tamu, paparan langsung dewan majlis dan RSVP tetamu.",
+      "perEvent": "/ majlis",
+      "feat1": "Sah Selama 12 Bulan Kalendar Penuh",
+      "feat2": "Suite Jemputan Digital Interaktif",
+      "feat3": "Soal Selidik RSVP & Diet Tersuai",
+      "feat4": "Dinding Ucapan & Foto Tetamu Masa Nyata",
+      "feat5": "Moderasi Paparan Resepsi Secara Langsung",
+      "feat6": "Tipografi Eksklusif & Estetika Warna",
+      "feat7": "Portal Akses PIN Khas untuk Pasangan",
+      "feat8": "Eksport Rekod CSV & Arkib Seumur Hidup",
+      "multiTitle": "HARGA TELUS PELBAGAI MAJLIS",
+      "tier1Label": "1 Majlis",
+      "tier1Sub": "Sekali bayar",
+      "tier2Label": "2 Majlis",
+      "tier2Sub": "12 bln setiap satu",
+      "tier3Label": "5 Majlis",
+      "tier3Sub": "12 bln setiap satu",
+      "tier4Label": "10 Majlis",
+      "tier4Sub": "12 bln setiap satu",
+      "freeDraftNote": "Pendaftaran akaun agensi adalah 100% percuma. Cipta dan reka draf perkahwinan tanpa sebarang bayaran.",
+      "cta": "Cipta Draf Majlis Percuma"
+    },
+    "faq": {
+      "eyebrow": "SOALAN LAZIM",
+      "title": "Semua yang perlu anda ketahui.",
+      "items": {
+        "q1": "Bolehkah agensi menjenamakan pengalaman pelanggan di bawah domain sendiri?",
+        "a1": "Ya. EventFrame dibina khusus untuk studio dan perancang perkahwinan. Pelanggan anda melihat nama agensi, logo dan subdomain anda (cth., studioanda.eventframe.io).",
+        "q2": "Bagaimanakah moderasi tetamu secara langsung berfungsi semasa resepsi?",
+        "a2": "Tetamu mengimbas kod QR di atas meja untuk menghantar foto dan ucapan daripada pelayar telefon mereka. Studio atau ahli keluarga terpilih boleh meluluskan atau menolak mesej secara masa nyata sebelum dipaparkan di projektor dewan.",
+        "q3": "Perlukah tetamu memasang aplikasi untuk RSVP atau menghantar foto?",
+        "a3": "Tiada muat turun aplikasi diperlukan. Semuanya berjalan terus di pelayar telefon mudah alih dengan antara muka yang ringan, responsif dan mesra sentuhan.",
+        "q4": "Bolehkah pasangan mengemas kini halaman perkahwinan mereka sendiri?",
+        "a4": "Ya. Pasangan menerima PIN akses majlis yang selamat untuk membuka papan pemuka peribadi bagi menyemak RSVP, memuat turun senarai tetamu dan menapis ucapan majlis.",
+        "q5": "Bagaimanakah model harga bayar-per-majlis EventFrame berfungsi?",
+        "a5": "EventFrame beroperasi dengan model bayar-per-majlis sepenuhnya. Anda membayar sekali bagi setiap majlis perkahwinan yang merangkumi 12 bulan kalendar penuh akses. Tiada langganan bulanan wajib, tiada kredit pukal dan tiada komitmen berulang. Pendaftaran pengguna dan penciptaan draf sentiasa percuma."
+      }
+    },
+    "finalCta": {
+      "title": "Tingkatkan pengalaman agensi perkahwinan anda hari ini.",
+      "subtitle": "Sertai ratusan studio terkemuka yang menyampaikan kad jemputan digital eksklusif dan moderasi majlis yang lancar.",
+      "cta": "Mulakan Percubaan Agensi Percuma"
+    }
+  },
+  "common": {
+    "relatedSolutions": "Penyelesaian Berkaitan",
+    "exploreSuite": "Teroka semua alat terbina dalam suite studio EventFrame",
+    "faqEyebrow": "Soalan Lazim",
+    "viewPlansPricing": "Lihat Pelan & Harga",
+    "browseThemeGallery": "Layari Galeri Tema",
+    "cards": {
+      "whiteLabel": { "title": "Perisian Label Putih", "desc": "Penjenamaan studio & subdomain" },
+      "invitations": { "title": "Jemputan Digital", "desc": "Editor kanvas jemputan" },
+      "rsvp": { "title": "Pengurusan RSVP", "desc": "Soal selidik bersyarat" },
+      "guest": { "title": "Pengurusan Tetamu", "desc": "Senarai hadirin & moderasi" },
+      "display": { "title": "Paparan Resepsi", "desc": "Strim skrin dewan langsung" },
+      "planner": { "title": "Perisian Perancang", "desc": "Pengurusan studio lengkap" },
+      "studio": { "title": "Perisian Studio", "desc": "Ruang kerja pelbagai pelanggan" },
+      "themes": { "title": "Katalog Tema", "desc": "Estetika paparan & susun atur" }
+    }
+  },
+  "planners": {
+    "hero": {
+      "badgeLeft": "EventFrame untuk Studio",
+      "badgeRight": "Sistem Pengurusan Tetamu Perkahwinan Lengkap",
+      "title": "Cara Lebih Baik Mengurus Pengalaman Perkahwinan",
+      "subtitle": "Perancang perkahwinan moden dan studio mewah menggunakan EventFrame untuk menyelaraskan jemputan digital, aliran RSVP tersuai dan pengalaman skrin resepsi langsung di bawah satu bumbung.",
+      "primaryCta": "Cipta Ruang Kerja Studio",
+      "secondaryCta": "Teroka Katalog Tema",
+      "bullet1": "Subdomain agensi label putih",
+      "bullet2": "Moderasi majlis secara langsung",
+      "bullet3": "Eksport CSV masa nyata",
+      "imageAlt": "Antara muka perisian perancangan perkahwinan untuk pengurusan majlis studio",
+      "cardTitle": "The Glasshouse Pavilion",
+      "cardMeta": "Senarai Studio · 18 Majlis Pelanggan Aktif",
+      "cardBadge": "STUDIO PRO"
+    },
+    "capabilities": {
+      "eyebrow": "Alat Studio Bersepadu",
+      "title": "Dicipta khas untuk studio acara yang menolak alat perkahwinan biasa.",
+      "subtitle": "Setiap ciri dalam EventFrame ditala untuk mengekalkan keseimbangan estetika sambil mengurus kerumitan operasi sebenar majlis mewah.",
+      "c1Title": "Ruang Kerja Pelbagai Perkahwinan",
+      "c1Desc": "Urus pelbagai majlis pelanggan serentak dari satu pusat kawalan. Lihat tarikh akan datang pada kalendar interaktif, pantau jumlah RSVP dan susun aset pelanggan.",
+      "c2Title": "Kad Jemputan Digital Eksklusif",
+      "c2Desc": "Reka jemputan editorial dengan kanvas koordinat seret-dan-lepas, tipografi serif elegan, arah lokasi majlis dan butang RSVP bersepadu untuk setiap pasangan.",
+      "c3Title": "Pengumpulan RSVP Bersyarat",
+      "c3Desc": "Hapuskan kemasukan data manual. Kumpul pilihan hidangan, keperluan diet, tetamu tambahan dan maklumat penginapan dengan soalan pintar hanya untuk tetamu yang hadir.",
+      "c4Title": "Moderasi Skrin Resepsi Langsung",
+      "c4Desc": "Sediakan buku tamu interaktif yang tidak dapat dilupakan semasa majlis makan. Tetamu menghantar foto dan ucapan terus ke projektor selepas kelulusan perancang."
+    },
+    "workflow": {
+      "eyebrow": "Seni Bina Tetamu Bersepadu",
+      "title": "Daripada jemputan digital pertama hingga penutup majlis tengah malam.",
+      "subtitle": "Perancang perkahwinan sering menghabiskan banyak masa menyusul sekatan diet, mengira saiz kumpulan dan mengurus aktiviti resepsi. EventFrame menghubungkan keseluruhan perjalanan:",
+      "s1Title": "Terbitkan Kad Jemputan Digital",
+      "s1Desc": "Hantar jemputan responsif tersuai lengkap dengan peta lokasi, atur cara, kod pakaian dan kisah cinta pasangan.",
+      "s2Title": "Kumpul RSVP dengan Ketepatan Bersyarat",
+      "s2Desc": "Sesuaikan soalan berdasarkan status kehadiran, bilangan ahli rombongan dan pilihan menu makan malam.",
+      "s3Title": "Siarkan Memori Tetamu Secara Langsung",
+      "s3Desc": "Tayangkan ucapan dan foto tetamu dalam tema skrin dewan dengan kelulusan masa nyata.",
+      "link1": "Teroka Ciri Agensi Label Putih →",
+      "link2": "Ketahui Soal Selidik RSVP →",
+      "imageAlt": "Dinding resepsi perkahwinan langsung dipancarkan pada projektor dewan",
+      "screenTag": "MODERASI LANGSUNG AKTIF",
+      "quote": "“Semoga Celia dan Elias dikurniakan berdekad kebahagiaan yang indah.”",
+      "author": "— Keluarga Montgomery · Diluluskan oleh Perancang"
+    },
+    "crossLinksTitle": "Teroka Penyelesaian Platform",
+    "crossLinksSubtitle": "Keupayaan khusus merentas ekosistem EventFrame",
+    "faqEyebrow": "Jawapan untuk Studio & Perancang",
+    "faqTitle": "Soalan Lazim",
+    "faqs": {
+      "q1": "Bagaimanakah EventFrame menggantikan alat perancangan yang terpisah?",
+      "a1": "Daripada menggabungkan borang RSVP pihak ketiga, laman statik biasa dan aplikasi perkongsian foto berasingan, EventFrame menyatukan jemputan pelanggan, soal selidik RSVP tersuai, pengurusan hadirin dan paparan dewan langsung dalam satu platform studio.",
+      "q2": "Bolehkah studio kami mengurus puluhan majlis dalam satu musim?",
+      "a2": "Ya. Papan pemuka agensi menyediakan jadual kalendar dan akses pantas kepada semua majlis pelanggan aktif. Anda boleh bertukar antara pasangan dalam beberapa saat, menyalin tetapan acara dan mengeksport data hadirin.",
+      "q3": "Bolehkah pasangan pengantin mengakses papan pemuka mereka sendiri?",
+      "a3": "Ya. Perancang boleh berkongsi pautan portal pasangan peribadi yang dilindungi PIN akses majlis. Pasangan boleh menyemak senarai RSVP dan menapis mesej majlis tanpa melihat pelanggan agensi lain.",
+      "q4": "Adakah tetamu perlu memuat turun aplikasi?",
+      "a4": "Tiada aplikasi diperlukan. Tetamu hanya mengetik pautan jemputan atau mengimbas kod QR di atas meja dalam pelayar telefon mereka untuk membuat RSVP dan berkongsi foto."
+    },
+    "bottomCta": {
+      "title": "Sedia menaik taraf aliran kerja perkahwinan studio anda?",
+      "subtitle": "Mulakan dengan percubaan studio 30 hari atau aktifkan lesen satu majlis.",
+      "cta": "Mula Percubaan Studio"
+    }
+  },
+  "whiteLabel": {
+    "hero": {
+      "badgeLeft": "Infrastruktur Label Putih Agensi",
+      "badgeRight": "Subdomain Tersuai & Portal Pelanggan",
+      "title": "Platform Perkahwinan Anda. Jenama Anda.",
+      "subtitle": "Tingkatkan prestij agensi perkahwinan anda dengan menawarkan jemputan digital eksklusif, penjejakan RSVP tersuai dan skrin resepsi langsung di bawah identiti studio anda sendiri.",
+      "primaryCta": "Bina Ruang Kerja Berjenama",
+      "secondaryCta": "Lihat Pakej Agensi",
+      "bullet1": "Subdomain studio tersuai",
+      "bullet2": "Log masuk PIN peribadi pelanggan",
+      "bullet3": "Tiada penjenamaan pihak ketiga",
+      "imageAlt": "Pratonton papan pemuka platform perkahwinan label putih agensi",
+      "statusBadge": "AGENSI AKTIF",
+      "studioName": "Atelier Wedding Studio",
+      "clientMeta": "Pelanggan: Madeleine & Christopher · Sonoma",
+      "livePortal": "PORTAL LANGSUNG",
+      "clientLinkLabel": "Pautan Akses Pelanggan:"
+    },
+    "pillars": {
+      "eyebrow": "Dibina untuk Skala Agensi",
+      "title": "Sampaikan perisian yang setanding dengan prestij rekaan majlis anda.",
+      "subtitle": "Apabila pasangan mewah melantik studio perkahwinan editorial, setiap perincian amat penting — termasuk borang RSVP digital dan teknologi resepsi.",
+      "p1Title": "Subdomain Agensi Khusus",
+      "p1Desc": "Hoskan semua portal pelanggan, pautan kad jemputan dan halaman RSVP di bawah subdomain studio anda (cth., studioanda.eventframe.io) demi mengekalkan kepercayaan pelanggan.",
+      "p2Title": "Identiti & Palet Agensi",
+      "p2Desc": "Paparkan nama studio, monogram dan palet tema pilihan anda merentas titik sentuhan pelanggan agar platform kelihatan seperti perkhidmatan proprietari anda sendiri.",
+      "p3Title": "Portal PIN Pasangan Peribadi",
+      "p3Desc": "Berikan setiap pasangan hab pelanggan yang kemas. Pasangan menyemak senarai tetamu dan menapis ucapan menggunakan PIN akses tanpa melihat akaun studio lain.",
+      "p4Title": "Titik Sentuhan Tetamu Berjenama Studio",
+      "p4Desc": "Daripada jemputan digital mesra mudah alih hingga skrin resepsi langsung, pengalaman tetamu mencerminkan standard editorial tinggi agensi anda."
+    },
+    "coupleExp": {
+      "eyebrow": "Pengenalan Pelanggan",
+      "title": "Akses PIN yang ringkas dan selamat untuk pasangan anda.",
+      "subtitle": "Daripada meminta pelanggan mencipta kata laluan rumit atau mengurus akaun pihak ketiga, EventFrame menjana PIN akses unik untuk setiap majlis dalam senarai anda.",
+      "li1": "Pasangan menyemak jumlah RSVP dan pilihan hidangan secara langsung 24/7",
+      "li2": "Pasangan boleh meluluskan atau menyemak ucapan majlis semasa makan malam",
+      "li3": "Eksport hamparan hadirin dengan satu klik untuk katering dan kakitangan dewan",
+      "link1": "Ketahui Alat Senarai Tetamu →",
+      "link2": "Teroka Studio Jemputan Digital →",
+      "imageAlt": "Pratonton kad jemputan perkahwinan dengan penjenamaan editorial mewah",
+      "captionLeft": "Tipografi & Palet Tersuai",
+      "captionRight": "Cormorant Garamond + Inter"
+    },
+    "faqTitle": "Perincian Label Putih Agensi",
+    "faqs": {
+      "q1": "Bagaimanakah tetapan subdomain agensi berfungsi?",
+      "a1": "Semasa mencipta ruang kerja agensi, anda memilih slug studio anda (cth. \"atelier-events\"). Jemputan pelanggan, pautan RSVP dan papan pemuka pasangan akan terus beroperasi di atelier-events.eventframe.io dengan penjenamaan tersuai.",
+      "q2": "Adakah pasangan akan melihat penjenamaan EventFrame atau iklan?",
+      "a2": "Tidak. Pada pelan agensi, halaman yang dilihat pelanggan (jemputan digital, soal selidik RSVP, paparan resepsi langsung dan portal pasangan) dipaparkan bersih dengan identiti studio anda tanpa sebarang iklan.",
+      "q3": "Bolehkah pasangan tersilap mengubah tetapan agensi kami?",
+      "a3": "Tidak. EventFrame menguatkuasakan pengasingan peranan yang ketat. Portal pasangan hanya terhad kepada majlis perkahwinan mereka melalui PIN akses unik dan tidak dapat melihat bil agensi atau pelanggan lain.",
+      "q4": "Bolehkah kami menyesuaikan rupa bentuk bagi setiap pasangan berbeza?",
+      "a4": "Ya. Setiap majlis perkahwinan dalam ruang kerja agensi anda boleh mempunyai Estetika Seni Paparan tersendiri (Natural Garden, Minimal Luxury, Romantic Love, Vintage Noir, dll.) serta susun atur kanvas jemputan tersuai."
+    },
+    "bottomCta": {
+      "title": "Sedia membina platform perkahwinan berjenama agensi anda?",
+      "subtitle": "Cipta ruang kerja agensi anda dalam masa kurang 60 saat dengan akses penuh subdomain dan alat pelbagai majlis.",
+      "cta": "Lancarkan Ruang Kerja Studio"
+    }
+  },
+  "invitations": {
+    "hero": {
+      "badgeLeft": "Kad Jemputan Perkahwinan Digital",
+      "badgeRight": "Kanvas Responsif & RSVP Masa Nyata",
+      "title": "Kad Jemputan Perkahwinan Digital yang Indah & Peribadi",
+      "subtitle": "Reka jemputan perkahwinan dalam talian eksklusif dengan tipografi editorial, peta lokasi interaktif dan pengumpulan RSVP bersepadu. Alternatif moden kepada kad kertas biasa.",
+      "primaryCta": "Teroka Templat Jemputan",
+      "secondaryCta": "Cipta Jemputan Anda",
+      "bullet1": "Pemuatan mudah alih pantas",
+      "bullet2": "Butang RSVP bersepadu",
+      "bullet3": "Peta lokasi interaktif",
+      "imageAlt": "Paparan jemputan perkahwinan digital mewah dengan tipografi klasik",
+      "badgeTag": "STUDIO KANVAS",
+      "cardCouple": "Celia & Elias",
+      "cardMeta": "Lembah Sonoma · Sabtu, 18 Oktober",
+      "rsvpReady": "RSVP SEDIA"
+    },
+    "capabilities": {
+      "eyebrow": "Dicipta Dengan Teliti",
+      "title": "Studio kad jemputan digital khusus untuk majlis moden.",
+      "subtitle": "Setiap jemputan dipaparkan dengan teknologi web bersih yang dimuat serta-merta pada telefon pintar dan tablet sambil mengekalkan hierarki tipografi yang halus.",
+      "f1Title": "Kanvas Jemputan Berketepatan Tinggi",
+      "f1Desc": "Laraskan tipografi, monogram, garis masa majlis dan foto pada kanvas seret-dan-lepas berasaskan koordinat untuk estetika perkahwinan bertaraf tinggi.",
+      "f2Title": "Paparan Dioptimumkan untuk Mudah Alih",
+      "f2Desc": "Pratonton tepat bagaimana tetamu akan melihat jemputan anda pada skrin iPhone, Android serta monitor desktop sebelum diterbitkan.",
+      "f3Title": "Tindakan RSVP Bersepadu",
+      "f3Desc": "Tetamu boleh membaca maklumat majlis, melihat arah lokasi dan terus menghantar soal selidik RSVP mereka dalam satu aliran yang lancar.",
+      "f4Title": "Pratetap Tipografi Editorial",
+      "f4Desc": "Padankan tajuk serif Cormorant Garamond dengan teks Inter yang kemas dan butiran JetBrains Mono untuk sentuhan klasik tanpa pembaziran kertas."
+    },
+    "themes": {
+      "eyebrow": "Tema Estetika Pilihan",
+      "title": "Estetika yang sepadan dengan gubahan bunga dan rekaan majlis anda.",
+      "browseBtn": "Layari Katalog Penuh",
+      "includesRsvp": "Termasuk RSVP Mudah Alih",
+      "previewSuite": "Pratonton Suite",
+      "a1Name": "Minimal Luxury",
+      "a1Desc": "Sentuhan emas metalik, tajuk serif berkontras tinggi dan ketenangan ilham marmar.",
+      "a2Name": "Natural Garden",
+      "a2Desc": "Hijau eukaliptus, rona bumi dan tekstur organik bersih untuk majlis taman.",
+      "a3Name": "Romantic Love",
+      "a3Desc": "Rona merah jambu lembut, tajuk serif indah dan sentuhan flora romantik.",
+      "a4Name": "Postal Archive",
+      "a4Desc": "Setem pos vintaj, estetika cap lilin dan susun atur surat klasik.",
+      "a5Name": "Vintage Noir",
+      "a5Desc": "Nostalgia filem sinematik, palet sepia dan tipografi retro.",
+      "a6Name": "Starry Dream",
+      "a6Desc": "Biru tengah malam, kilauan emas cakerawala dan suasana jamuan malam."
+    },
+    "relatedSubtitle": "Ciri pelengkap untuk meraikan hari perkahwinan anda",
+    "faqTitle": "Kad Jemputan Perkahwinan Digital",
+    "faqs": {
+      "q1": "Bagaimanakah tetamu menerima dan membuka jemputan digital mereka?",
+      "a1": "Tetamu menerima pautan web yang kemas (cth., studioanda.eventframe.io/nama-majlis/invitation). Mereka boleh mengetiknya di mana-mana peranti mudah alih tanpa log masuk atau memuat turun aplikasi.",
+      "q2": "Bolehkah kami mengubah rekaan jemputan selepas ia dihantar?",
+      "a2": "Ya. Oleh kerana jemputan EventFrame adalah digital, anda boleh mengemas kini jadual atur cara, masa bas ulang-alik atau panduan pakaian pada bila-bila masa. Perubahan terus terpapar kepada semua tetamu.",
+      "q3": "Adakah jemputan berpaut terus ke soal selidik RSVP?",
+      "a3": "Ya. Jemputan digital menyertakan butang RSVP bersepadu yang beralih dengan lancar ke soalan tersuai anda (pilihan diet, bilangan hadirin, pengangkutan).",
+      "q4": "Bolehkah kami meletakkan kata laluan pada jemputan perkahwinan digital?",
+      "a4": "Ya. EventFrame membolehkan anda menetapkan PIN akses pilihan supaya hanya rakan dan keluarga yang dijemput dapat melihat butiran majlis."
+    },
+    "bottomCta": {
+      "title": "Sedia mencipta jemputan perkahwinan anda?",
+      "subtitle": "Pilih templat estetika dan sesuaikan suite perkahwinan anda dengan penjajaran koordinat serta pratonton langsung.",
+      "primaryCta": "Layari Templat Jemputan",
+      "secondaryCta": "Mula Mencipta Percuma"
+    }
+  },
+  "rsvp": {
+    "hero": {
+      "badgeLeft": "Automasi RSVP Perkahwinan",
+      "badgeRight": "Soal Selidik Bersyarat & Segerak Masa Nyata",
+      "title": "Cara Lebih Mudah Mengurus RSVP Perkahwinan",
+      "subtitle": "Gantikan mesej teks yang berserabut dan kad balasan kertas yang hilang. Kumpul kehadiran tetamu, pilihan hidangan, pasangan tambahan dan sekatan diet melalui soal selidik dalam talian yang kemas.",
+      "primaryCta": "Cipta Soal Selidik RSVP",
+      "secondaryCta": "Teroka Pengurusan Tetamu",
+      "bullet1": "Logik medan bersyarat",
+      "bullet2": "Eksport CSV serta-merta",
+      "bullet3": "Tiada akaun tetamu diperlukan",
+      "cardTitle": "Perkahwinan Celia & Elias",
+      "cardSubtitle": "Lembah Sonoma · Soal Selidik RSVP",
+      "live": "LANGSUNG",
+      "labelName": "Nama Penuh Anda",
+      "sampleName": "Sarah & David Sterling",
+      "labelAttending": "Adakah anda akan hadir?",
+      "attendingBtn": "Hadir (2 Orang)",
+      "decliningBtn": "Maaf Tidak Dapat Hadir",
+      "conditionalTag": "Soalan Bersyarat",
+      "mealSelectionsLabel": "Pilihan Hidangan:",
+      "mealLine1": "• Tetamu 1: Ikan Halibut Panggang & Asparagus",
+      "mealLine2": "• Tetamu 2: Stik Ribeye Panggang & Kentang Trufel",
+      "totalResponses": "Jumlah Maklum Balas: 142 Disahkan",
+      "turnout": "94% Kehadiran"
+    },
+    "features": {
+      "eyebrow": "Pengumpulan Data Pintar",
+      "title": "Kumpul tepat apa yang diperlukan oleh vendor dan penyelaras dewan anda.",
+      "subtitle": "Tidak perlu lagi bertanya tiga kali tentang alahan makanan atau ejaan nama tetamu tambahan. EventFrame mengumpulkan data berstruktur yang kemas sejak hari pertama.",
+      "f1Title": "Soal Selidik Bersyarat",
+      "f1Desc": "Paparkan pilihan menu, lokasi pengangkutan dan soalan penginapan hanya kepada tetamu yang mengesahkan kehadiran. Kekalkan jawapan ringkas dan sopan bagi yang tidak hadir.",
+      "f2Title": "Jenis Medan Tersuai",
+      "f2Desc": "Kumpul maklumat tepat dengan menu lungsur, kotak semak, pilihan berganda, pengira bilangan ahli dan ruangan teks terbuka untuk alahan makanan.",
+      "f3Title": "Eksport CSV & Katering Serta-Merta",
+      "f3Desc": "Eksport hamparan kemas lengkap dengan nama hadirin, jumlah tetamu, pilihan hidangan dan jawapan tersuai sedia untuk pihak katering serta susunan tempat duduk.",
+      "f4Title": "Keharmonian Visual Estetik",
+      "f4Desc": "Soal selidik RSVP anda secara automatik menggunakan Estetika Seni Paparan majlis (Natural Garden, Minimal Luxury, Romantic Love) agar tetamu menikmati perjalanan visual yang seragam."
+    },
+    "logic": {
+      "eyebrow": "Editor Medan",
+      "title": "Logik Soalan yang Fleksibel",
+      "subtitle": "Konfigurasikan soalan tersuai mengikut atur cara majlis, penginapan dan keperluan katering anda.",
+      "colField": "Soalan / Medan",
+      "colType": "Jenis Input",
+      "colCondition": "Syarat Paparan",
+      "rows": {
+        "r1Field": "Status Kehadiran",
+        "r1Type": "Hadir / Tidak Dapat Hadir",
+        "r1Cond": "Semua tetamu",
+        "r2Field": "Jumlah Saiz Rombongan",
+        "r2Type": "Pengira nombor (1–6 tetamu)",
+        "r2Cond": "Dipaparkan jika hadir",
+        "r3Field": "Pilihan Hidangan Utama",
+        "r3Type": "Senarai lungsur (Wagyu, Siakap, Cendawan Liar)",
+        "r3Cond": "Dipaparkan jika hadir",
+        "r4Field": "Sekatan Diet & Alahan",
+        "r4Type": "Medan teks (Bebas gluten, vegan, alahan kacang)",
+        "r4Cond": "Dipaparkan jika hadir",
+        "r5Field": "Perkhidmatan Bas Ulang-Alik Sabtu",
+        "r5Type": "Kotak semak (Hotel Bandar ↔ Ladang Anggur)",
+        "r5Cond": "Dipaparkan jika hadir",
+        "r6Field": "Permintaan Lagu untuk DJ",
+        "r6Type": "Medan teks pilihan",
+        "r6Cond": "Dipaparkan jika hadir"
+      }
+    },
+    "relatedSubtitle": "Temui alat bersepadu lain dalam EventFrame",
+    "faqTitle": "Soalan Mengenai RSVP Perkahwinan",
+    "faqs": {
+      "q1": "Adakah tetamu memerlukan akaun atau kata laluan untuk menghantar RSVP?",
+      "a1": "Tidak. Tetamu hanya membuka pautan RSVP perkahwinan pada telefon pintar atau komputer mereka, menaip nama dan menjawab soalan. Proses ini mengambil masa kurang daripada 60 saat.",
+      "q2": "Bolehkah perancang atau pasangan menambah soalan tersuai pada borang RSVP?",
+      "a2": "Ya. Dalam editor konfigurasi acara, anda boleh mencipta medan tersuai dengan label, jenis input (lungsur, radio, kotak semak, teks, nombor) dan menetapkannya sebagai wajib atau pilihan.",
+      "q3": "Bagaimanakah pilihan hidangan dan keperluan diet dijejaki?",
+      "a3": "Semua maklum balas direkodkan secara masa nyata dalam papan pemuka ruang kerja anda. Anda boleh menyemak kiriman mengikut tetamu, menapis mengikut status kehadiran dan mengeksport keseluruhan data ke CSV pada bila-bila masa.",
+      "q4": "Bolehkah pasangan mengemas kini RSVP bagi pihak tetamu?",
+      "a4": "Ya. Perancang studio dan pasangan boleh melihat, mengemas kini atau menyunting butiran RSVP tetamu secara manual terus daripada papan pemuka jika seseorang menghubungi untuk membuat perubahan."
+    },
+    "bottomCta": {
+      "title": "Sedia mengumpul RSVP tanpa sebarang kerumitan?",
+      "subtitle": "Sediakan soal selidik RSVP perkahwinan tersuai anda dalam beberapa minit dan jemput tetamu dengan satu pautan ringkas.",
+      "cta": "Cipta Borang RSVP Anda"
+    }
+  },
+  "guestMgmt": {
+    "hero": {
+      "badgeLeft": "Operasi Tetamu Bersepadu",
+      "badgeRight": "Senarai Hadirin & Moderasi Langsung",
+      "title": "Satukan Pengalaman Tetamu Perkahwinan Anda",
+      "subtitle": "Selaraskan jumlah kehadiran RSVP, sekatan diet dan moderasi memori resepsi langsung dalam satu papan pemuka elegan yang direka untuk perancang perkahwinan dan pasangan.",
+      "primaryCta": "Urus Tetamu Perkahwinan",
+      "secondaryCta": "Teroka Paparan Resepsi",
+      "bullet1": "Moderasi tetamu masa nyata",
+      "bullet2": "Akses PIN peribadi pasangan",
+      "bullet3": "Arkib memori kekal",
+      "queueTitle": "Barisan Moderasi Resepsi",
+      "queueSub": "Kemas kini majlis langsung",
+      "pendingBadge": "3 MENUNGGU",
+      "msg1Author": "Marcus & Elena Vance",
+      "msg1Meta": "Meja 4 · 2m lalu",
+      "msg1Text": "“Lafaz ikrar tadi amat menyentuh hati! Menari sepanjang malam bersama anda berdua.”",
+      "declineBtn": "Tolak",
+      "approveBtn": "Siar ke Skrin",
+      "msg2Author": "Keluarga Sterling",
+      "approvedBadge": "DILULUSKAN",
+      "msg2Text": "“Mendoakan Celia & Elias kebahagiaan yang tidak berkesudahan!”",
+      "autoApproveOff": "Lulus-Auto: MATI",
+      "confirmedCount": "142 RSVP Disahkan"
+    },
+    "tools": {
+      "eyebrow": "Pengurusan Kitaran Hayat Tetamu",
+      "title": "Alat hospitaliti yang memastikan semua pihak maklum dan diraikan.",
+      "subtitle": "Daripada mengurus sekatan diet bersama pihak katering hingga menapis swafoto tetamu di projektor resepsi, EventFrame meletakkan kawalan penuh di tangan anda.",
+      "t1Title": "Senarai Hadirin & Segerak Jumlah Tetamu",
+      "t1Desc": "Jejak jumlah tetamu disahkan, yang tidak dapat hadir, saiz kumpulan dan kiraan hidangan secara masa nyata. Kekalkan rekod bersih siapa yang telah membalas.",
+      "t2Title": "Barisan Moderasi Jamuan Langsung",
+      "t2Desc": "Semak foto dan mesej yang dihantar oleh tetamu sebelum dipancarkan ke skrin projektor dewan. Luluskan ucapan indah dan tapis muat naik tersilap dengan satu ketikan.",
+      "t3Title": "Portal Akses Khas Pasangan",
+      "t3Desc": "Kongsi hab pasangan peribadi yang dilindungi PIN selamat. Pasangan boleh menyemak senarai tetamu, melihat RSVP dan menapis memori tanpa memerlukan kelayakan log masuk agensi.",
+      "t4Title": "Arkib Memori Kekal",
+      "t4Desc": "Semua ucapan tahniah, nota resepsi mesra dan foto candid kekal tersimpan selamat dalam papan pemuka perkahwinan untuk dikenang bertahun-tahun."
+    },
+    "relatedSubtitle": "Teroka semua keupayaan merentas EventFrame",
+    "faqTitle": "Soalan Pengurusan Tetamu",
+    "faqs": {
+      "q1": "Bagaimanakah moderasi mesej dan foto secara langsung berfungsi?",
+      "a1": "Semasa majlis berlangsung, tetamu memuat naik foto dan ucapan daripada telefon mereka. Jika lulus-auto dimatikan, kiriman masuk ke barisan moderasi langsung di papan pemuka di mana perancang atau pasangan boleh mengetik \"Luluskan\" atau \"Tolak\" sebelum dipaparkan.",
+      "q2": "Bolehkah pasangan menyemak maklum balas tetamu daripada telefon pintar mereka?",
+      "a2": "Ya. Portal pasangan adalah responsif sepenuhnya dan mesra sentuhan. Pasangan boleh log masuk dari telefon menggunakan PIN akses majlis untuk melihat jumlah hadirin dan meluluskan foto langsung semasa resepsi.",
+      "q3": "Bolehkah kami menghidupkan lulus-auto untuk mesej tetamu yang dipercayai?",
+      "a3": "Ya. Dalam tetapan konfigurasi acara, anda boleh menghidupkan atau mematikan \"Lulus-Auto Mesej\" pada bila-bila masa sepanjang majlis.",
+      "q4": "Bolehkah senarai tetamu dieksport untuk kad nama meja dan pihak katering?",
+      "a4": "Ya. Anda boleh mengeksport keseluruhan senarai tetamu ke CSV lengkap dengan nama, status kehadiran, bilangan ahli, pilihan hidangan dan keperluan diet dalam beberapa saat."
+    },
+    "bottomCta": {
+      "title": "Susun pengalaman tetamu anda dengan penuh yakin",
+      "subtitle": "Segala yang diperlukan untuk mengurus hadirin, sekatan diet dan memori resepsi.",
+      "cta": "Mulakan Percubaan Percuma"
+    }
+  },
+  "displayPage": {
+    "hero": {
+      "badgeLeft": "Paparan Majlis Interaktif",
+      "badgeRight": "Dinding Memori Projektor Langsung",
+      "title": "Jadikan Resepsi Perkahwinan Anda Lebih Interaktif",
+      "subtitle": "Sambungkan mana-mana skrin majlis, projektor atau paparan LED untuk menyiarkan foto tetamu dan ucapan mesra secara masa nyata dengan tipografi editorial dan moderasi perancang.",
+      "primaryCta": "Teroka Tema Paparan",
+      "secondaryCta": "Konfigurasi Skrin Langsung",
+      "bullet1": "Berfungsi dengan mana-mana projektor HDMI",
+      "bullet2": "Akses meja kod QR serta-merta",
+      "bullet3": "Moderasi foto masa nyata",
+      "imageAlt": "Paparan skrin resepsi perkahwinan langsung dipancarkan pada dinding dewan",
+      "screenTag": "SKRIN RESEPSI 01",
+      "liveStream": "STRIM LANGSUNG",
+      "quote": "“Mendoakan Celia & Elias kegembiraan abadi serta perjalanan hidup bersama yang indah.”",
+      "author": "— Keluarga Sterling",
+      "scanPrompt": "Imbas untuk Menghantar Ucapan: eventframe.io/g/celia-elias",
+      "scanReady": "SEDIA DIIMBAS"
+    },
+    "features": {
+      "eyebrow": "Teknologi Dewan Majlis",
+      "title": "Buku tamu digital mengasyikkan yang menghidupkan suasana jamuan.",
+      "subtitle": "Buku tamu tradisional sering dilupakan di meja pintu masuk. EventFrame mengubah ucapan indah menjadi titik tumpuan visual bersama untuk seluruh dewan.",
+      "f1Title": "Keserasian Perkakasan Universal",
+      "f1Desc": "Buka URL paparan langsung pada mana-mana komputer riba berpelayar web atau TV pintar. Sambungkan melalui HDMI atau pencerminan skrin tanpa wayar ke projektor dan dinding video LED.",
+      "f2Title": "Imbasan Kod QR Meja Serta-Merta",
+      "f2Desc": "Paparkan kod QR pada skrin atau cetak kad meja. Tetamu mengimbas dengan kamera telefon untuk memuat naik foto dan ucapan serta-merta tanpa memuat turun aplikasi.",
+      "f3Title": "8 Estetika Seni Paparan Terpilih",
+      "f3Desc": "Pilih daripada 8 tema visual berbeza (Minimal Luxury, Natural Garden, Romantic Love, Postal Archive, Polaroid Wall, Starry Dream, Vintage Noir, Digital Edge) yang sepadan dengan dekorasi bunga anda.",
+      "f4Title": "Barisan Moderasi Jamuan Langsung",
+      "f4Desc": "Kekalkan kesopanan majlis sepenuhnya. Perancang majlis atau ahli pengapit yang dilantik menapis foto dan nota yang masuk melalui telefon sebelum disiarkan ke skrin."
+    },
+    "layouts": {
+      "eyebrow": "Gaya Susun Atur Dinamik",
+      "title": "Animasi seimbang yang tidak sesekali mengganggu ucapan majlis.",
+      "previewBtn": "Pratonton Tema",
+      "supports": "Menyokong Foto + Ucapan",
+      "autoLoop": "Ulang-automatik",
+      "l1Name": "Masonry Stream",
+      "l1Desc": "Aliran kad berterusan yang lancar, sesuai untuk muat naik foto bervolum tinggi dan nota pelbagai panjang.",
+      "l2Name": "Hanging Garden",
+      "l2Desc": "Kad tergantung dengan animasi ayunan organik lembut, sesuai untuk tema botani dan majlis luar dewan.",
+      "l3Name": "Floating Cosmos",
+      "l3Desc": "Kad terapung indah berlatarbelakangkan langit berbintang, sempurna untuk acara tarian malam dan pencahayaan romantik.",
+      "l4Name": "Editorial Grid",
+      "l4Desc": "Susun atur grid seni bina yang kemas menggabungkan tipografi klasik dengan bingkai foto polaroid."
+    },
+    "relatedSubtitle": "Alat perisian perkahwinan bersepadu",
+    "faqTitle": "Skrin Resepsi Perkahwinan",
+    "faqs": {
+      "q1": "Apakah perkakasan yang diperlukan untuk menjalankan paparan resepsi perkahwinan?",
+      "a1": "Mana-mana komputer riba standard (Mac, Windows atau Chromebook) yang disambungkan ke projektor, TV pintar besar atau dinding LED melalui HDMI atau AirPlay. Paparan berjalan di dalam Chrome, Safari atau Edge mod skrin penuh.",
+      "q2": "Berapa pantaskah foto tetamu muncul di skrin?",
+      "a2": "Kiriman disegerakkan secara masa nyata. Sebaik sahaja diluluskan di papan pemuka moderasi, foto dan ucapan akan muncul di skrin dalam beberapa saat.",
+      "q3": "Apakah yang berlaku jika Wi-Fi di dewan majlis perlahan?",
+      "a3": "EventFrame menggunakan penggayaan vektor ringan dan pemuatan imej progresif. Setelah URL paparan dimuat dalam skrin penuh, mesej baharu distrim dengan lancar menggunakan penggunaan jalur lebar yang rendah.",
+      "q4": "Bolehkah pasangan memuat turun keseluruhan galeri foto tetamu selepas majlis?",
+      "a4": "Ya. Semua ucapan tetamu, foto candid resepsi dan cap masa disimpan secara kekal dalam portal pasangan untuk muat turun beresolusi tinggi."
+    },
+    "bottomCta": {
+      "title": "Sedia menyerikan dewan resepsi perkahwinan anda?",
+      "subtitle": "Konfigurasikan tema paparan langsung anda dalam beberapa minit dan uji di mana-mana monitor sebelum hari bahagia.",
+      "cta": "Lancarkan Tetapan Paparan"
+    }
+  },
+  "templates": {
+    "badge": "Estetika Seni Paparan & Jemputan Digital",
+    "title": "Katalog Tema Paparan Perkahwinan & Suite Jemputan Pilihan",
+    "subtitle": "Teroka estetika visual seni bina dan suite tipografi kami. Setiap tema memacu keseluruhan perjalanan perkahwinan — daripada jemputan digital mudah alih dan borang RSVP hingga skrin projektor dewan langsung.",
+    "linkStudio": "Sesuaikan di Studio Jemputan Digital →",
+    "linkDisplay": "Ketahui Paparan Dewan Secara Langsung →",
+    "filterLabel": "Tapis mengikut Susun Atur:",
+    "variants": {
+      "all": "Semua",
+      "masonry": "Masonry",
+      "hanging": "Tergantung",
+      "floating": "Terapung",
+      "grid": "Grid"
+    },
+    "showingPrefix": "Memaparkan",
+    "showingSuffix": "tema",
+    "customBadge": "Tersuai",
+    "standardBadge": "Standard",
+    "layoutSuffix": "susun atur",
+    "previewTheme": "Pratonton Tema",
+    "applyToWedding": "Gunakan untuk Majlis",
+    "defaultDesc": "Susun atur editorial yang direka khas untuk paparan perkahwinan digital dan jemputan tetamu responsif.",
+    "bannerEyebrow": "Konsistensi Estetika Menyeluruh",
+    "bannerTitle": "Satu estetika visual merentas semua skrin.",
+    "bannerDesc": "Apabila anda memilih tema dalam EventFrame, pilihan anda diterapkan merentas halaman RSVP tetamu, portal muat naik foto mudah alih, suite jemputan digital dan skrin projektor dewan.",
+    "createAccount": "Cipta Akaun Studio",
+    "items": {
+      "garden": { "name": "Natural Garden", "desc": "Dahan tergantung, dedaun botani dan keanggunan flora desa." },
+      "minimal_luxury": { "name": "Minimal Luxury", "desc": "Corak marmar, bingkai metalik dan kemewahan bertaraf tinggi." },
+      "romantic": { "name": "Romantic Love", "desc": "Rona merah jambu lembut, bunga mawar dan tanglung indah." },
+      "postal": { "name": "Postal Archive", "desc": "Sampul surat, setem klasik dan sentuhan penulisan warkah." },
+      "polaroid": { "name": "Polaroid Wall", "desc": "Bingkai filem segera dan memori interaktif yang mesra." },
+      "starry": { "name": "Starry Dream", "desc": "Biru tengah malam, cahaya berkilauan dan keajaiban cakerawala." },
+      "vintage": { "name": "Vintage Noir", "desc": "Kamera retro, kertas kraf dan nostalgia sinematik." },
+      "digital": { "name": "Digital Edge", "desc": "Paparan berteknologi tinggi dan aliran sosial masa nyata." },
+      "cute": { "name": "Playful Fun", "desc": "Ilustrasi comel, pelekat kreatif dan keceriaan penuh warna." },
+      "minimalist": { "name": "Pure Minimal", "desc": "Garisan bersih, palet neutral dan fokus yang tulen." },
+      "gallery": { "name": "Art Gallery", "desc": "Bingkai kurasi seni dan penceritaan visual yang teratur." },
+      "creative": { "name": "Creative Canvas", "desc": "Lakunan seni, tekstur campuran dan bentuk yang unik." }
+    }
+  },
+  "seo": {
+    "routes": {
+      "/": {
+        "title": "Platform Perancangan Perkahwinan & Jemputan Digital untuk Studio | EventFrame",
+        "description": "Platform perisian editorial untuk studio dan perancang perkahwinan moden. Suite jemputan digital eksklusif, moderasi tetamu masa nyata dan soal selidik RSVP tersuai."
+      },
+      "/templates": {
+        "title": "Katalog Tema Paparan Perkahwinan & Suite Jemputan | EventFrame",
+        "description": "Teroka tema paparan perkahwinan pilihan dan suite tipografi untuk projektor majlis langsung, buku tamu digital dan jemputan mewah."
+      },
+      "/pricing": {
+        "title": "Harga EventFrame — Pelan untuk Studio Perkahwinan & Pasangan",
+        "description": "Harga ringkas dan telus untuk studio perkahwinan mewah serta pasangan pengantin. Jemputan digital, paparan resepsi langsung dan soal selidik RSVP tersuai."
+      },
+      "/wedding-planner-software": {
+        "title": "Perisian Perancang Perkahwinan untuk Studio Moden | EventFrame",
+        "description": "Perisian perkahwinan semua-dalam-satu untuk studio dan perancang. Selaraskan jemputan digital, soal selidik RSVP tersuai, moderasi tetamu dan paparan resepsi langsung."
+      },
+      "/white-label-wedding-software": {
+        "title": "Perisian Perkahwinan Label Putih untuk Agensi | EventFrame",
+        "description": "Tawarkan suite perkahwinan digital berjenama di bawah nama studio anda. Subdomain agensi tersuai, portal pasangan peribadi dan kad jemputan eksklusif."
+      },
+      "/digital-wedding-invitations": {
+        "title": "Kad Jemputan Perkahwinan Digital & Rekaan | EventFrame",
+        "description": "Reka kad jemputan perkahwinan digital editorial dengan tipografi tepat, pratonton mudah alih responsif dan pengumpulan RSVP dalam talian yang lancar."
+      },
+      "/wedding-rsvp-management": {
+        "title": "Pengurusan RSVP Perkahwinan yang Mudah | EventFrame",
+        "description": "Permudahkan penjejakan kehadiran majlis dengan medan soal selidik tersuai, pilihan diet, metrik masa nyata dan eksport CSV serta-merta."
+      },
+      "/wedding-guest-management": {
+        "title": "Perisian Pengurusan Tetamu Perkahwinan | EventFrame",
+        "description": "Satukan penyelarasan senarai tetamu, penjejakan RSVP, maklumat hubungan dan moderasi foto serta ucapan langsung dalam satu portal perkahwinan bersepadu."
+      },
+      "/wedding-reception-display": {
+        "title": "Paparan Resepsi Perkahwinan & Pengalaman Tetamu | EventFrame",
+        "description": "Serikan dewan resepsi dengan dinding foto tetamu yang dipancarkan secara langsung, ucapan mesra, perkongsian kod QR dinamik dan tema estetika pilihan."
+      },
+      "/subscription": {
+        "title": "Harga EventFrame — Pelan untuk Studio Perkahwinan & Pasangan",
+        "description": "Harga ringkas dan telus untuk studio perkahwinan mewah serta pasangan pengantin. Jemputan digital, paparan resepsi langsung dan soal selidik RSVP tersuai."
+      }
+    }
+  }
+}

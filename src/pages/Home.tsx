@@ -1,80 +1,116 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { 
-  ArrowRight, 
-  Check, 
-  Heart, 
-  Layers, 
-  Sparkles, 
-  Smartphone, 
-  Monitor, 
-  ShieldCheck, 
-  Sliders, 
-  Users, 
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import {
+  ArrowRight,
+  Check,
+  Layers,
+  Sliders,
   ChevronDown,
   Globe,
   MessageSquare,
-  Clock,
-  Calendar,
-  CreditCard,
-  Shield
 } from 'lucide-react';
-import { EVENT_PRICING, formatPrice, calculateEventCost } from '../config/pricing';
+import { EVENT_PRICING, formatPrice } from '../config/pricing';
 import MarketingLayout from '../layouts/MarketingLayout';
 import Button from '../design-system/components/Button';
+import { useMarketingTranslation } from '../lib/i18n/MarketingTranslationContext';
 import heroWeddingImage from '../assets/images/hero_wedding_editorial_1793501242401.jpg';
 import invitationCraftImage from '../assets/images/invitation_craft_showcase_1793501242453.jpg';
 import celebrationVenueImage from '../assets/images/celebration_venue_mood_1793501242406.jpg';
 
 export default function Home() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { t, getLocalizedPath } = useMarketingTranslation();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [pricingCycle, setPricingCycle] = useState<'monthly' | 'annual'>('monthly');
+
+  useEffect(() => {
+    if (location.pathname === '/pricing') {
+      const el = document.getElementById('pricing');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }, [location.pathname]);
+
+  const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    e.preventDefault();
+    navigate(getLocalizedPath(href));
+  };
 
   const features = [
     {
-      title: 'Digital Stationery Suite',
-      description: 'Precision typography and canvas customization. Deliver digital wedding invitations with custom RSVP flows matching your exact agency aesthetic.',
+      title: t('home.craft.features.stationeryTitle'),
+      description: t('home.craft.features.stationeryDesc'),
       icon: <Layers className="w-5 h-5 text-[#8B806F]" />,
     },
     {
-      title: 'Real-Time Guest Moderation',
-      description: 'Stream guest wishes and photos to venue displays with instant live moderation to ensure every moment on screen is tasteful and approved.',
+      title: t('home.craft.features.moderationTitle'),
+      description: t('home.craft.features.moderationDesc'),
       icon: <MessageSquare className="w-5 h-5 text-[#8B806F]" />,
     },
     {
-      title: 'White-Label Subdomains',
-      description: 'Operate entirely under your studio name. Clients access their wedding dashboards through your customized subdomain with your logo and palette.',
+      title: t('home.craft.features.subdomainTitle'),
+      description: t('home.craft.features.subdomainDesc'),
       icon: <Globe className="w-5 h-5 text-[#8B806F]" />,
     },
     {
-      title: 'Custom RSVP Logic',
-      description: 'Collect dietary restrictions, plus-one names, meal selections, and transport requirements with custom conditional questionnaire fields.',
+      title: t('home.craft.features.rsvpTitle'),
+      description: t('home.craft.features.rsvpDesc'),
       icon: <Sliders className="w-5 h-5 text-[#8B806F]" />,
     },
   ];
 
   const faqs = [
+    { q: t('home.faq.items.q1'), a: t('home.faq.items.a1') },
+    { q: t('home.faq.items.q2'), a: t('home.faq.items.a2') },
+    { q: t('home.faq.items.q3'), a: t('home.faq.items.a3') },
+    { q: t('home.faq.items.q4'), a: t('home.faq.items.a4') },
+    { q: t('home.faq.items.q5'), a: t('home.faq.items.a5') },
+  ];
+
+  const ecosystemCards = [
     {
-      q: 'Can agencies brand the client experience under their own domain?',
-      a: 'Yes. EventFrame is built specifically for wedding studios and planners. Your clients see your agency name, logo, and subdomain (e.g., yourstudio.eventframe.io).'
+      href: '/wedding-planner-software',
+      tag: t('home.ecosystem.cards.planner.tag'),
+      title: t('home.ecosystem.cards.planner.title'),
+      desc: t('home.ecosystem.cards.planner.desc'),
+      cta: t('home.ecosystem.cards.planner.cta'),
     },
     {
-      q: 'How does live guest moderation work during the reception?',
-      a: 'Guests scan a QR code on the table to post photos and well-wishes from their mobile browser. The studio or bridal party can approve or decline messages in real-time from the dashboard before they appear on the ballroom projector.'
+      href: '/white-label-wedding-software',
+      tag: t('home.ecosystem.cards.whiteLabel.tag'),
+      title: t('home.ecosystem.cards.whiteLabel.title'),
+      desc: t('home.ecosystem.cards.whiteLabel.desc'),
+      cta: t('home.ecosystem.cards.whiteLabel.cta'),
     },
     {
-      q: 'Do guests need to install an app to RSVP or post photos?',
-      a: 'No app download is required. Everything runs in the mobile browser with responsive, lightweight, touch-optimized interfaces.'
+      href: '/digital-wedding-invitations',
+      tag: t('home.ecosystem.cards.invitations.tag'),
+      title: t('home.ecosystem.cards.invitations.title'),
+      desc: t('home.ecosystem.cards.invitations.desc'),
+      cta: t('home.ecosystem.cards.invitations.cta'),
     },
     {
-      q: 'Can couples edit their wedding pages directly?',
-      a: 'Yes. Couples receive a secure event access PIN that gives them access to their private dashboard to view RSVPs, download guest lists, and moderate celebration messages.'
+      href: '/wedding-rsvp-management',
+      tag: t('home.ecosystem.cards.rsvp.tag'),
+      title: t('home.ecosystem.cards.rsvp.title'),
+      desc: t('home.ecosystem.cards.rsvp.desc'),
+      cta: t('home.ecosystem.cards.rsvp.cta'),
     },
     {
-      q: 'How does EventFrame pay-per-event pricing work?',
-      a: 'EventFrame operates on a pure pay-per-event model. You pay once per wedding event, which includes 12 full calendar months of access. There are no mandatory monthly subscriptions, no bulk credits, and no recurring commitments. User signup and draft creation are always free.'
-    }
+      href: '/wedding-guest-management',
+      tag: t('home.ecosystem.cards.guest.tag'),
+      title: t('home.ecosystem.cards.guest.title'),
+      desc: t('home.ecosystem.cards.guest.desc'),
+      cta: t('home.ecosystem.cards.guest.cta'),
+    },
+    {
+      href: '/wedding-reception-display',
+      tag: t('home.ecosystem.cards.display.tag'),
+      title: t('home.ecosystem.cards.display.title'),
+      desc: t('home.ecosystem.cards.display.desc'),
+      cta: t('home.ecosystem.cards.display.cta'),
+    },
   ];
 
   return (
@@ -86,17 +122,17 @@ export default function Home() {
             {/* Left Content (7 cols) */}
             <div className="lg:col-span-7 space-y-6">
               <div className="inline-flex items-center gap-2 text-xs font-medium text-[#736959] bg-[#EFECE6] px-2.5 py-1 rounded">
-                <span>EventFrame Studio Platform</span>
+                <span>{t('home.hero.badgeLeft')}</span>
                 <span className="text-[#8B806F]">·</span>
-                <span>White-Label Wedding OS</span>
+                <span>{t('home.hero.badgeRight')}</span>
               </div>
 
               <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-normal tracking-tight text-[#252525] leading-[1.12]">
-                Wedding Planning Software for Modern Wedding Studios
+                {t('home.hero.title')}
               </h1>
 
               <p className="text-sm md:text-base text-[#777777] max-w-xl leading-relaxed">
-                Bring digital wedding invitations, guest RSVPs, guest experiences and live reception displays together in one platform.
+                {t('home.hero.subtitle')}
               </p>
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -106,29 +142,29 @@ export default function Home() {
                   onClick={() => navigate('/login')}
                   rightIcon={<ArrowRight className="w-4 h-4" />}
                 >
-                  Create Agency Workspace
+                  {t('home.hero.primaryCta')}
                 </Button>
                 <Button
                   variant="outline"
                   size="lg"
-                  onClick={() => navigate('/templates')}
+                  onClick={() => navigate(getLocalizedPath('/templates'))}
                 >
-                  Browse Invitation Suites
+                  {t('home.hero.secondaryCta')}
                 </Button>
               </div>
 
-              <div className="pt-6 flex items-center gap-6 text-xs text-[#777777]">
+              <div className="pt-6 flex flex-wrap items-center gap-6 text-xs text-[#777777]">
                 <div className="flex items-center gap-1.5">
                   <Check className="w-4 h-4 text-[#8B806F]" />
-                  <span>White-label subdomain</span>
+                  <span>{t('home.hero.bullet1')}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Check className="w-4 h-4 text-[#8B806F]" />
-                  <span>Real-time guest moderation</span>
+                  <span>{t('home.hero.bullet2')}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Check className="w-4 h-4 text-[#8B806F]" />
-                  <span>Instant RSVP export</span>
+                  <span>{t('home.hero.bullet3')}</span>
                 </div>
               </div>
             </div>
@@ -139,7 +175,7 @@ export default function Home() {
                 <div className="aspect-[4/3] overflow-hidden rounded">
                   <img
                     src={heroWeddingImage}
-                    alt="Editorial wedding photography of bride and groom in Sonoma Valley"
+                    alt={t('home.hero.imageAlt')}
                     className="w-full h-full object-cover"
                     loading="eager"
                     fetchPriority="high"
@@ -151,11 +187,11 @@ export default function Home() {
                 </div>
                 <div className="p-4 flex items-center justify-between border-t border-[#E8E8E5] mt-2 bg-[#FAF9F7] rounded">
                   <div>
-                    <div className="text-xs font-semibold text-[#252525]">Celia & Elias</div>
-                    <div className="text-[11px] text-[#777777]">Sonoma Valley · 142 Confirmed RSVPs</div>
+                    <div className="text-xs font-semibold text-[#252525]">{t('home.hero.cardCouple')}</div>
+                    <div className="text-[11px] text-[#777777]">{t('home.hero.cardMeta')}</div>
                   </div>
                   <span className="text-[10px] font-mono tabular-nums text-[#8B806F] bg-white px-2 py-0.5 rounded border border-[#E8E8E5]">
-                    LIVE SUITE
+                    {t('home.hero.cardBadge')}
                   </span>
                 </div>
               </div>
@@ -164,135 +200,46 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Integrated Product Ecosystem Grid (Phase 2 SEO Architecture) */}
+      {/* Integrated Product Ecosystem Grid */}
       <section className="py-16 md:py-20 border-b border-[#E8E8E5] bg-[#FAF9F7]">
         <div className="max-w-6xl mx-auto px-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-12">
             <div>
-              <span className="text-xs font-medium text-[#8B806F] tracking-wide uppercase">Integrated Wedding Software</span>
+              <span className="text-xs font-medium text-[#8B806F] tracking-wide uppercase">
+                {t('home.ecosystem.eyebrow')}
+              </span>
               <h2 className="font-serif text-3xl md:text-4xl font-normal tracking-tight text-[#252525] mt-1">
-                A unified ecosystem for modern studios and couples.
+                {t('home.ecosystem.title')}
               </h2>
             </div>
             <p className="text-xs md:text-sm text-[#777777] max-w-md">
-              Six dedicated tools engineered to work seamlessly together — from initial digital stationery to live ballroom displays.
+              {t('home.ecosystem.subtitle')}
             </p>
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            <a 
-              href="/wedding-planner-software" 
-              className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
-            >
-              <div className="space-y-3">
-                <span className="text-[10px] font-mono text-[#8B806F] uppercase">Studio Management</span>
-                <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
-                  Wedding Planner Software
-                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </h3>
-                <p className="text-xs text-[#777777] leading-relaxed">
-                  Coordinate multiple client weddings, schedule calendars, and manage guest experiences from one studio command center.
-                </p>
-              </div>
-              <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
-                Learn about planner software →
-              </div>
-            </a>
-
-            <a 
-              href="/white-label-wedding-software" 
-              className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
-            >
-              <div className="space-y-3">
-                <span className="text-[10px] font-mono text-[#8B806F] uppercase">Agency Branding</span>
-                <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
-                  White-Label Wedding Software
-                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </h3>
-                <p className="text-xs text-[#777777] leading-relaxed">
-                  Operate under your studio's custom subdomain with branded digital stationery and private client PIN logins.
-                </p>
-              </div>
-              <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
-                Explore white-label features →
-              </div>
-            </a>
-
-            <a 
-              href="/digital-wedding-invitations" 
-              className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
-            >
-              <div className="space-y-3">
-                <span className="text-[10px] font-mono text-[#8B806F] uppercase">Design Studio</span>
-                <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
-                  Digital Wedding Invitations
-                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </h3>
-                <p className="text-xs text-[#777777] leading-relaxed">
-                  Design bespoke online invitations with drag-and-drop coordinates, editorial typography, and integrated RSVP buttons.
-                </p>
-              </div>
-              <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
-                Design wedding invitations →
-              </div>
-            </a>
-
-            <a 
-              href="/wedding-rsvp-management" 
-              className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
-            >
-              <div className="space-y-3">
-                <span className="text-[10px] font-mono text-[#8B806F] uppercase">Guest Responses</span>
-                <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
-                  Wedding RSVP Management
-                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </h3>
-                <p className="text-xs text-[#777777] leading-relaxed">
-                  Collect attendance, meal choices, plus-one names, and dietary allergies with conditional questionnaire fields.
-                </p>
-              </div>
-              <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
-                Manage wedding RSVPs →
-              </div>
-            </a>
-
-            <a 
-              href="/wedding-guest-management" 
-              className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
-            >
-              <div className="space-y-3">
-                <span className="text-[10px] font-mono text-[#8B806F] uppercase">Operations</span>
-                <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
-                  Wedding Guest Management
-                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </h3>
-                <p className="text-xs text-[#777777] leading-relaxed">
-                  Maintain confirmed headcount records, review dietary needs, and moderate live reception messages and photo uploads.
-                </p>
-              </div>
-              <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
-                Explore guest operations →
-              </div>
-            </a>
-
-            <a 
-              href="/wedding-reception-display" 
-              className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
-            >
-              <div className="space-y-3">
-                <span className="text-[10px] font-mono text-[#8B806F] uppercase">Ballroom Experience</span>
-                <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
-                  Wedding Reception Displays
-                  <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </h3>
-                <p className="text-xs text-[#777777] leading-relaxed">
-                  Project live guest photo walls and well-wishes on ballroom screens with table QR code scanning and 8 curated themes.
-                </p>
-              </div>
-              <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
-                Set up reception display →
-              </div>
-            </a>
+            {ecosystemCards.map((card) => (
+              <a
+                key={card.href}
+                href={getLocalizedPath(card.href)}
+                onClick={(e) => handleLinkClick(e, card.href)}
+                className="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle hover:border-[#252525] transition-colors group flex flex-col justify-between"
+              >
+                <div className="space-y-3">
+                  <span className="text-[10px] font-mono text-[#8B806F] uppercase">{card.tag}</span>
+                  <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B806F] transition-colors flex items-center justify-between">
+                    {card.title}
+                    <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </h3>
+                  <p className="text-xs text-[#777777] leading-relaxed">
+                    {card.desc}
+                  </p>
+                </div>
+                <div className="pt-4 mt-4 border-t border-[#EFEFEA] text-[11px] font-medium text-[#252525]">
+                  {card.cta}
+                </div>
+              </a>
+            ))}
           </div>
         </div>
       </section>
@@ -301,12 +248,14 @@ export default function Home() {
       <section id="features" className="py-20 md:py-28 border-b border-[#E8E8E5] bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="max-w-2xl mb-16">
-            <span className="text-xs font-medium text-[#8B806F] tracking-wide">ARCHITECTURE & CRAFT</span>
+            <span className="text-xs font-medium text-[#8B806F] tracking-wide">
+              {t('home.craft.eyebrow')}
+            </span>
             <h2 className="font-serif text-3xl md:text-4xl font-normal tracking-tight text-[#252525] mt-2 leading-tight">
-              Designed for studios who refuse generic wedding software.
+              {t('home.craft.title')}
             </h2>
             <p className="text-xs md:text-sm text-[#777777] mt-3 leading-relaxed">
-              Every detail is calibrated to maintain the aesthetic integrity of high-end ceremonies. From typographical balance to guest moderation, EventFrame delivers quiet luxury.
+              {t('home.craft.subtitle')}
             </p>
           </div>
 
@@ -314,7 +263,7 @@ export default function Home() {
             <div className="rounded-lg overflow-hidden border border-[#E8E8E5] shadow-subtle bg-[#FAF9F7]">
               <img
                 src={invitationCraftImage}
-                alt="Luxury wedding invitation stationery showcase with letterpress typography"
+                alt={t('home.craft.imageAlt')}
                 className="w-full h-auto object-cover"
                 loading="lazy"
                 decoding="async"
@@ -346,12 +295,12 @@ export default function Home() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid lg:grid-cols-12 gap-12 items-center">
             <div className="lg:col-span-5 space-y-5">
-              <span className="text-xs font-medium text-[#8B806F]">VENUE STREAMING</span>
+              <span className="text-xs font-medium text-[#8B806F]">{t('home.spotlight.eyebrow')}</span>
               <h2 className="font-serif text-3xl md:text-4xl font-normal text-[#252525] leading-tight">
-                An immersive visual memory wall for the reception ballroom.
+                {t('home.spotlight.title')}
               </h2>
               <p className="text-xs md:text-sm text-[#777777] leading-relaxed">
-                Connect any venue display, projector, or LED screen. Guests upload photos and warm wishes from their phones, while studio operators or bridal party members review entries before they broadcast.
+                {t('home.spotlight.subtitle')}
               </p>
               <div className="pt-2">
                 <Button
@@ -360,7 +309,7 @@ export default function Home() {
                   onClick={() => navigate('/login')}
                   rightIcon={<ArrowRight className="w-3.5 h-3.5" />}
                 >
-                  Configure Live Display
+                  {t('home.spotlight.cta')}
                 </Button>
               </div>
             </div>
@@ -370,7 +319,7 @@ export default function Home() {
                 <div className="aspect-[16/9] overflow-hidden rounded relative">
                   <img
                     src={celebrationVenueImage}
-                    alt="Evening wedding reception venue display showcasing live guest memories"
+                    alt={t('home.spotlight.imageAlt')}
                     className="w-full h-full object-cover"
                     loading="lazy"
                     decoding="async"
@@ -380,9 +329,9 @@ export default function Home() {
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex items-end p-6">
                     <div className="text-white space-y-1">
-                      <div className="text-xs font-mono text-white/80">RECEPTION SCREEN 01 · CONNECTED</div>
-                      <div className="text-sm font-medium">“Wishing Celia and Elias an eternity of laughter and shared horizons.”</div>
-                      <div className="text-[11px] text-white/60">— The Sterling Family</div>
+                      <div className="text-xs font-mono text-white/80">{t('home.spotlight.screenTag')}</div>
+                      <div className="text-sm font-medium">{t('home.spotlight.quote')}</div>
+                      <div className="text-[11px] text-white/60">{t('home.spotlight.author')}</div>
                     </div>
                   </div>
                 </div>
@@ -392,38 +341,45 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Pricing Section - USD $5 Pay-Per-Event */}
+      {/* Pricing Section */}
       <section id="pricing" className="py-20 md:py-28 border-b border-[#E8E8E5] bg-white">
         <div className="max-w-5xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <span className="text-xs font-mono font-semibold uppercase tracking-wider text-[#8B806F]">PAY-PER-EVENT LICENSING</span>
+            <span className="text-xs font-mono font-semibold uppercase tracking-wider text-[#8B806F]">
+              {t('home.pricing.eyebrow')}
+            </span>
             <h2 className="font-serif text-3xl md:text-4xl font-normal text-[#252525] mt-2">
-              One Event. One Payment. {formatPrice(EVENT_PRICING.pricePerEvent)}.
+              {t('home.pricing.title', { price: formatPrice(EVENT_PRICING.pricePerEvent) })}
             </h2>
             <p className="text-xs md:text-sm text-[#777777] mt-3 leading-relaxed">
-              No recurring monthly retainers, no credit bundles, and no surprise renewals. 
-              Couples and wedding agencies pay once per active celebration with 12 full months of platform access.
+              {t('home.pricing.subtitle')}
             </p>
           </div>
 
           {/* Main Pricing Hero Card */}
           <div className="bg-[#FAF9F7] border-2 border-[#252525] rounded-2xl p-8 sm:p-10 shadow-card max-w-3xl mx-auto relative overflow-hidden">
             <div className="absolute top-0 right-0 bg-[#252525] text-white text-[11px] font-mono px-4 py-1 rounded-bl-xl tracking-wider">
-              12 MONTHS ACCESS INCLUDED
+              {t('home.pricing.ribbon')}
             </div>
 
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-[#E8E8E5] pb-8">
               <div>
-                <span className="text-xs font-mono text-[#8B806F] uppercase font-semibold">ALL-INCLUSIVE LICENSE</span>
-                <h3 className="font-serif text-2xl font-normal text-[#252525] mt-1">Wedding Event License</h3>
+                <span className="text-xs font-mono text-[#8B806F] uppercase font-semibold">
+                  {t('home.pricing.cardEyebrow')}
+                </span>
+                <h3 className="font-serif text-2xl font-normal text-[#252525] mt-1">
+                  {t('home.pricing.cardTitle')}
+                </h3>
                 <p className="text-xs text-[#777777] mt-1 max-w-sm">
-                  Complete digital suite for invitations, guestbook uploads, live ballroom display, and attendee RSVPs.
+                  {t('home.pricing.cardDesc')}
                 </p>
               </div>
 
               <div className="flex items-baseline gap-1.5 bg-white border border-[#E8E8E5] rounded-xl px-5 py-3 shadow-subtle shrink-0">
-                <span className="text-4xl font-mono font-bold text-[#252525]">{formatPrice(EVENT_PRICING.pricePerEvent)}</span>
-                <span className="text-xs text-[#777777]">/ event</span>
+                <span className="text-4xl font-mono font-bold text-[#252525]">
+                  {formatPrice(EVENT_PRICING.pricePerEvent)}
+                </span>
+                <span className="text-xs text-[#777777]">{t('home.pricing.perEvent')}</span>
               </div>
             </div>
 
@@ -431,38 +387,38 @@ export default function Home() {
               <div className="space-y-2.5 text-xs text-[#252525]">
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
-                  <span className="font-medium">12 Full Calendar Months Validity</span>
+                  <span className="font-medium">{t('home.pricing.feat1')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
-                  <span>Interactive Digital Invitation Suite</span>
+                  <span>{t('home.pricing.feat2')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
-                  <span>Custom RSVP & Dietary Questionnaire</span>
+                  <span>{t('home.pricing.feat3')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
-                  <span>Real-Time Guest Wishes & Photo Wall</span>
+                  <span>{t('home.pricing.feat4')}</span>
                 </div>
               </div>
 
               <div className="space-y-2.5 text-xs text-[#252525]">
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
-                  <span>Live Reception Display Moderation</span>
+                  <span>{t('home.pricing.feat5')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
-                  <span>Bespoke Typography & Color Aesthetics</span>
+                  <span>{t('home.pricing.feat6')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
-                  <span>Dedicated Couple PIN Access Portal</span>
+                  <span>{t('home.pricing.feat7')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-[#8B806F] shrink-0" />
-                  <span>CSV Records Export & Lifetime Archive</span>
+                  <span>{t('home.pricing.feat8')}</span>
                 </div>
               </div>
             </div>
@@ -470,35 +426,35 @@ export default function Home() {
             {/* Multi-Event Cost Breakdown */}
             <div className="pt-6">
               <div className="text-[11px] font-mono uppercase tracking-wider text-[#8B806F] mb-3 font-semibold">
-                TRANSPARENT MULTI-EVENT PRICING
+                {t('home.pricing.multiTitle')}
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                 <div className="p-3 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle">
-                  <div className="text-xs text-[#777777]">1 Event</div>
+                  <div className="text-xs text-[#777777]">{t('home.pricing.tier1Label')}</div>
                   <div className="text-base font-mono font-bold text-[#252525] mt-1">$5.00</div>
-                  <div className="text-[10px] text-[#888888]">One-time</div>
+                  <div className="text-[10px] text-[#888888]">{t('home.pricing.tier1Sub')}</div>
                 </div>
                 <div className="p-3 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle">
-                  <div className="text-xs text-[#777777]">2 Events</div>
+                  <div className="text-xs text-[#777777]">{t('home.pricing.tier2Label')}</div>
                   <div className="text-base font-mono font-bold text-[#252525] mt-1">$10.00</div>
-                  <div className="text-[10px] text-[#888888]">12 mos each</div>
+                  <div className="text-[10px] text-[#888888]">{t('home.pricing.tier2Sub')}</div>
                 </div>
                 <div className="p-3 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle">
-                  <div className="text-xs text-[#777777]">5 Events</div>
+                  <div className="text-xs text-[#777777]">{t('home.pricing.tier3Label')}</div>
                   <div className="text-base font-mono font-bold text-[#252525] mt-1">$25.00</div>
-                  <div className="text-[10px] text-[#888888]">12 mos each</div>
+                  <div className="text-[10px] text-[#888888]">{t('home.pricing.tier3Sub')}</div>
                 </div>
                 <div className="p-3 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle">
-                  <div className="text-xs text-[#777777]">10 Events</div>
+                  <div className="text-xs text-[#777777]">{t('home.pricing.tier4Label')}</div>
                   <div className="text-base font-mono font-bold text-[#252525] mt-1">$50.00</div>
-                  <div className="text-[10px] text-[#888888]">12 mos each</div>
+                  <div className="text-[10px] text-[#888888]">{t('home.pricing.tier4Sub')}</div>
                 </div>
               </div>
             </div>
 
             <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-xs text-[#777777] text-center sm:text-left">
-                Agency account creation is 100% free. Create and design draft weddings with zero payment required.
+                {t('home.pricing.freeDraftNote')}
               </div>
               <Button
                 variant="primary"
@@ -507,7 +463,7 @@ export default function Home() {
                 rightIcon={<ArrowRight className="w-4 h-4" />}
                 className="w-full sm:w-auto"
               >
-                Create Free Draft Event
+                {t('home.pricing.cta')}
               </Button>
             </div>
           </div>
@@ -518,9 +474,9 @@ export default function Home() {
       <section className="py-20 md:py-24 border-b border-[#E8E8E5] bg-[#FAF9F7]">
         <div className="max-w-3xl mx-auto px-6">
           <div className="text-center mb-12">
-            <span className="text-xs font-medium text-[#8B806F]">FREQUENTLY ASKED QUESTIONS</span>
+            <span className="text-xs font-medium text-[#8B806F]">{t('home.faq.eyebrow')}</span>
             <h2 className="font-serif text-3xl font-normal text-[#252525] mt-2">
-              Everything you need to know.
+              {t('home.faq.title')}
             </h2>
           </div>
 
@@ -530,6 +486,7 @@ export default function Home() {
               return (
                 <div key={index} className="p-5">
                   <button
+                    type="button"
                     onClick={() => setOpenFaq(isOpen ? null : index)}
                     className="w-full flex items-center justify-between text-left gap-4"
                   >
@@ -552,10 +509,10 @@ export default function Home() {
       <section className="py-20 bg-white text-center">
         <div className="max-w-3xl mx-auto px-6 space-y-6">
           <h2 className="font-serif text-3xl md:text-5xl font-normal text-[#252525] tracking-tight">
-            Elevate your wedding agency experience today.
+            {t('home.finalCta.title')}
           </h2>
           <p className="text-xs md:text-sm text-[#777777] max-w-lg mx-auto leading-relaxed">
-            Join hundreds of premier studios delivering bespoke digital stationery and seamless celebration moderation.
+            {t('home.finalCta.subtitle')}
           </p>
           <div className="pt-2">
             <Button
@@ -564,7 +521,7 @@ export default function Home() {
               onClick={() => navigate('/login')}
               rightIcon={<ArrowRight className="w-4 h-4" />}
             >
-              Start Free Agency Trial
+              {t('home.finalCta.cta')}
             </Button>
           </div>
         </div>
