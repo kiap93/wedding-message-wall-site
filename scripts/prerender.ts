@@ -1,483 +1,258 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import React from 'react';
+import { renderToString } from 'react-dom/server';
+import { StaticRouter, Routes, Route } from 'react-router-dom';
+
 import { SEO_CONFIG } from '../src/seo/config.ts';
-import { PUBLIC_SEO_ROUTES } from '../src/seo/routes.ts';
-import { buildCanonicalUrl, buildMarketingHreflangLinks } from '../src/seo/canonical.ts';
-import { getStructuredDataForType } from '../src/seo/structuredData.ts';
-import { DEFAULT_TEMPLATES } from '../src/types.ts';
+import { resolveRouteMetadata } from '../src/seo/routes.ts';
+import {
+  buildCanonicalUrl,
+  buildLocalizedRoutePath,
+  buildMarketingHreflangLinks,
+  LOCALIZED_MARKETING_BASE_PATHS,
+  MARKETING_HREFLANG_CODES,
+  MarketingLanguageCode,
+} from '../src/seo/canonical.ts';
+import {
+  buildPageStructuredData,
+  getArticleSchema,
+  getBreadcrumbListSchema,
+  getOrganizationSchema,
+} from '../src/seo/structuredData.ts';
+import { buildSitemapXml } from '../src/seo/sitemap.ts';
+import {
+  buildBlogIndexPath,
+  buildBlogPostHreflangLinks,
+  buildBlogPostPath,
+  getAllBlogPosts,
+  getBlogUiLabels,
+  LocalizedBlogPost,
+} from '../src/content/blog/index.ts';
+import {
+  MarketingTranslationProvider,
+  translateMarketing,
+} from '../src/lib/i18n/MarketingTranslationContext.tsx';
+import { OG_LOCALES, SEOProvider } from '../src/components/SEO.tsx';
+
+// Eagerly rendered marketing and blog components
+import Home from '../src/pages/Home.tsx';
+import TemplateSelector from '../src/pages/TemplateSelector.tsx';
+import PricingPage from '../src/pages/PricingPage.tsx';
+import WeddingWebsiteBuilder from '../src/pages/marketing/WeddingWebsiteBuilder.tsx';
+import WeddingSeatingChart from '../src/pages/marketing/WeddingSeatingChart.tsx';
+import WeddingPlannerSoftware from '../src/pages/marketing/WeddingPlannerSoftware.tsx';
+import WhiteLabelWeddingSoftware from '../src/pages/marketing/WhiteLabelWeddingSoftware.tsx';
+import DigitalWeddingInvitations from '../src/pages/marketing/DigitalWeddingInvitations.tsx';
+import WeddingRsvpManagement from '../src/pages/marketing/WeddingRsvpManagement.tsx';
+import WeddingGuestManagement from '../src/pages/marketing/WeddingGuestManagement.tsx';
+import WeddingReceptionDisplay from '../src/pages/marketing/WeddingReceptionDisplay.tsx';
+import BlogIndexPage from '../src/pages/blog/BlogIndexPage.tsx';
+import BlogPostPage from '../src/pages/blog/BlogPostPage.tsx';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const distDir = path.resolve(rootDir, 'dist');
 
-// Reusable editorial header and footer for prerendered pages
-const prerenderHeader = `
-  <header class="border-b border-[#E8E8E5] bg-[#F7F7F5] py-4 px-6">
-    <div class="max-w-6xl mx-auto flex items-center justify-between">
-      <a href="/" class="text-base font-semibold tracking-tight text-[#252525]">EventFrame<span class="text-[#8B806F]">.io</span></a>
-      <nav class="flex items-center gap-6 text-xs text-[#777777]">
-        <a href="/">Home</a>
-        <a href="/wedding-planner-software">Planners</a>
-        <a href="/templates">Themes</a>
-        <a href="/pricing">Pricing</a>
-        <a href="/login" class="text-[#252525] font-medium">Sign In</a>
-      </nav>
-    </div>
-  </header>
-`;
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
-const prerenderFooter = `
-  <footer class="border-t border-[#E8E8E5] bg-white py-12 px-6 mt-20">
-    <div class="max-w-6xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-8 text-xs text-[#777777]">
-      <div>
-        <div class="font-semibold text-[#252525] mb-2">Solutions</div>
-        <ul class="space-y-1.5">
-          <li><a href="/wedding-planner-software">Wedding Planner Software</a></li>
-          <li><a href="/white-label-wedding-software">White-Label Software</a></li>
-          <li><a href="/digital-wedding-invitations">Digital Invitations</a></li>
-          <li><a href="/wedding-rsvp-management">RSVP Management</a></li>
-          <li><a href="/wedding-guest-management">Guest Management</a></li>
-          <li><a href="/wedding-reception-display">Reception Displays</a></li>
-        </ul>
-      </div>
-      <div>
-        <div class="font-semibold text-[#252525] mb-2">Themes</div>
-        <ul class="space-y-1.5">
-          <li><a href="/templates">Template Catalog</a></li>
-          <li><a href="/display?template=minimal_luxury">Minimal Luxury</a></li>
-          <li><a href="/display?template=garden">Natural Garden</a></li>
-          <li><a href="/display?template=romantic">Romantic Love</a></li>
-        </ul>
-      </div>
-      <div>
-        <div class="font-semibold text-[#252525] mb-2">Platform</div>
-        <ul class="space-y-1.5">
-          <li><a href="/pricing">Pricing & Plans</a></li>
-          <li><a href="/login">Studio Workspace</a></li>
-          <li><a href="/couple/login">Couple PIN Portal</a></li>
-        </ul>
-      </div>
-      <div>
-        <div class="font-semibold text-[#252525] mb-2">EventFrame.io</div>
-        <p class="leading-relaxed">The integrated wedding platform for modern wedding studios, planners and couples.</p>
-        <div class="mt-4">© ${new Date().getFullYear()} EventFrame.io</div>
-      </div>
-    </div>
-  </footer>
-`;
+function serializeJsonLd(schemas: Record<string, any>[]): string {
+  return JSON.stringify(schemas).replace(/</g, '\\u003c');
+}
 
-// Pre-render content generators for public marketing pages
-const PRERENDER_CONTENT: Record<string, { h1: string; contentHtml: string }> = {
-  '/': {
-    h1: 'Wedding Planning Software for Modern Wedding Studios',
-    contentHtml: `
-      ${prerenderHeader}
-      <main class="max-w-6xl mx-auto px-6 py-16">
-        <div class="space-y-6 max-w-2xl">
-          <div class="text-xs font-medium text-[#736959]">EventFrame Studio Platform · White-Label Wedding OS</div>
-          <h1 class="font-serif text-4xl sm:text-5xl font-normal text-[#252525] leading-tight">Wedding Planning Software for Modern Wedding Studios</h1>
-          <p class="text-[#777777] text-base leading-relaxed">Bring digital wedding invitations, guest RSVPs, guest experiences and live reception displays together in one platform.</p>
-          <div class="flex gap-3 pt-2">
-            <a href="/login" class="inline-block px-5 py-2.5 bg-[#252525] text-white text-xs font-medium rounded-md">Create Agency Workspace</a>
-            <a href="/templates" class="inline-block px-5 py-2.5 border border-[#E8E8E5] text-[#252525] text-xs font-medium rounded-md">Browse Invitation Suites</a>
-          </div>
-        </div>
+function renderMarketingRoutes(prefix: string = '') {
+  const routes: Array<{ path: string; el: React.ReactElement }> = [
+    { path: prefix || '/', el: React.createElement(Home) },
+    { path: `${prefix}/templates`, el: React.createElement(TemplateSelector) },
+    { path: `${prefix}/pricing`, el: React.createElement(PricingPage) },
+    { path: `${prefix}/blog`, el: React.createElement(BlogIndexPage) },
+    { path: `${prefix}/blog/:slug`, el: React.createElement(BlogPostPage) },
+    { path: `${prefix}/wedding-website-builder`, el: React.createElement(WeddingWebsiteBuilder) },
+    { path: `${prefix}/wedding-seating-chart`, el: React.createElement(WeddingSeatingChart) },
+    { path: `${prefix}/wedding-planner-software`, el: React.createElement(WeddingPlannerSoftware) },
+    { path: `${prefix}/white-label-wedding-software`, el: React.createElement(WhiteLabelWeddingSoftware) },
+    { path: `${prefix}/digital-wedding-invitations`, el: React.createElement(DigitalWeddingInvitations) },
+    { path: `${prefix}/wedding-rsvp-management`, el: React.createElement(WeddingRsvpManagement) },
+    { path: `${prefix}/wedding-guest-management`, el: React.createElement(WeddingGuestManagement) },
+    { path: `${prefix}/wedding-reception-display`, el: React.createElement(WeddingReceptionDisplay) },
+  ];
 
-        <section class="mt-16 pt-12 border-t border-[#E8E8E5]">
-          <h2 class="text-xs font-medium text-[#8B806F] tracking-wide uppercase mb-6">Integrated Wedding Software Solutions</h2>
-          <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div class="p-5 border border-[#E8E8E5] rounded-lg bg-white">
-              <h3 class="font-semibold text-sm text-[#252525]"><a href="/wedding-planner-software">Wedding Planner Software</a></h3>
-              <p class="text-xs text-[#777777] mt-1">Multi-wedding client management, event schedules, and coordinated guest workflows.</p>
-            </div>
-            <div class="p-5 border border-[#E8E8E5] rounded-lg bg-white">
-              <h3 class="font-semibold text-sm text-[#252525]"><a href="/white-label-wedding-software">White-Label Wedding Software</a></h3>
-              <p class="text-xs text-[#777777] mt-1">Agency subdomains, custom branding, and private PIN couple portals.</p>
-            </div>
-            <div class="p-5 border border-[#E8E8E5] rounded-lg bg-white">
-              <h3 class="font-semibold text-sm text-[#252525]"><a href="/digital-wedding-invitations">Digital Wedding Invitations</a></h3>
-              <p class="text-xs text-[#777777] mt-1">Canvas stationery studio, typography hierarchy, and integrated RSVP buttons.</p>
-            </div>
-            <div class="p-5 border border-[#E8E8E5] rounded-lg bg-white">
-              <h3 class="font-semibold text-sm text-[#252525]"><a href="/wedding-rsvp-management">Wedding RSVP Management</a></h3>
-              <p class="text-xs text-[#777777] mt-1">Conditional questionnaires, dietary requirements, and instant caterer export.</p>
-            </div>
-            <div class="p-5 border border-[#E8E8E5] rounded-lg bg-white">
-              <h3 class="font-semibold text-sm text-[#252525]"><a href="/wedding-guest-management">Wedding Guest Management</a></h3>
-              <p class="text-xs text-[#777777] mt-1">Attendee rosters, headcount tracking, and live memory moderation.</p>
-            </div>
-            <div class="p-5 border border-[#E8E8E5] rounded-lg bg-white">
-              <h3 class="font-semibold text-sm text-[#252525]"><a href="/wedding-reception-display">Wedding Reception Displays</a></h3>
-              <p class="text-xs text-[#777777] mt-1">Real-time venue screen projection, guest photo walls, and aesthetic themes.</p>
-            </div>
-          </div>
-        </section>
-      </main>
-      ${prerenderFooter}
-    `
-  },
-  '/templates': {
-    h1: 'Wedding Display Themes & Invitation Suite Catalog',
-    contentHtml: `
-      ${prerenderHeader}
-      <main class="max-w-6xl mx-auto px-6 py-12">
-        <div class="space-y-3 mb-10">
-          <h1 class="font-serif text-3xl sm:text-4xl text-[#252525]">Wedding Display Themes & Invitation Suite Catalog</h1>
-          <p class="text-xs sm:text-sm text-[#777777] max-w-2xl leading-relaxed">Curated visual aesthetics and typography suites for live venue projectors, interactive guestbooks, and luxury wedding stationery.</p>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          ${DEFAULT_TEMPLATES.map(t => `
-            <article class="p-6 bg-white border border-[#E8E8E5] rounded-lg shadow-sm">
-              <h2 class="text-sm font-semibold text-[#252525]">${t.name}</h2>
-              <p class="text-xs text-[#777777] mt-2 leading-relaxed">${t.description}</p>
-              <div class="mt-4 pt-3 border-t border-[#EFEFEA] flex justify-between items-center text-[11px] text-[#8B806F]">
-                <span class="font-mono capitalize">${t.variant} layout</span>
-                <a href="/display?template=${t.id}" class="text-[#252525] font-medium">Preview Theme →</a>
-              </div>
-            </article>
-          `).join('')}
-        </div>
-      </main>
-      ${prerenderFooter}
-    `
-  },
-  '/pricing': {
-    h1: 'EventFrame Pricing — Pay-Per-Event Wedding Licensing ($5 USD)',
-    contentHtml: `
-      ${prerenderHeader}
-      <main class="max-w-4xl mx-auto px-6 py-16">
-        <div class="text-center space-y-3 max-w-xl mx-auto mb-12">
-          <span class="text-xs font-mono font-semibold uppercase tracking-wider text-[#8B806F]">ONE-TIME PAYMENT LICENSING</span>
-          <h1 class="font-serif text-3xl sm:text-4xl text-[#252525]">One Event. One Payment. $5.00 USD.</h1>
-          <p class="text-xs sm:text-sm text-[#777777] leading-relaxed">No mandatory monthly subscriptions, no bulk credits, and no recurring commitments. Every wedding event purchase includes 12 full calendar months of access.</p>
-        </div>
+  return routes.map((r) =>
+    React.createElement(Route, { key: r.path, path: r.path, element: r.el })
+  );
+}
 
-        <div class="bg-white border-2 border-[#252525] rounded-2xl p-8 sm:p-10 shadow-card space-y-6">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6 border-b border-[#E8E8E5] pb-6">
-            <div>
-              <span class="text-xs font-mono text-[#8B806F] uppercase font-semibold">ALL-INCLUSIVE WEDDING LICENSE</span>
-              <h2 class="text-2xl font-serif text-[#252525] mt-1">Full Event Digital Suite</h2>
-              <p class="text-xs text-[#777777] mt-1">12 Months Full Access · Live Display Moderation · Custom RSVP System</p>
-            </div>
-            <div class="text-right shrink-0">
-              <div class="text-4xl font-mono font-bold text-[#252525]">$5.00 <span class="text-xs font-normal text-[#777777]">USD</span></div>
-              <div class="text-[11px] text-emerald-800 font-medium mt-1">One-time payment per event</div>
-            </div>
-          </div>
+function renderPageHtml(requestPath: string, lang: MarketingLanguageCode): string {
+  const routesEl = React.createElement(
+    Routes,
+    null,
+    ...renderMarketingRoutes(''),
+    ...renderMarketingRoutes('/en'),
+    ...renderMarketingRoutes('/zh-cn'),
+    ...renderMarketingRoutes('/zh-tw'),
+    ...renderMarketingRoutes('/ms')
+  );
 
-          <div class="grid sm:grid-cols-2 gap-4 py-4 border-b border-[#E8E8E5] text-xs text-[#555555]">
-            <ul class="space-y-2">
-              <li>✓ 12 Full Calendar Months Validity</li>
-              <li>✓ Bespoke Digital Invitation & Canvas Designer</li>
-              <li>✓ Custom RSVP Questionnaires & Dietary Tracking</li>
-              <li>✓ Dedicated Couple PIN Portal</li>
-            </ul>
-            <ul class="space-y-2">
-              <li>✓ Live Reception Screen & Photo Wall</li>
-              <li>✓ Real-Time Guest Message Moderation</li>
-              <li>✓ 8 Curated Display Art Themes</li>
-              <li>✓ CSV Guest Export & Lifetime Archival</li>
-            </ul>
-          </div>
+  const appElement = React.createElement(
+    StaticRouter,
+    { location: requestPath },
+    React.createElement(MarketingTranslationProvider, {
+      initialLanguage: lang,
+      children: React.createElement(SEOProvider, { children: routesEl }),
+    })
+  );
 
-          <div class="p-4 bg-[#FAF9F7] rounded-lg border border-[#E8E8E5]">
-            <div class="text-xs font-semibold text-[#252525] mb-2">Transparent Multi-Event Pricing for Agencies:</div>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs">
-              <div class="p-2 bg-white rounded border border-[#E8E8E5]"><strong>1 Event:</strong> $5.00</div>
-              <div class="p-2 bg-white rounded border border-[#E8E8E5]"><strong>2 Events:</strong> $10.00</div>
-              <div class="p-2 bg-white rounded border border-[#E8E8E5]"><strong>5 Events:</strong> $25.00</div>
-              <div class="p-2 bg-white rounded border border-[#E8E8E5]"><strong>10 Events:</strong> $50.00</div>
-            </div>
-          </div>
+  return renderToString(appElement);
+}
 
-          <div class="text-center pt-2">
-            <a href="/login" class="inline-block py-2.5 px-6 bg-[#252525] text-white text-xs font-medium rounded hover:bg-[#333333] transition-colors">
-              Create Free Draft Event
-            </a>
-          </div>
-        </div>
-      </main>
-      ${prerenderFooter}
-    `
-  },
-  '/wedding-planner-software': {
-    h1: 'A Better Way to Manage the Wedding Experience',
-    contentHtml: `
-      ${prerenderHeader}
-      <main class="max-w-6xl mx-auto px-6 py-16">
-        <div class="max-w-3xl space-y-4">
-          <div class="text-xs font-medium text-[#736959]">EventFrame for Studios · Complete Wedding Operating System</div>
-          <h1 class="font-serif text-4xl sm:text-5xl font-normal text-[#252525] leading-tight">A Better Way to Manage the Wedding Experience</h1>
-          <p class="text-[#777777] text-base leading-relaxed">
-            Modern wedding planners and luxury studios use EventFrame to orchestrate digital stationery, custom RSVP flows, and live reception screen experiences under one coordinated roof.
-          </p>
-        </div>
+interface PrerenderTarget {
+  routePath: string;
+  basePath: string;
+  lang: MarketingLanguageCode;
+  isLocalizedMarketing: boolean;
+  blogPost?: LocalizedBlogPost;
+}
 
-        <section class="mt-16 pt-12 border-t border-[#E8E8E5] grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Multi-Wedding Studio Workspace</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Manage multiple concurrent client celebrations from a single command center with an interactive calendar and attendee counts.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Bespoke Digital Invitations</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Design editorial stationery with drag-and-drop coordinates, elegant serif typography, and integrated RSVP buttons.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Conditional RSVP Collection</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Collect meal choices, dietary needs, plus-ones, and lodging information with intelligent questions shown only to attending guests.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Live Reception Moderation</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Provide an interactive guestbook during the banquet. Guests stream photos and wishes directly to venue projectors after approval.</p>
-          </div>
-        </section>
+function buildHtmlDocument(baseHtml: string, target: PrerenderTarget): string {
+  const { routePath, basePath, lang, isLocalizedMarketing, blogPost } = target;
+  const resolved = resolveRouteMetadata(routePath);
+  const routeMeta = resolved.meta;
+  const effectiveLang = blogPost ? blogPost.resolvedLanguage : lang;
 
-        <section class="mt-16 p-8 bg-[#FAF9F7] border border-[#E8E8E5] rounded-lg">
-          <h2 class="font-serif text-2xl text-[#252525]">Explore Related Studio Solutions</h2>
-          <div class="mt-4 flex flex-wrap gap-4 text-xs font-medium">
-            <a href="/white-label-wedding-software" class="text-[#8B806F] hover:underline">White-Label Software →</a>
-            <a href="/digital-wedding-invitations" class="text-[#8B806F] hover:underline">Digital Wedding Invitations →</a>
-            <a href="/wedding-rsvp-management" class="text-[#8B806F] hover:underline">RSVP Management →</a>
-            <a href="/wedding-guest-management" class="text-[#8B806F] hover:underline">Guest Management →</a>
-            <a href="/wedding-reception-display" class="text-[#8B806F] hover:underline">Reception Displays →</a>
-          </div>
-        </section>
-      </main>
-      ${prerenderFooter}
-    `
-  },
-  '/white-label-wedding-software': {
-    h1: 'Your Wedding Platform. Your Brand.',
-    contentHtml: `
-      ${prerenderHeader}
-      <main class="max-w-6xl mx-auto px-6 py-16">
-        <div class="max-w-3xl space-y-4">
-          <div class="text-xs font-medium text-[#736959]">Agency White-Label Infrastructure · Custom Subdomains</div>
-          <h1 class="font-serif text-4xl sm:text-5xl font-normal text-[#252525] leading-tight">Your Wedding Platform. Your Brand.</h1>
-          <p class="text-[#777777] text-base leading-relaxed">
-            Elevate your wedding agency by offering bespoke digital invitations, custom RSVP tracking, and live reception screens hosted entirely under your own studio identity.
-          </p>
-        </div>
+  let title = blogPost ? blogPost.seoTitle : routeMeta.title || SEO_CONFIG.defaultTitle;
+  let description = blogPost
+    ? blogPost.description
+    : routeMeta.description || SEO_CONFIG.defaultDescription;
 
-        <section class="mt-16 pt-12 border-t border-[#E8E8E5] grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Dedicated Agency Subdomains</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Host all client portals, invitation viewer links, and RSVP pages under your custom studio subdomain (e.g., yourstudio.eventframe.io).</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Agency Identity & Palette</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Display your studio name, monogram, and curated theme palette across client touchpoints with zero third-party ads.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Private Couple PIN Portals</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Provide each couple with a streamlined client hub. Couples access their guest list and moderate memories using an event access PIN.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Studio-Branded Touchpoints</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">From mobile-friendly invitations to live ballroom screens, the guest experience reflects the high-touch editorial standard you are hired for.</p>
-          </div>
-        </section>
-
-        <section class="mt-16 p-8 bg-[#FAF9F7] border border-[#E8E8E5] rounded-lg">
-          <h2 class="font-serif text-2xl text-[#252525]">Connected Studio Features</h2>
-          <div class="mt-4 flex flex-wrap gap-4 text-xs font-medium">
-            <a href="/wedding-planner-software" class="text-[#8B806F] hover:underline">Wedding Planner Software →</a>
-            <a href="/digital-wedding-invitations" class="text-[#8B806F] hover:underline">Digital Wedding Invitations →</a>
-            <a href="/wedding-rsvp-management" class="text-[#8B806F] hover:underline">RSVP Management →</a>
-            <a href="/wedding-reception-display" class="text-[#8B806F] hover:underline">Reception Displays →</a>
-          </div>
-        </section>
-      </main>
-      ${prerenderFooter}
-    `
-  },
-  '/digital-wedding-invitations': {
-    h1: 'Beautiful Digital Wedding Invitations, Made Personal',
-    contentHtml: `
-      ${prerenderHeader}
-      <main class="max-w-6xl mx-auto px-6 py-16">
-        <div class="max-w-3xl space-y-4">
-          <div class="text-xs font-medium text-[#736959]">Digital Wedding Stationery · Responsive Canvas</div>
-          <h1 class="font-serif text-4xl sm:text-5xl font-normal text-[#252525] leading-tight">Beautiful Digital Wedding Invitations, Made Personal</h1>
-          <p class="text-[#777777] text-base leading-relaxed">
-            Design bespoke online wedding invitations with editorial typography, interactive venue maps, and integrated RSVP collection. The modern alternative to generic paper suites.
-          </p>
-        </div>
-
-        <section class="mt-16 pt-12 border-t border-[#E8E8E5] grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Precision Stationery Canvas</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Fine-tune typography, monograms, schedule timelines, and photos on a coordinate-based drag-and-drop canvas.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Mobile-Optimized Viewports</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Preview exactly how guests will experience your invitation on iPhone and Android screens, as well as desktop monitors.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Integrated RSVP Action</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Guests read ceremony details, view directions, and immediately submit their RSVP questionnaire in one continuous flow.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Editorial Typography Presets</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Pair Cormorant Garamond serif headings with crisp Inter body copy and clean JetBrains Mono details for an archival feel.</p>
-          </div>
-        </section>
-
-        <section class="mt-16 p-8 bg-[#FAF9F7] border border-[#E8E8E5] rounded-lg">
-          <h2 class="font-serif text-2xl text-[#252525]">Explore Invitation Themes & Features</h2>
-          <div class="mt-4 flex flex-wrap gap-4 text-xs font-medium">
-            <a href="/templates" class="text-[#8B806F] hover:underline">Explore Template Catalog →</a>
-            <a href="/wedding-rsvp-management" class="text-[#8B806F] hover:underline">RSVP Questionnaire System →</a>
-            <a href="/wedding-reception-display" class="text-[#8B806F] hover:underline">Reception Displays →</a>
-            <a href="/wedding-planner-software" class="text-[#8B806F] hover:underline">Planner Software →</a>
-          </div>
-        </section>
-      </main>
-      ${prerenderFooter}
-    `
-  },
-  '/wedding-rsvp-management': {
-    h1: 'A Simpler Way to Manage Wedding RSVPs',
-    contentHtml: `
-      ${prerenderHeader}
-      <main class="max-w-6xl mx-auto px-6 py-16">
-        <div class="max-w-3xl space-y-4">
-          <div class="text-xs font-medium text-[#736959]">Wedding RSVP Automation · Conditional Questionnaires</div>
-          <h1 class="font-serif text-4xl sm:text-5xl font-normal text-[#252525] leading-tight">A Simpler Way to Manage Wedding RSVPs</h1>
-          <p class="text-[#777777] text-base leading-relaxed">
-            Replace messy text messages and lost paper reply cards. Collect wedding guest attendance, meal selections, plus-ones, and dietary restrictions with beautiful online questionnaires.
-          </p>
-        </div>
-
-        <section class="mt-16 pt-12 border-t border-[#E8E8E5] grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Conditional Questionnaires</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Show meal preferences, shuttle pickup locations, and lodging questions only to guests who confirm attendance.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Custom Field Types</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Collect exact information with dropdown menus, checkboxes, multiple choice, number counters, and open text areas.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Instant CSV & Caterer Export</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Export clean spreadsheets with full attendee names, party counts, meal choices, and custom questionnaire answers.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Aesthetic Visual Harmony</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Your RSVP form automatically adopts the event’s Display Art Aesthetic so guests enjoy a cohesive visual journey.</p>
-          </div>
-        </section>
-
-        <section class="mt-16 p-8 bg-[#FAF9F7] border border-[#E8E8E5] rounded-lg">
-          <h2 class="font-serif text-2xl text-[#252525]">Next Steps in Wedding Coordination</h2>
-          <div class="mt-4 flex flex-wrap gap-4 text-xs font-medium">
-            <a href="/wedding-guest-management" class="text-[#8B806F] hover:underline">Guest Management Software →</a>
-            <a href="/digital-wedding-invitations" class="text-[#8B806F] hover:underline">Digital Wedding Invitations →</a>
-            <a href="/wedding-reception-display" class="text-[#8B806F] hover:underline">Reception Displays →</a>
-            <a href="/pricing" class="text-[#8B806F] hover:underline">View Pricing →</a>
-          </div>
-        </section>
-      </main>
-      ${prerenderFooter}
-    `
-  },
-  '/wedding-guest-management': {
-    h1: 'Bring Your Wedding Guest Experience Together',
-    contentHtml: `
-      ${prerenderHeader}
-      <main class="max-w-6xl mx-auto px-6 py-16">
-        <div class="max-w-3xl space-y-4">
-          <div class="text-xs font-medium text-[#736959]">Unified Guest Operations · Attendee Lists & Live Moderation</div>
-          <h1 class="font-serif text-4xl sm:text-5xl font-normal text-[#252525] leading-tight">Bring Your Wedding Guest Experience Together</h1>
-          <p class="text-[#777777] text-base leading-relaxed">
-            Coordinate RSVP headcounts, dietary restrictions, and live reception memory moderation in one elegant dashboard designed for wedding planners and couples.
-          </p>
-        </div>
-
-        <section class="mt-16 pt-12 border-t border-[#E8E8E5] grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Attendee Roster & Headcount Sync</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Track confirmed guests, regrets, party sizes, and meal counts in real-time. Keep clean records of who has responded.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Live Banquet Moderation Queue</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Review photos and messages submitted by guests before they appear on the ballroom projector screen with one tap.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Dedicated Couple Access Portal</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Share a private couple hub protected with a secure PIN. Couples browse their guest list and moderate memories independently.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Permanent Memory Archive</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">All congratulations, reception notes, and candid photos remain safely preserved in the wedding dashboard for years.</p>
-          </div>
-        </section>
-
-        <section class="mt-16 p-8 bg-[#FAF9F7] border border-[#E8E8E5] rounded-lg">
-          <h2 class="font-serif text-2xl text-[#252525]">Explore More Guest Solutions</h2>
-          <div class="mt-4 flex flex-wrap gap-4 text-xs font-medium">
-            <a href="/wedding-reception-display" class="text-[#8B806F] hover:underline">Reception Displays →</a>
-            <a href="/wedding-rsvp-management" class="text-[#8B806F] hover:underline">RSVP Management →</a>
-            <a href="/digital-wedding-invitations" class="text-[#8B806F] hover:underline">Digital Invitations →</a>
-            <a href="/wedding-planner-software" class="text-[#8B806F] hover:underline">Planner Software →</a>
-          </div>
-        </section>
-      </main>
-      ${prerenderFooter}
-    `
-  },
-  '/wedding-reception-display': {
-    h1: 'Make Your Wedding Reception More Interactive',
-    contentHtml: `
-      ${prerenderHeader}
-      <main class="max-w-6xl mx-auto px-6 py-16">
-        <div class="max-w-3xl space-y-4">
-          <div class="text-xs font-medium text-[#736959]">Interactive Venue Displays · Live Projector Memory Wall</div>
-          <h1 class="font-serif text-4xl sm:text-5xl font-normal text-[#252525] leading-tight">Make Your Wedding Reception More Interactive</h1>
-          <p class="text-[#777777] text-base leading-relaxed">
-            Connect any venue display, projector, or LED screen to broadcast guest photos and warm wishes in real-time. Curated with editorial typography and planner moderation.
-          </p>
-        </div>
-
-        <section class="mt-16 pt-12 border-t border-[#E8E8E5] grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Universal Hardware Compatibility</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Open the live display URL on any laptop or smart TV. Connect via HDMI or wireless mirroring to venue projectors.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Instant Table QR Code Scanning</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Guests scan with their phone camera to instantly upload banquet photos and warm wishes without downloading an app.</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">8 Curated Display Aesthetics</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Choose from 8 distinct visual themes tailored to your floral decor (Minimal Luxury, Natural Garden, Romantic Love, etc.).</p>
-          </div>
-          <div class="p-6 bg-white border border-[#E8E8E5] rounded-lg">
-            <h2 class="text-sm font-semibold text-[#252525]">Live Banquet Moderation Queue</h2>
-            <p class="text-xs text-[#777777] mt-2 leading-relaxed">Planners or bridal party members approve incoming photos and notes from their phones before they broadcast to the screen.</p>
-          </div>
-        </section>
-
-        <section class="mt-16 p-8 bg-[#FAF9F7] border border-[#E8E8E5] rounded-lg">
-          <h2 class="font-serif text-2xl text-[#252525]">Connected Ceremony Experiences</h2>
-          <div class="mt-4 flex flex-wrap gap-4 text-xs font-medium">
-            <a href="/templates" class="text-[#8B806F] hover:underline">Explore Display Themes →</a>
-            <a href="/digital-wedding-invitations" class="text-[#8B806F] hover:underline">Digital Invitations →</a>
-            <a href="/wedding-guest-management" class="text-[#8B806F] hover:underline">Guest Management →</a>
-            <a href="/wedding-planner-software" class="text-[#8B806F] hover:underline">Planner Software →</a>
-          </div>
-        </section>
-      </main>
-      ${prerenderFooter}
-    `
+  if (isLocalizedMarketing && !blogPost) {
+    const titleKey = `seo.routes.${basePath}.title`;
+    const descKey = `seo.routes.${basePath}.description`;
+    const translatedTitle = translateMarketing(titleKey, effectiveLang);
+    const translatedDesc = translateMarketing(descKey, effectiveLang);
+    if (translatedTitle !== titleKey) title = translatedTitle;
+    if (translatedDesc !== descKey) description = translatedDesc;
   }
-};
+
+  const canonicalUrl = buildCanonicalUrl(routeMeta.canonicalPath || routePath);
+  const ogImage = routeMeta.ogImage || SEO_CONFIG.defaultOgImage;
+  const ogImageAlt = blogPost
+    ? blogPost.coverImageAlt
+    : routeMeta.ogImageAlt || SEO_CONFIG.defaultOgImageAlt;
+  const ogLocale = OG_LOCALES[effectiveLang] || SEO_CONFIG.defaultLocale;
+  const inLanguage = ogLocale.replace('_', '-');
+
+  const alternateLinks = blogPost
+    ? buildBlogPostHreflangLinks(blogPost.id, SEO_CONFIG.productionDomain)
+    : isLocalizedMarketing
+      ? buildMarketingHreflangLinks(basePath)
+      : [];
+
+  const hreflangTags = alternateLinks
+    .map(
+      ({ hreflang, href }) =>
+        `    <link rel="alternate" hreflang="${escapeHtmlAttr(hreflang)}" href="${escapeHtmlAttr(href)}" data-ef-marketing-hreflang="true" />`
+    )
+    .join('\n');
+
+  const uiLabels = getBlogUiLabels(effectiveLang);
+  const localizedHomePath = effectiveLang === 'en' ? '/' : `/${effectiveLang.toLowerCase()}`;
+  const localizedBlogIndexPath = buildBlogIndexPath(effectiveLang);
+
+  const customSchemas = blogPost
+    ? [
+        getOrganizationSchema(),
+        getArticleSchema({
+          title: blogPost.title,
+          description: blogPost.description,
+          url: canonicalUrl,
+          image: ogImage,
+          publishedAt: blogPost.publishedAt,
+          updatedAt: blogPost.updatedAt,
+          authorName: blogPost.authorName,
+          inLanguage,
+        }),
+        getBreadcrumbListSchema([
+          { name: uiLabels.homeBreadcrumb, path: localizedHomePath },
+          { name: uiLabels.journalBreadcrumb, path: localizedBlogIndexPath },
+          { name: blogPost.title, path: buildBlogPostPath(blogPost.id, effectiveLang) },
+        ]),
+      ]
+    : undefined;
+
+  const schemas = buildPageStructuredData({
+    type: routeMeta.structuredDataType,
+    title,
+    description,
+    canonicalUrl,
+    inLanguage,
+    breadcrumbs: routeMeta.breadcrumbs,
+    customSchemas,
+    noindex: Boolean(routeMeta.noindex),
+  });
+
+  const keywordsTag =
+    routeMeta.keywords && routeMeta.keywords.length > 0
+      ? `\n    <meta name="keywords" content="${escapeHtmlAttr(routeMeta.keywords.join(', '))}" />`
+      : '';
+
+  const metaTags = `
+    <meta name="description" content="${escapeHtmlAttr(description)}" />${keywordsTag}
+    <link rel="canonical" href="${escapeHtmlAttr(canonicalUrl)}" />
+${hreflangTags ? `${hreflangTags}\n` : ''}    <meta name="robots" content="${routeMeta.noindex ? 'noindex, nofollow' : 'index, follow'}" />
+    <meta property="og:title" content="${escapeHtmlAttr(title)}" />
+    <meta property="og:description" content="${escapeHtmlAttr(description)}" />
+    <meta property="og:url" content="${escapeHtmlAttr(canonicalUrl)}" />
+    <meta property="og:type" content="${escapeHtmlAttr(routeMeta.ogType || 'website')}" />
+    <meta property="og:locale" content="${escapeHtmlAttr(ogLocale)}" />
+    <meta property="og:site_name" content="${escapeHtmlAttr(SEO_CONFIG.siteName)}" />
+    <meta property="og:image" content="${escapeHtmlAttr(ogImage)}" />
+    <meta property="og:image:alt" content="${escapeHtmlAttr(ogImageAlt)}" />
+    <meta name="twitter:card" content="${escapeHtmlAttr(routeMeta.twitterCard || SEO_CONFIG.twitterCard)}" />
+    <meta name="twitter:title" content="${escapeHtmlAttr(title)}" />
+    <meta name="twitter:description" content="${escapeHtmlAttr(description)}" />
+    <meta name="twitter:image" content="${escapeHtmlAttr(ogImage)}" />
+    <meta name="twitter:site" content="${escapeHtmlAttr(SEO_CONFIG.twitterSite)}" />
+    <script id="eventframe-schema-jsonld" type="application/ld+json">${serializeJsonLd(schemas)}</script>
+  `;
+
+  let html = baseHtml;
+
+  // Set <html lang="...">
+  html = html.replace(/<html\s+lang="[^"]*"/i, `<html lang="${escapeHtmlAttr(effectiveLang)}"`);
+
+  // Strip any fallback meta/canonical/alternate/title/jsonld tags before injecting exact single tags
+  html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtmlAttr(title)}</title>`);
+  html = html.replace(/<meta\s+name="description"[\s\S]*?>/gi, '');
+  html = html.replace(/<meta\s+name="keywords"[\s\S]*?>/gi, '');
+  html = html.replace(/<meta\s+name="robots"[\s\S]*?>/gi, '');
+  html = html.replace(/<meta\s+property="og:[\s\S]*?>/gi, '');
+  html = html.replace(/<meta\s+name="twitter:[\s\S]*?>/gi, '');
+  html = html.replace(/<link\s+rel="canonical"[\s\S]*?>/gi, '');
+  html = html.replace(/<link\s+rel="alternate"[\s\S]*?>/gi, '');
+  html = html.replace(/<script\s+id="eventframe-schema-jsonld"[\s\S]*?<\/script>/gi, '');
+
+  html = html.replace('</head>', `${metaTags}\n</head>`);
+
+  const renderedMarkup = renderPageHtml(routePath, effectiveLang);
+  html = html.replace(
+    '<div id="root"></div>',
+    `<div id="root" data-prerendered="true">${renderedMarkup}</div>`
+  );
+
+  return html;
+}
 
 async function prerender() {
-  console.log('--- Starting EventFrame.io Technical SEO Prerender Step ---');
-  
+  console.log('--- Starting EventFrame.io React SSR Prerender Step ---');
+
   const templatePath = path.join(distDir, 'index.html');
   if (!fs.existsSync(templatePath)) {
     console.error('Error: dist/index.html not found. Please run vite build first.');
@@ -485,117 +260,80 @@ async function prerender() {
   }
 
   const baseHtml = fs.readFileSync(templatePath, 'utf8');
-
-  // Copy robots.txt and sitemap.xml to dist if present in public
   const publicDir = path.join(rootDir, 'public');
+
+  // Ensure robots.txt and _headers are present in dist
   if (fs.existsSync(path.join(publicDir, 'robots.txt'))) {
     fs.copyFileSync(path.join(publicDir, 'robots.txt'), path.join(distDir, 'robots.txt'));
-    console.log('✓ Copied robots.txt to dist/robots.txt');
+    console.log('✓ Synced robots.txt to dist/robots.txt');
   }
-  if (fs.existsSync(path.join(publicDir, 'sitemap.xml'))) {
-    fs.copyFileSync(path.join(publicDir, 'sitemap.xml'), path.join(distDir, 'sitemap.xml'));
-    console.log('✓ Copied sitemap.xml to dist/sitemap.xml');
+  if (fs.existsSync(path.join(publicDir, '_headers'))) {
+    fs.copyFileSync(path.join(publicDir, '_headers'), path.join(distDir, '_headers'));
+    console.log('✓ Synced _headers to dist/_headers');
   }
 
-  const routesToPrerender = [
-    '/',
-    '/templates',
-    '/pricing',
-    '/wedding-planner-software',
-    '/white-label-wedding-software',
-    '/digital-wedding-invitations',
-    '/wedding-rsvp-management',
-    '/wedding-guest-management',
-    '/wedding-reception-display'
-  ];
+  // Update reference public/sitemap.xml from shared builder, but remove dist/sitemap.xml
+  // so Cloudflare Worker dynamically serves live /sitemap.xml including published weddings.
+  const staticSitemapXml = buildSitemapXml();
+  fs.writeFileSync(path.join(publicDir, 'sitemap.xml'), staticSitemapXml, 'utf8');
+  console.log('✓ Refreshed reference public/sitemap.xml from buildSitemapXml()');
 
-  for (const route of routesToPrerender) {
-    const meta = PUBLIC_SEO_ROUTES[route] || PUBLIC_SEO_ROUTES['/'];
-    const prerenderData = PRERENDER_CONTENT[route] || PRERENDER_CONTENT['/'];
-    const canonicalPath = meta.canonicalPath || route;
-    const canonicalUrl = buildCanonicalUrl(canonicalPath);
-    const hreflangTags = buildMarketingHreflangLinks(canonicalPath)
-      .map(
-        ({ hreflang, href }) =>
-          `<link rel="alternate" hreflang="${hreflang}" href="${href}" data-ef-marketing-hreflang="true" />`
-      )
-      .join('\n    ');
+  const distSitemapPath = path.join(distDir, 'sitemap.xml');
+  if (fs.existsSync(distSitemapPath)) {
+    fs.unlinkSync(distSitemapPath);
+    console.log('✓ Removed dist/sitemap.xml so Cloudflare Worker /sitemap.xml handler serves live sitemap');
+  }
 
-    const schemas = getStructuredDataForType(meta.structuredDataType);
-    const jsonLdString = JSON.stringify(schemas);
+  const targets: PrerenderTarget[] = [];
 
-    let html = baseHtml;
-
-    // 1. Replace or update <title>
-    if (html.includes('<title>')) {
-      html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${meta.title}</title>`);
-    } else {
-      html = html.replace('</head>', `<title>${meta.title}</title>\n</head>`);
-    }
-
-    // 2. Build complete SEO meta tags
-    const metaTags = `
-    <meta name="description" content="${meta.description}" />
-    <link rel="canonical" href="${canonicalUrl}" />
-    ${hreflangTags}
-    <meta name="robots" content="${meta.noindex ? 'noindex, nofollow' : 'index, follow'}" />
-    <meta property="og:title" content="${meta.title}" />
-    <meta property="og:description" content="${meta.description}" />
-    <meta property="og:url" content="${canonicalUrl}" />
-    <meta property="og:type" content="${meta.ogType || 'website'}" />
-    <meta property="og:locale" content="en_US" />
-    <meta property="og:site_name" content="${SEO_CONFIG.siteName}" />
-    <meta property="og:image" content="${meta.ogImage || SEO_CONFIG.defaultOgImage}" />
-    <meta property="og:image:alt" content="${meta.ogImageAlt || SEO_CONFIG.defaultOgImageAlt}" />
-    <meta name="twitter:card" content="${meta.twitterCard || 'summary_large_image'}" />
-    <meta name="twitter:title" content="${meta.title}" />
-    <meta name="twitter:description" content="${meta.description}" />
-    <meta name="twitter:image" content="${meta.ogImage || SEO_CONFIG.defaultOgImage}" />
-    <meta name="twitter:site" content="${SEO_CONFIG.twitterSite}" />
-    <script id="eventframe-schema-jsonld" type="application/ld+json">${jsonLdString}</script>
-    `;
-
-    // Remove old meta description or canonical if already in baseHtml
-    html = html.replace(/<meta name="description"[\s\S]*?>/i, '');
-    html = html.replace(/<meta property="og:[\s\S]*?>/gi, '');
-    html = html.replace(/<link rel="canonical"[\s\S]*?>/i, '');
-    html = html.replace(/<link rel="alternate"[\s\S]*?>/gi, '');
-
-    html = html.replace('</head>', `${metaTags}\n</head>`);
-
-    // 3. Inject meaningful crawlable semantic HTML into <div id="root"></div>
-    html = html.replace(
-      '<div id="root"></div>',
-      `<div id="root">${prerenderData.contentHtml}</div>`
-    );
-
-    // 4. Save to target output
-    if (route === '/') {
-      fs.writeFileSync(path.join(distDir, 'index.html'), html, 'utf8');
-      console.log('✓ Prerendered / -> dist/index.html');
-    } else {
-      const targetDir = path.join(distDir, route.replace(/^\//, ''));
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
-      }
-      fs.writeFileSync(path.join(targetDir, 'index.html'), html, 'utf8');
-      console.log(`✓ Prerendered ${route} -> dist/${route.replace(/^\//, '')}/index.html`);
+  // 1. All English & Localized Marketing Pages including /blog (en, zh-CN, zh-TW, ms)
+  for (const basePath of LOCALIZED_MARKETING_BASE_PATHS) {
+    for (const lang of MARKETING_HREFLANG_CODES) {
+      const localizedPath = buildLocalizedRoutePath(basePath, lang);
+      targets.push({
+        routePath: localizedPath,
+        basePath,
+        lang,
+        isLocalizedMarketing: true,
+      });
     }
   }
 
-  // Also create dist/subscription/index.html as alias to pricing
-  const subTargetDir = path.join(distDir, 'subscription');
-  if (!fs.existsSync(subTargetDir)) {
-    fs.mkdirSync(subTargetDir, { recursive: true });
+  // 2. Editorial Blog Articles across all localized languages (en, zh-CN, zh-TW, ms)
+  for (const lang of MARKETING_HREFLANG_CODES) {
+    const localizedPosts = getAllBlogPosts(lang);
+    for (const post of localizedPosts) {
+      const routePath = buildBlogPostPath(post.id, post.resolvedLanguage);
+      targets.push({
+        routePath,
+        basePath: `/blog/${post.slug}`,
+        lang: post.resolvedLanguage,
+        isLocalizedMarketing: true,
+        blogPost: post,
+      });
+    }
   }
-  const pricingHtml = fs.readFileSync(path.join(distDir, 'pricing', 'index.html'), 'utf8');
-  fs.writeFileSync(path.join(subTargetDir, 'index.html'), pricingHtml, 'utf8');
-  console.log('✓ Prerendered /subscription -> dist/subscription/index.html');
 
-  console.log('--- Prerender Step Completed Successfully ---');
+  for (const target of targets) {
+    const html = buildHtmlDocument(baseHtml, target);
+    const relativeOut =
+      target.routePath === '/'
+        ? 'index.html'
+        : path.join(target.routePath.replace(/^\//, ''), 'index.html');
+
+    const fullOutPath = path.join(distDir, relativeOut);
+    const outDir = path.dirname(fullOutPath);
+    if (!fs.existsSync(outDir)) {
+      fs.mkdirSync(outDir, { recursive: true });
+    }
+    fs.writeFileSync(fullOutPath, html, 'utf8');
+    console.log(`✓ Prerendered ${target.routePath} (${target.lang}) -> dist/${relativeOut}`);
+  }
+
+  console.log(`--- React SSR Prerender Completed (${targets.length} pages generated) ---`);
 }
 
-prerender().catch(err => {
+prerender().catch((err) => {
   console.error('Prerender error:', err);
   process.exit(1);
 });

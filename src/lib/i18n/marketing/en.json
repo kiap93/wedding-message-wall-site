@@ -3,6 +3,7 @@
     "solutions": "Solutions",
     "themesSuites": "Themes & Suites",
     "pricing": "Pricing",
+    "blog": "Journal",
     "signIn": "Sign In",
     "getStarted": "Get Started",
     "languageLabel": "Language",
@@ -17,6 +18,10 @@
         "title": "White-Label Software",
         "desc": "Custom agency subdomains & branding"
       },
+      "website": {
+        "title": "Wedding Website Builder",
+        "desc": "Modular story, venue & RSVP sites"
+      },
       "invitations": {
         "title": "Digital Wedding Invitations",
         "desc": "Canvas stationery studio & RSVP links"
@@ -29,6 +34,10 @@
         "title": "Wedding Guest Management",
         "desc": "Attendance tracking & live moderation"
       },
+      "seating": {
+        "title": "Wedding Seating Chart",
+        "desc": "Real-scale hall floor plans & table assignments"
+      },
       "display": {
         "title": "Wedding Reception Display",
         "desc": "Ballroom projector memory wall"
@@ -36,7 +45,7 @@
     }
   },
   "footer": {
-    "description": "The integrated wedding platform for modern studios, planners and couples. Unifying digital stationery, custom RSVP logic, guest moderation, and live reception screens.",
+    "description": "The integrated wedding platform for modern studios, planners and couples. Unifying wedding websites, digital stationery, conditional RSVP logic, seating charts, and live reception screens.",
     "tagline": "White-label infrastructure for luxury ceremonies.",
     "columns": {
       "solutions": "Solutions",
@@ -46,10 +55,13 @@
     "links": {
       "plannerSoftware": "Planner Software",
       "whiteLabelSoftware": "White-Label Software",
+      "websiteBuilder": "Wedding Website Builder",
       "digitalInvitations": "Digital Invitations",
       "rsvpManagement": "RSVP Management",
       "guestManagement": "Guest Management",
+      "seatingChart": "Seating Chart & Floor Plan",
       "receptionDisplays": "Reception Displays",
+      "editorialBlog": "Planning Journal",
       "allDisplayThemes": "All Display Themes",
       "minimalLuxury": "Minimal Luxury",
       "naturalGarden": "Natural Garden",
@@ -59,8 +71,8 @@
       "pricingPlans": "Pricing & Plans",
       "studioSignIn": "Studio Sign In",
       "couplePortalLogin": "Couple Portal Login",
-      "startTrial": "Start 30-Day Trial",
-      "subscriptionTerms": "Subscription Terms",
+      "createFreeDraft": "Create Free Draft Event",
+      "payPerEventTerms": "Pay-Per-Event Licensing ($5)",
       "agencyPortal": "Agency Portal"
     },
     "copyright": "© {{year}} EventFrame.io. All rights reserved.",
@@ -68,24 +80,24 @@
   },
   "home": {
     "hero": {
-      "badgeLeft": "EventFrame Studio Platform",
-      "badgeRight": "White-Label Wedding OS",
-      "title": "Wedding Planning Software for Modern Wedding Studios",
-      "subtitle": "Bring digital wedding invitations, guest RSVPs, guest experiences and live reception displays together in one platform.",
-      "primaryCta": "Create Agency Workspace",
+      "badgeLeft": "EventFrame Platform",
+      "badgeRight": "All-in-One Wedding OS",
+      "title": "All-in-One Wedding Planning Software for Couples & Studios",
+      "subtitle": "Unite custom wedding websites, digital invitations, conditional RSVPs, guest lists, interactive seating charts, and live reception displays in one workspace.",
+      "primaryCta": "Create Free Workspace",
       "secondaryCta": "Browse Invitation Suites",
-      "bullet1": "White-label subdomain",
-      "bullet2": "Real-time guest moderation",
-      "bullet3": "Instant RSVP export",
-      "imageAlt": "Editorial wedding photography of bride and groom in Sonoma Valley",
+      "bullet1": "Websites, invitations & RSVPs",
+      "bullet2": "Seating floor plans & guest lists",
+      "bullet3": "Live reception photo & wish wall",
+      "imageAlt": "EventFrame wedding planning software showcase displaying digital invitations, seating floor plans, and RSVP workflows",
       "cardCouple": "Celia & Elias",
       "cardMeta": "Sonoma Valley · 142 Confirmed RSVPs",
       "cardBadge": "LIVE SUITE"
     },
     "ecosystem": {
       "eyebrow": "Integrated Wedding Software",
-      "title": "A unified ecosystem for modern studios and couples.",
-      "subtitle": "Six dedicated tools engineered to work seamlessly together — from initial digital stationery to live ballroom displays.",
+      "title": "Eight dedicated tools engineered for modern ceremonies.",
+      "subtitle": "From your wedding website and digital stationery to real-scale venue seating charts and live ballroom displays.",
       "cards": {
         "planner": {
           "tag": "Studio Management",
@@ -98,6 +110,12 @@
           "title": "White-Label Wedding Software",
           "desc": "Operate under your studio's custom subdomain with branded digital stationery and private client PIN logins.",
           "cta": "Explore white-label features →"
+        },
+        "website": {
+          "tag": "Story & Venue Hub",
+          "title": "Wedding Website Builder",
+          "desc": "Publish modular ceremony schedules, travel directions, photo galleries, and search-privacy controls in minutes.",
+          "cta": "Explore website builder →"
         },
         "invitations": {
           "tag": "Design Studio",
@@ -114,13 +132,19 @@
         "guest": {
           "tag": "Operations",
           "title": "Wedding Guest Management",
-          "desc": "Maintain confirmed headcount records, review dietary needs, and moderate live reception messages and photo uploads.",
+          "desc": "Maintain confirmed headcount records, review dietary needs, tag VIP households, and moderate live messages.",
           "cta": "Explore guest operations →"
+        },
+        "seating": {
+          "tag": "Floor Plan Studio",
+          "title": "Wedding Seating Chart",
+          "desc": "Build real-scale venue layouts in meters or feet, arrange banquet tables, and assign guests with dietary visibility.",
+          "cta": "Plan venue seating →"
         },
         "display": {
           "tag": "Ballroom Experience",
           "title": "Wedding Reception Displays",
-          "desc": "Project live guest photo walls and well-wishes on ballroom screens with table QR code scanning and 8 curated themes.",
+          "desc": "Project live guest photo walls, highlighted wishes, and table QR codes on ballroom screens across 8 curated themes.",
           "cta": "Set up reception display →"
         }
       }
@@ -198,8 +222,8 @@
     },
     "finalCta": {
       "title": "Elevate your wedding agency experience today.",
-      "subtitle": "Join hundreds of premier studios delivering bespoke digital stationery and seamless celebration moderation.",
-      "cta": "Start Free Agency Trial"
+      "subtitle": "Join premier studios and modern couples delivering bespoke wedding websites, digital stationery, seating floor plans, and seamless reception moderation.",
+      "cta": "Create Free Studio Workspace"
     }
   },
   "common": {
@@ -210,9 +234,11 @@
     "browseThemeGallery": "Browse Theme Gallery",
     "cards": {
       "whiteLabel": { "title": "White-Label Software", "desc": "Studio branding & subdomains" },
+      "website": { "title": "Wedding Website Builder", "desc": "Modular story & schedule pages" },
       "invitations": { "title": "Digital Invitations", "desc": "Canvas stationery editor" },
       "rsvp": { "title": "RSVP Management", "desc": "Conditional questionnaires" },
       "guest": { "title": "Guest Management", "desc": "Attendee lists & moderation" },
+      "seating": { "title": "Seating Chart & Layout", "desc": "Real-scale venue floor plans" },
       "display": { "title": "Reception Displays", "desc": "Live ballroom screen stream" },
       "planner": { "title": "Wedding Planner Software", "desc": "Full studio management" },
       "studio": { "title": "Studio Software", "desc": "Multi-client workspace" },
@@ -281,8 +307,8 @@
     },
     "bottomCta": {
       "title": "Ready to upgrade your studio's wedding workflow?",
-      "subtitle": "Start with a 30-day studio trial or activate a single celebration license.",
-      "cta": "Start Studio Trial"
+      "subtitle": "Create unlimited free draft weddings or activate a full celebration license for $5.00 USD.",
+      "cta": "Create Studio Workspace"
     }
   },
   "whiteLabel": {
@@ -551,8 +577,8 @@
     },
     "bottomCta": {
       "title": "Organize your guest experience with confidence",
-      "subtitle": "Everything needed to manage attendees, dietary restrictions, and reception memories.",
-      "cta": "Start Free Trial"
+      "subtitle": "Everything needed to manage attendees, dietary restrictions, seating assignments, and reception memories.",
+      "cta": "Create Free Draft Event"
     }
   },
   "displayPage": {
@@ -661,47 +687,237 @@
       "creative": { "name": "Creative Canvas", "desc": "Artistic doodles, mixed textures, and unique shapes." }
     }
   },
+  "pricingPage": {
+    "hero": {
+      "badgeLeft": "Pay-Per-Event Licensing",
+      "badgeRight": "12 Months Full Access Included",
+      "title": "One Event. One Payment. {{price}}.",
+      "subtitle": "Transparent pay-per-event wedding licensing with zero monthly subscriptions, no bulk credit lock-in, and complete studio capabilities per celebration.",
+      "bullet1": "No recurring monthly fees",
+      "bullet2": "12 full calendar months per event",
+      "bullet3": "Free draft creation for studios & couples"
+    },
+    "card": {
+      "desc": "Every active wedding license unlocks websites, digital invitations, RSVPs, guest lists, seating charts, and live reception displays."
+    },
+    "included": {
+      "i1": "Custom Wedding Website & Modular Sections",
+      "i2": "Drag-and-Drop Digital Invitation Canvas Studio",
+      "i3": "Conditional RSVP & Dietary Allergy Tracking",
+      "i4": "Interactive Venue Seating Chart (Meters or Feet)",
+      "i5": "Real-Time Reception Screen & Priority Highlights",
+      "i6": "Guestbook Messaging & High-Resolution Photo Wall",
+      "i7": "White-Label Studio Subdomain & Private Couple PIN",
+      "i8": "One-Click Caterer CSV Export & Lifetime Archive"
+    },
+    "calculator": {
+      "eyebrow": "Agency & Couple Cost Estimator",
+      "title": "Pay only for the weddings you publish.",
+      "desc": "Select how many active wedding celebrations you plan to license this season.",
+      "eventSingular": "Event",
+      "eventPlural": "Events",
+      "summaryLabel": "Estimated One-Time Total",
+      "validityNote": "Includes {{months}} calendar months of active access per licensed event."
+    },
+    "pillars": {
+      "p1Title": "12-Month Active Window",
+      "p1Desc": "Launch save-the-dates months before the wedding and keep your digital guestbook open well after the honeymoon.",
+      "p2Title": "Unlimited Free Drafts",
+      "p2Desc": "Design client websites, seating charts, and invitations in draft mode at zero cost until you are ready to publish.",
+      "p3Title": "No Lock-In Retainers",
+      "p3Desc": "Whether you host a single ceremony or run a 20-wedding seasonal agency roster, your cost stays strictly $5.00 USD per event."
+    },
+    "faqTitle": "Pricing & Licensing Questions",
+    "faqs": {
+      "q1": "What does the $5.00 USD per-event license include?",
+      "a1": "Every single feature in EventFrame is included: the Wedding Website Builder, Digital Invitation Studio, Conditional RSVP Questionnaires, Guest List & VIP Tagging, Interactive Venue Seating Chart, and Live Ballroom Reception Display.",
+      "q2": "Do you charge recurring monthly or annual subscription fees?",
+      "a2": "No. EventFrame uses one-time pay-per-event licensing at $5.00 USD per wedding celebration, giving you 12 full calendar months of active access with zero automatic renewals.",
+      "q3": "Can agencies manage multiple weddings under one studio account?",
+      "a3": "Yes. Wedding planners can create unlimited draft events inside their branded agency workspace for free and pay $5.00 USD only when activating each client celebration.",
+      "q4": "Is guest RSVPing or posting photos charged extra?",
+      "a4": "Never. Guests never create accounts or pay fees to view invitations, submit RSVPs, or share reception wishes and photos.",
+      "q5": "What happens after the 12-month license period ends?",
+      "a5": "You retain full read-only archival access to your exported CSV attendee data and uploaded guest memories inside your dashboard."
+    }
+  },
+  "websiteBuilderPage": {
+    "guideLinkTitle": "Website vs. Digital Invitation",
+    "guideLinkDesc": "When to publish each for guests",
+    "hero": {
+      "badgeLeft": "Wedding Website Studio",
+      "badgeRight": "Modular Ceremony Hub",
+      "title": "Build a Wedding Website Crafted Like Editorial Print",
+      "subtitle": "Create custom wedding websites with story timelines, schedule itineraries, interactive venue maps, FAQ cards, and built-in privacy controls — synchronized seamlessly with your guest list and RSVP flow.",
+      "primaryCta": "Start Your Wedding Website",
+      "secondaryCta": "Explore Visual Themes",
+      "bullet1": "Live desktop & mobile preview",
+      "bullet2": "Search-engine privacy toggle",
+      "bullet3": "Direct RSVP & photo wall links",
+      "imageAlt": "EventFrame Wedding Website Builder interface showing live mobile and desktop preview",
+      "captionLeft": "Visual Website Studio",
+      "captionRight": "Modular Sections + SEO Controls"
+    },
+    "features": {
+      "eyebrow": "Editorial Website Architecture",
+      "title": "Every ceremony detail organized clearly for traveling guests.",
+      "subtitle": "Give friends and family a single link for schedule timings, dress codes, shuttle pickups, and instant RSVPs without clutter.",
+      "f1Title": "Modular Section Reordering",
+      "f1Desc": "Toggle, reorder, and customize your Cover Hero, Story Timeline, Ceremony Schedule, Venue Guide, Travel & Lodging, FAQ, and Photo Gallery sections.",
+      "f2Title": "Harmonized Typography & Palettes",
+      "f2Desc": "Every website inherits your chosen EventFrame visual aesthetic with balanced serif headlines and crisp readable details across every screen size.",
+      "f3Title": "Guestbook & RSVP Integration",
+      "f3Desc": "Connect guests straight from ceremony details into your conditional RSVP form and live celebration message wall with one tap.",
+      "f4Title": "Optional Password & Index Controls",
+      "f4Desc": "Keep private celebrations unlisted from search engines or protected by a guest PIN, or publish publicly for easy sharing."
+    },
+    "modules": {
+      "eyebrow": "Included Page Modules",
+      "title": "Structured blocks tailored for real weddings.",
+      "subtitle": "Enable only the sections your celebration needs and update times anytime before the big day.",
+      "m1Name": "Hero Cover & Countdown",
+      "m1Desc": "Introduce couple names, wedding date, location header, and quick action links.",
+      "m2Name": "Couple Story Timeline",
+      "m2Desc": "Share engagement milestones and curated portrait photography in clean layouts.",
+      "m3Name": "Weekend Schedule & Events",
+      "m3Desc": "Outline rehearsal dinners, ceremony doors, cocktail hour, and banquet timings.",
+      "m4Name": "Venue & Travel Logistics",
+      "m4Desc": "Provide hotel room blocks, parking notes, shuttle schedules, and dress code clarity.",
+      "m5Name": "Curated Gift Registry & FAQ",
+      "m5Desc": "Answer common guest questions clearly so couples spend less time replying to texts.",
+      "m6Name": "Integrated RSVP & Live Wall",
+      "m6Desc": "Embed instant attendance confirmation and live celebration photo uploads."
+    },
+    "faqTitle": "Wedding Website Builder Questions",
+    "faqs": {
+      "q1": "Can we password-protect or hide our wedding website from Google?",
+      "a1": "Yes. Inside Website Studio, couples and planners can set an access password or toggle Search Privacy (noindex) at any time.",
+      "q2": "Are wedding websites included in the $5.00 USD event license?",
+      "a2": "Yes. Your $5.00 USD pay-per-event license includes the full Wedding Website Studio alongside digital invitations, RSVPs, seating charts, and live reception displays.",
+      "q3": "Can we customize the URL slug for our wedding website?",
+      "a3": "Yes. Each project publishes cleanly at eventframe.io/your-slug/website or under your studio's white-label agency subdomain.",
+      "q4": "Do edits update immediately without re-sending links?",
+      "a4": "Yes. Schedule changes, hotel updates, or map corrections reflect live on the published wedding website instantly."
+    },
+    "bottomCta": {
+      "title": "Ready to design your wedding website?",
+      "subtitle": "Preview your mobile and desktop site live for free and publish whenever your guests are ready.",
+      "cta": "Open Website Studio"
+    }
+  },
+  "seatingPage": {
+    "guideLinkTitle": "Seating Chart Blueprint",
+    "guideLinkDesc": "Step-by-step floor plan guide",
+    "hero": {
+      "badgeLeft": "Floor Plan & Table Planner",
+      "badgeRight": "Real-Scale Venue Dimensions",
+      "title": "Design Your Wedding Seating Chart at Real Venue Scale",
+      "subtitle": "Configure real-world hall dimensions in meters or feet, arrange round, rectangular, and head tables with precision snapping, and assign confirmed guests by seat with instant dietary visibility.",
+      "primaryCta": "Open Floor Plan Studio",
+      "secondaryCta": "Explore Guest Management",
+      "bullet1": "True meter & feet scaling",
+      "bullet2": "Fit-to-screen maximize mode",
+      "bullet3": "Household & dietary sync",
+      "imageAlt": "Interactive wedding seating chart floor plan editor showing real-scale venue grid and round banquet tables",
+      "captionLeft": "Venue Floor Plan Studio",
+      "captionRight": "Real Scale (m / ft) + Fit to Screen"
+    },
+    "features": {
+      "eyebrow": "Precision Layout Engineering",
+      "title": "Built for caterers, venue coordinators, and organized couples.",
+      "subtitle": "Move beyond disconnected spreadsheets. Plan table flow, aisle spacing, dance floors, and individual guest seats visually.",
+      "f1Title": "Dynamic Venue Dimensions (m / ft)",
+      "f1Desc": "Set exact room width and height in meters or feet, switch landscape or portrait orientation, and start from ballroom presets anytime.",
+      "f2Title": "Tables, Stages & Venue Zones",
+      "f2Desc": "Place sweetheart head tables, guest rounds, long banquet tables, dance floors, stages, and entryways cleanly on a calibrated canvas.",
+      "f3Title": "Seat-Level Guest & Diet Sync",
+      "f3Desc": "Assign confirmed RSVP guests and family households to individual seats while keeping meal choices and food allergies visible.",
+      "f4Title": "Maximize & Fit-to-Screen View",
+      "f4Desc": "Collapse sidebars for full-screen floor plan editing and re-center every table automatically with one click."
+    },
+    "presets": {
+      "eyebrow": "Ready-to-Customize Room Sizes",
+      "title": "Start from venue presets or enter exact hall measurements.",
+      "subtitle": "Switch units between meters and feet at any moment without losing placed tables or seat assignments.",
+      "p1Name": "Small Intimate Hall",
+      "p1Desc": "Ideal for private dining rooms, boutique garden pavilions, and micro-weddings up to 60 guests.",
+      "p2Name": "Medium Banquet Room",
+      "p2Desc": "Balanced proportions for 100–150 seated guests, head table, DJ booth, and central dance floor.",
+      "p3Name": "Large Grand Ballroom",
+      "p3Desc": "Expansive multi-zone floor plan accommodating 200+ banquet guests, staging, and photo stations.",
+      "p4Name": "Long Reception Gallery",
+      "p4Desc": "Linear architectural estate or conservatory layout ideal for dramatic long banquet tables."
+    },
+    "faqTitle": "Wedding Seating Chart Questions",
+    "faqs": {
+      "q1": "Can I switch between meters and feet while designing my seating chart?",
+      "a1": "Yes. Venue measurements live independently from canvas zoom, so you can configure halls in meters or feet and resize dimensions at any point.",
+      "q2": "Does the seating chart connect with my RSVP guest list?",
+      "a2": "Yes. Guests confirmed through EventFrame RSVP or imported into your roster appear directly in the seating sidebar with party size and dietary notes.",
+      "q3": "Can planners inspect dense floor plans on smaller laptops?",
+      "a3": "Yes. Click Maximize Workspace to collapse panels into full-viewport mode, and use Fit to Screen to zoom and center every placed table automatically.",
+      "q4": "Can I label special tables like Sweetheart Table or VIP Family?",
+      "a4": "Yes. Every table supports custom numbering, names, seat capacities, and fixture labels for caterer handoff."
+    },
+    "bottomCta": {
+      "title": "Map out your wedding reception floor plan with clarity.",
+      "subtitle": "Design real-scale venue layouts, assign seats from your confirmed RSVP roster, and share cleanly with your venue team.",
+      "cta": "Start Floor Plan Draft"
+    }
+  },
   "seo": {
     "routes": {
       "/": {
-        "title": "Wedding Planning & Digital Stationery Platform for Studios | EventFrame",
-        "description": "The editorial software platform for modern wedding studios and planners. Bespoke digital stationery suites, real-time live guest moderation, and custom RSVP questionnaires."
+        "title": "Wedding Planning Software & All-in-One Wedding Platform | EventFrame",
+        "description": "All-in-one wedding planning software for couples, planners, and studios. Create wedding websites, digital invitations, RSVP forms, guest lists, seating charts, and live reception displays."
       },
       "/templates": {
         "title": "Wedding Display Themes & Invitation Suite Catalog | EventFrame",
-        "description": "Explore curated wedding display themes and typography suites for live venue projectors, digital guestbooks, and luxury wedding stationery."
+        "description": "Explore curated wedding display themes and typography suites for live venue projectors, digital guestbooks, wedding websites, and luxury wedding stationery."
       },
       "/pricing": {
-        "title": "EventFrame Pricing — Plans for Wedding Studios & Couples",
-        "description": "Simple, transparent pricing for luxury wedding studios and couples. Unlimited wedding invitations, live reception displays, and custom RSVP questionnaires."
+        "title": "EventFrame Pricing — $5 USD Pay-Per-Event Wedding Licensing",
+        "description": "Transparent $5.00 USD one-time pay-per-event pricing with 12 months full access. Zero monthly subscriptions. Includes wedding website builder, invitations, RSVPs, seating chart & live wall."
+      },
+      "/wedding-website-builder": {
+        "title": "Wedding Website Builder for Couples & Planners | EventFrame",
+        "description": "Build luxury custom wedding websites with modular story, schedule, venue map, gallery, RSVP, and live wish wall sections. Full mobile preview and search privacy controls."
+      },
+      "/wedding-seating-chart": {
+        "title": "Wedding Seating Chart & Venue Hall Layout Planner | EventFrame",
+        "description": "Design real-scale wedding venue floor plans in meters or feet, arrange round and head tables, assign guests and households by seat, and sync dietary preferences."
       },
       "/wedding-planner-software": {
         "title": "Wedding Planner Software for Modern Studios | EventFrame",
-        "description": "All-in-one wedding software for studios and planners. Coordinate digital invitations, custom RSVP questionnaires, guest moderation, and live reception displays."
+        "description": "All-in-one wedding software for studios and planners. Coordinate websites, digital invitations, seating floor plans, custom RSVP questionnaires, and live reception displays."
       },
       "/white-label-wedding-software": {
         "title": "White Label Wedding Software for Agencies | EventFrame",
-        "description": "Offer branded digital wedding suites under your studio name. Custom agency subdomains, personalized couple portals, and bespoke digital stationery."
+        "description": "Offer branded digital wedding suites under your studio name. Custom agency subdomains, private couple PIN portals, bespoke websites, and digital stationery."
       },
       "/digital-wedding-invitations": {
-        "title": "Digital Wedding Invitations & Designs | EventFrame",
-        "description": "Design editorial digital wedding invitations with precision typography, responsive mobile previews, and seamless online RSVP collection."
+        "title": "Digital Wedding Invitations & Stationery Studio | EventFrame",
+        "description": "Design editorial digital wedding invitations with precision typography, responsive mobile previews, venue directions, and integrated online RSVP collection."
       },
       "/wedding-rsvp-management": {
-        "title": "Wedding RSVP Management Made Simple | EventFrame",
-        "description": "Streamline wedding attendance tracking with custom questionnaire fields, dietary preferences, real-time submission metrics, and instant CSV export."
+        "title": "Wedding RSVP Management & Dietary Tracking | EventFrame",
+        "description": "Streamline wedding attendance tracking with conditional questionnaire fields, meal preferences, household headcounts, real-time submission metrics, and instant CSV export."
       },
       "/wedding-guest-management": {
-        "title": "Wedding Guest Management Software | EventFrame",
-        "description": "Bring guest list coordination, RSVP tracking, contact info, and live photo/message moderation together in one unified wedding portal."
+        "title": "Wedding Guest List & Moderation Software | EventFrame",
+        "description": "Bring guest list coordination, VIP tagging, household grouping, RSVP tracking, and live photo/message moderation together in one unified wedding portal."
       },
       "/wedding-reception-display": {
-        "title": "Wedding Reception Displays & Guest Experiences | EventFrame",
-        "description": "Transform venue ballrooms with live projected guest photo walls, warm wishes, dynamic QR code sharing, and curated aesthetic themes."
+        "title": "Wedding Reception Displays & Live Photo Wall | EventFrame",
+        "description": "Transform venue ballrooms with live projected guest photo walls, warm wishes, priority guest highlights, dynamic QR code sharing, and curated aesthetic themes."
+      },
+      "/blog": {
+        "title": "Wedding Planning Journal, Guides & Studio Playbooks | EventFrame",
+        "description": "Practical guides on digital wedding invitations, RSVP automation, wedding seating charts, reception guestbooks, and studio operations for modern couples and planners."
       },
       "/subscription": {
-        "title": "EventFrame Pricing — Plans for Wedding Studios & Couples",
-        "description": "Simple, transparent pricing for luxury wedding studios and couples. Unlimited wedding invitations, live reception displays, and custom RSVP questionnaires."
+        "title": "EventFrame Pricing — $5 USD Pay-Per-Event Wedding Licensing",
+        "description": "Transparent $5.00 USD one-time pay-per-event pricing with 12 months full access. Zero monthly subscriptions."
       }
     }
   }

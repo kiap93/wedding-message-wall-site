@@ -1,21 +1,21 @@
-import React, { useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { SEO_CONFIG } from '../seo/config';
-import { getRouteMetadata } from '../seo/routes';
+import { resolveRouteMetadata } from '../seo/routes';
 import {
   buildCanonicalUrl,
   buildMarketingHreflangLinks,
+  isLocalizedMarketingBasePath,
   normalizePathname,
 } from '../seo/canonical';
-import { getStructuredDataForType } from '../seo/structuredData';
-import {
-  useMarketingTranslation,
-  isPublicMarketingPath,
-} from '../lib/i18n/MarketingTranslationContext';
+import { buildPageStructuredData } from '../seo/structuredData';
+import { StructuredDataType } from '../seo/metadata';
+import { useMarketingTranslation } from '../lib/i18n/MarketingTranslationContext';
 
 export interface SEOProps {
   title?: string;
   description?: string;
+  keywords?: string;
   canonical?: string;
   noindex?: boolean;
   nofollow?: boolean;
@@ -23,11 +23,102 @@ export interface SEOProps {
   ogImageAlt?: string;
   ogType?: 'website' | 'article';
   twitterCard?: 'summary' | 'summary_large_image';
-  structuredDataType?: 'SoftwareApplication' | 'WebSite' | 'Organization';
+  structuredDataType?: StructuredDataType;
+  customSchemas?: Record<string, any>[];
+  hreflangLinks?: Array<{ hreflang: string; href: string }>;
+  inLanguage?: string;
+  disableMarketingHreflang?: boolean;
   customDomain?: string | null;
 }
 
-const OG_LOCALES: Record<string, string> = {
+interface SEOOverrideContextValue {
+  override: SEOProps | null;
+  setOverride: React.Dispatch<React.SetStateAction<SEOProps | null>>;
+}
+
+const SEOOverrideContext = createContext<SEOOverrideContextValue | null>(null);
+
+export const SEOProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [override, setOverride] = useState<SEOProps | null>(null);
+  return (
+    <SEOOverrideContext.Provider value={{ override, setOverride }}>
+      {children}
+    </SEOOverrideContext.Provider>
+  );
+};
+
+/**
+ * Registers dynamic route-specific SEO overrides (e.g., published WeddingWebsite or BlogPostPage)
+ * with the single global <SEO /> component so only one canonical, robots, and JSON-LD block exists.
+ */
+export const PageSEO: React.FC<SEOProps> = (props) => {
+  const ctx = useContext(SEOOverrideContext);
+  const {
+    title,
+    description,
+    keywords,
+    canonical,
+    noindex,
+    nofollow,
+    ogImage,
+    ogImageAlt,
+    ogType,
+    twitterCard,
+    structuredDataType,
+    customSchemas,
+    hreflangLinks,
+    inLanguage,
+    disableMarketingHreflang,
+    customDomain,
+  } = props;
+
+  useEffect(() => {
+    if (!ctx) return;
+    ctx.setOverride({
+      title,
+      description,
+      keywords,
+      canonical,
+      noindex,
+      nofollow,
+      ogImage,
+      ogImageAlt,
+      ogType,
+      twitterCard,
+      structuredDataType,
+      customSchemas,
+      hreflangLinks,
+      inLanguage,
+      disableMarketingHreflang,
+      customDomain,
+    });
+    return () => {
+      ctx.setOverride(null);
+    };
+  }, [
+    ctx,
+    title,
+    description,
+    keywords,
+    canonical,
+    noindex,
+    nofollow,
+    ogImage,
+    ogImageAlt,
+    ogType,
+    twitterCard,
+    structuredDataType,
+    customSchemas,
+    hreflangLinks,
+    inLanguage,
+    disableMarketingHreflang,
+    customDomain,
+  ]);
+
+  return null;
+};
+
+export const OG_LOCALES: Record<string, string> = {
   en: 'en_US',
   'zh-CN': 'zh_CN',
   'zh-TW': 'zh_TW',
@@ -44,6 +135,11 @@ function updateMetaTag(attributeName: string, attributeValue: string, content: s
   element.setAttribute('content', content);
 }
 
+function removeMetaTag(attributeName: string, attributeValue: string) {
+  const el = document.querySelector(`meta[${attributeName}="${attributeValue}"]`);
+  if (el) el.remove();
+}
+
 function updateLinkTag(rel: string, href: string) {
   let element = document.querySelector(`link[rel="${rel}"]`);
   if (!element) {
@@ -56,10 +152,10 @@ function updateLinkTag(rel: string, href: string) {
 
 function syncMarketingHreflangTags(links: Array<{ hreflang: string; href: string }> | null) {
   document
-    .querySelectorAll('link[data-ef-marketing-hreflang="true"]')
+    .querySelectorAll('link[rel="alternate"][hreflang]')
     .forEach((el) => el.remove());
 
-  if (!links) return;
+  if (!links || links.length === 0) return;
 
   links.forEach(({ hreflang, href }) => {
     const linkEl = document.createElement('link');
@@ -71,100 +167,96 @@ function syncMarketingHreflangTags(links: Array<{ hreflang: string; href: string
   });
 }
 
-function updateJsonLd(schema: any) {
+function updateJsonLd(schemas: Record<string, any>[]) {
+  // Remove any legacy secondary script tags to enforce single authoritative JSON-LD block
+  const legacyWeddingScript = document.getElementById('eventframe-wedding-jsonld');
+  if (legacyWeddingScript) legacyWeddingScript.remove();
+
   let script = document.getElementById('eventframe-schema-jsonld') as HTMLScriptElement | null;
+  if (!schemas || schemas.length === 0) {
+    if (script) script.remove();
+    return;
+  }
+
   if (!script) {
     script = document.createElement('script');
     script.id = 'eventframe-schema-jsonld';
     script.type = 'application/ld+json';
     document.head.appendChild(script);
   }
-  script.textContent = JSON.stringify(schema);
+  script.textContent = JSON.stringify(schemas);
 }
 
-export const SEO: React.FC<SEOProps> = ({
-  title: propTitle,
-  description: propDescription,
-  canonical: propCanonical,
-  noindex: propNoindex,
-  nofollow: propNofollow,
-  ogImage: propOgImage,
-  ogImageAlt: propOgImageAlt,
-  ogType: propOgType,
-  twitterCard: propTwitterCard,
-  structuredDataType: propStructuredDataType,
-  customDomain,
-}) => {
+export const SEO: React.FC<SEOProps> = (props) => {
   const location = useLocation();
   const { currentLanguage, t } = useMarketingTranslation();
+  const overrideCtx = useContext(SEOOverrideContext);
+  const activeOverride = overrideCtx?.override || null;
 
   useEffect(() => {
+    const merged: SEOProps = { ...props, ...(activeOverride || {}) };
     const normalizedPath = normalizePathname(location.pathname);
-    const isMarketingRoute = isPublicMarketingPath(normalizedPath);
+    const { meta: routeMeta, lang: pathLang, basePath } = resolveRouteMetadata(normalizedPath);
+    const isLocalizedMarketing = isLocalizedMarketingBasePath(basePath);
+    const effectiveLang = merged.inLanguage
+      ? merged.inLanguage
+      : isLocalizedMarketing
+        ? pathLang !== 'en'
+          ? pathLang
+          : currentLanguage
+        : 'en';
 
-    // 1. Resolve base metadata for current route
-    const routeMeta = getRouteMetadata(location.pathname);
-
-    // 2. Resolve localized SEO metadata for public marketing pages
+    // Localized marketing route title/description lookup
     let localizedTitle: string | undefined;
     let localizedDescription: string | undefined;
-    if (isMarketingRoute) {
-      const routeKey = routeMeta.canonicalPath || normalizedPath;
-      const titleKey = `seo.routes.${routeKey}.title`;
-      const descKey = `seo.routes.${routeKey}.description`;
+    if (isLocalizedMarketing) {
+      const titleKey = `seo.routes.${basePath}.title`;
+      const descKey = `seo.routes.${basePath}.description`;
       const translatedTitle = t(titleKey);
       const translatedDesc = t(descKey);
       if (translatedTitle !== titleKey) localizedTitle = translatedTitle;
       if (translatedDesc !== descKey) localizedDescription = translatedDesc;
-
-      document.documentElement.lang = currentLanguage;
+      document.documentElement.lang = effectiveLang;
     }
 
-    // 3. Merge overrides
     const finalTitle =
-      propTitle || localizedTitle || routeMeta.title || SEO_CONFIG.defaultTitle;
+      merged.title || localizedTitle || routeMeta.title || SEO_CONFIG.defaultTitle;
     const finalDescription =
-      propDescription ||
+      merged.description ||
       localizedDescription ||
       routeMeta.description ||
       SEO_CONFIG.defaultDescription;
-    const finalNoindex = propNoindex !== undefined ? propNoindex : routeMeta.noindex;
-    const finalNofollow = propNofollow !== undefined ? propNofollow : routeMeta.nofollow;
-    const finalOgType = propOgType || routeMeta.ogType || 'website';
-    const finalOgImage = propOgImage || routeMeta.ogImage || SEO_CONFIG.defaultOgImage;
+    const finalNoindex = merged.noindex !== undefined ? merged.noindex : routeMeta.noindex;
+    const finalNofollow = merged.nofollow !== undefined ? merged.nofollow : routeMeta.nofollow;
+    const finalOgType = merged.ogType || routeMeta.ogType || 'website';
+    const finalOgImage = merged.ogImage || routeMeta.ogImage || SEO_CONFIG.defaultOgImage;
     const finalOgImageAlt =
-      propOgImageAlt || routeMeta.ogImageAlt || SEO_CONFIG.defaultOgImageAlt;
+      merged.ogImageAlt || routeMeta.ogImageAlt || SEO_CONFIG.defaultOgImageAlt;
     const finalTwitterCard =
-      propTwitterCard || routeMeta.twitterCard || SEO_CONFIG.twitterCard;
+      merged.twitterCard || routeMeta.twitterCard || SEO_CONFIG.twitterCard;
     const finalStructuredDataType =
-      propStructuredDataType || routeMeta.structuredDataType;
+      merged.structuredDataType || routeMeta.structuredDataType;
 
-    // 4. Resolve canonical URL safely (include ?lang= for active non-default marketing language)
-    let canonicalSearch = location.search;
-    if (isMarketingRoute) {
-      const params = new URLSearchParams(location.search);
-      if (currentLanguage === 'en') {
-        params.delete('lang');
-      } else {
-        params.set('lang', currentLanguage);
-      }
-      const str = params.toString();
-      canonicalSearch = str ? `?${str}` : '';
-    }
-
-    const finalCanonicalUrl =
-      propCanonical ||
+    const canonicalTarget =
+      merged.canonical ||
       buildCanonicalUrl(
-        routeMeta.canonicalPath || location.pathname,
-        canonicalSearch,
-        customDomain
+        routeMeta.canonicalPath || normalizedPath,
+        isLocalizedMarketing ? undefined : location.search,
+        merged.customDomain
       );
 
-    // 5. Update Document Title & Description
+    // 1. Title & Description & Keywords
     document.title = finalTitle;
     updateMetaTag('name', 'description', finalDescription);
+    if (merged.keywords) {
+      updateMetaTag('name', 'keywords', merged.keywords);
+    } else if (routeMeta.keywords && routeMeta.keywords.length > 0) {
+      updateMetaTag('name', 'keywords', routeMeta.keywords.join(', '));
+    } else {
+      removeMetaTag('name', 'keywords');
+    }
 
-    // 6. Update Robots Directives
+    // 2. Robots
     let robotsValue = 'index, follow';
     if (finalNoindex && finalNofollow) {
       robotsValue = 'noindex, nofollow';
@@ -175,20 +267,22 @@ export const SEO: React.FC<SEOProps> = ({
     }
     updateMetaTag('name', 'robots', robotsValue);
 
-    // 7. Update Canonical & Alternate hreflang Tags
-    updateLinkTag('canonical', finalCanonicalUrl);
-    if (isMarketingRoute) {
+    // 3. Canonical & hreflang alternates
+    updateLinkTag('canonical', canonicalTarget);
+    if (isLocalizedMarketing && !merged.disableMarketingHreflang && !finalNoindex) {
       syncMarketingHreflangTags(
-        buildMarketingHreflangLinks(routeMeta.canonicalPath || normalizedPath, customDomain)
+        merged.hreflangLinks && merged.hreflangLinks.length > 0
+          ? merged.hreflangLinks
+          : buildMarketingHreflangLinks(basePath, merged.customDomain)
       );
     } else {
       syncMarketingHreflangTags(null);
     }
 
-    // 8. Update Open Graph Tags
+    // 4. Open Graph
     updateMetaTag('property', 'og:title', finalTitle);
     updateMetaTag('property', 'og:description', finalDescription);
-    updateMetaTag('property', 'og:url', finalCanonicalUrl);
+    updateMetaTag('property', 'og:url', canonicalTarget);
     updateMetaTag('property', 'og:type', finalOgType);
     updateMetaTag('property', 'og:site_name', SEO_CONFIG.siteName);
     updateMetaTag('property', 'og:image', finalOgImage);
@@ -196,36 +290,29 @@ export const SEO: React.FC<SEOProps> = ({
     updateMetaTag(
       'property',
       'og:locale',
-      isMarketingRoute ? OG_LOCALES[currentLanguage] || SEO_CONFIG.defaultLocale : SEO_CONFIG.defaultLocale
+      OG_LOCALES[effectiveLang] || SEO_CONFIG.defaultLocale
     );
 
-    // 9. Update Twitter / X Cards
+    // 5. Twitter Cards
     updateMetaTag('name', 'twitter:card', finalTwitterCard);
     updateMetaTag('name', 'twitter:title', finalTitle);
     updateMetaTag('name', 'twitter:description', finalDescription);
     updateMetaTag('name', 'twitter:image', finalOgImage);
     updateMetaTag('name', 'twitter:site', SEO_CONFIG.twitterSite);
 
-    // 10. Inject Structured Data JSON-LD
-    const schemas = getStructuredDataForType(finalStructuredDataType);
+    // 6. Authoritative Single Structured Data JSON-LD Block
+    const schemas = buildPageStructuredData({
+      type: finalStructuredDataType,
+      title: finalTitle,
+      description: finalDescription,
+      canonicalUrl: canonicalTarget,
+      inLanguage: OG_LOCALES[effectiveLang]?.replace('_', '-') || 'en-US',
+      breadcrumbs: routeMeta.breadcrumbs,
+      customSchemas: merged.customSchemas,
+      noindex: Boolean(finalNoindex),
+    });
     updateJsonLd(schemas);
-  }, [
-    location.pathname,
-    location.search,
-    currentLanguage,
-    t,
-    propTitle,
-    propDescription,
-    propCanonical,
-    propNoindex,
-    propNofollow,
-    propOgImage,
-    propOgImageAlt,
-    propOgType,
-    propTwitterCard,
-    propStructuredDataType,
-    customDomain,
-  ]);
+  }, [location.pathname, location.search, currentLanguage, t, props, activeOverride]);
 
   return null;
 };

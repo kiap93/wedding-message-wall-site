@@ -13,9 +13,7 @@ import { EVENT_PRICING, formatPrice } from '../config/pricing';
 import MarketingLayout from '../layouts/MarketingLayout';
 import Button from '../design-system/components/Button';
 import { useMarketingTranslation } from '../lib/i18n/MarketingTranslationContext';
-import heroWeddingImage from '../assets/images/hero_wedding_editorial_1793501242401.jpg';
-import invitationCraftImage from '../assets/images/invitation_craft_showcase_1793501242453.jpg';
-import celebrationVenueImage from '../assets/images/celebration_venue_mood_1793501242406.jpg';
+import { getAllBlogPosts } from '../content/blog';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -68,6 +66,8 @@ export default function Home() {
     { q: t('home.faq.items.q5'), a: t('home.faq.items.a5') },
   ];
 
+  const featuredGuides = getAllBlogPosts().slice(0, 3);
+
   const ecosystemCards = [
     {
       href: '/wedding-planner-software',
@@ -82,6 +82,13 @@ export default function Home() {
       title: t('home.ecosystem.cards.whiteLabel.title'),
       desc: t('home.ecosystem.cards.whiteLabel.desc'),
       cta: t('home.ecosystem.cards.whiteLabel.cta'),
+    },
+    {
+      href: '/wedding-website-builder',
+      tag: t('home.ecosystem.cards.website.tag'),
+      title: t('home.ecosystem.cards.website.title'),
+      desc: t('home.ecosystem.cards.website.desc'),
+      cta: t('home.ecosystem.cards.website.cta'),
     },
     {
       href: '/digital-wedding-invitations',
@@ -103,6 +110,13 @@ export default function Home() {
       title: t('home.ecosystem.cards.guest.title'),
       desc: t('home.ecosystem.cards.guest.desc'),
       cta: t('home.ecosystem.cards.guest.cta'),
+    },
+    {
+      href: '/wedding-seating-chart',
+      tag: t('home.ecosystem.cards.seating.tag'),
+      title: t('home.ecosystem.cards.seating.title'),
+      desc: t('home.ecosystem.cards.seating.desc'),
+      cta: t('home.ecosystem.cards.seating.cta'),
     },
     {
       href: '/wedding-reception-display',
@@ -172,17 +186,16 @@ export default function Home() {
             {/* Right Visual (5 cols) */}
             <div className="lg:col-span-5 relative">
               <div className="relative rounded-lg overflow-hidden border border-[#E8E8E5] shadow-card bg-white p-2">
-                <div className="aspect-[4/3] overflow-hidden rounded">
+                <div className="aspect-[16/9] overflow-hidden rounded bg-[#FAF9F7]">
                   <img
-                    src={heroWeddingImage}
+                    src="/images/seo/eventframe-wedding-platform-showcase.webp"
                     alt={t('home.hero.imageAlt')}
                     className="w-full h-full object-cover"
                     loading="eager"
                     fetchPriority="high"
                     decoding="async"
-                    width={800}
-                    height={600}
-                    referrerPolicy="no-referrer"
+                    width={1200}
+                    height={670}
                   />
                 </div>
                 <div className="p-4 flex items-center justify-between border-t border-[#E8E8E5] mt-2 bg-[#FAF9F7] rounded">
@@ -217,7 +230,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {ecosystemCards.map((card) => (
               <a
                 key={card.href}
@@ -262,14 +275,13 @@ export default function Home() {
           <div className="grid md:grid-cols-2 gap-8 items-center mb-16">
             <div className="rounded-lg overflow-hidden border border-[#E8E8E5] shadow-subtle bg-[#FAF9F7]">
               <img
-                src={invitationCraftImage}
+                src="/images/seo/digital-wedding-invitations-stationery.webp"
                 alt={t('home.craft.imageAlt')}
                 className="w-full h-auto object-cover"
                 loading="lazy"
                 decoding="async"
-                width={600}
-                height={400}
-                referrerPolicy="no-referrer"
+                width={1200}
+                height={896}
               />
             </div>
 
@@ -316,16 +328,15 @@ export default function Home() {
 
             <div className="lg:col-span-7">
               <div className="rounded-lg overflow-hidden border border-[#E8E8E5] shadow-card bg-white p-2">
-                <div className="aspect-[16/9] overflow-hidden rounded relative">
+                <div className="aspect-[16/9] overflow-hidden rounded relative bg-[#FAF9F7]">
                   <img
-                    src={celebrationVenueImage}
+                    src="/images/seo/wedding-reception-live-display.webp"
                     alt={t('home.spotlight.imageAlt')}
                     className="w-full h-full object-cover"
                     loading="lazy"
                     decoding="async"
-                    width={800}
-                    height={450}
-                    referrerPolicy="no-referrer"
+                    width={1200}
+                    height={670}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex items-end p-6">
                     <div className="text-white space-y-1">
@@ -505,8 +516,70 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Editorial Journal Highlights */}
+      <section className="py-16 md:py-20 border-b border-[#E8E8E5] bg-white">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
+            <div>
+              <span className="text-xs font-medium text-[#8B806F] uppercase tracking-wider">
+                {t('nav.blog')}
+              </span>
+              <h2 className="font-serif text-2xl md:text-3xl font-normal text-[#252525] mt-1">
+                {t('footer.links.editorialBlog')}
+              </h2>
+            </div>
+            <a
+              href="/blog"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate('/blog');
+              }}
+              className="text-xs font-medium text-[#252525] hover:text-[#8B806F] flex items-center gap-1 transition-colors"
+            >
+              {t('footer.links.editorialBlog')} <ArrowRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            {featuredGuides.map((post) => (
+              <a
+                key={post.slug}
+                href={`/blog/${post.slug}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(`/blog/${post.slug}`);
+                }}
+                className="bg-[#FAF9F7] border border-[#E8E8E5] hover:border-[#252525] rounded-lg overflow-hidden transition-colors flex flex-col justify-between"
+              >
+                <div>
+                  <div className="aspect-[16/10] overflow-hidden border-b border-[#E8E8E5] bg-white">
+                    <img
+                      src={post.coverImage}
+                      alt={post.coverImageAlt}
+                      width={post.coverImageWidth}
+                      height={post.coverImageHeight}
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="p-5 space-y-2">
+                    <div className="text-[10px] font-mono uppercase text-[#8B806F]">{post.category}</div>
+                    <h3 className="font-serif text-lg text-[#252525] leading-snug">{post.title}</h3>
+                    <p className="text-xs text-[#777777] line-clamp-2">{post.excerpt}</p>
+                  </div>
+                </div>
+                <div className="px-5 py-3 border-t border-[#EFEFEA] text-[11px] font-mono text-[#777777]">
+                  {post.readingTimeMinutes} min read
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Final Call to Action */}
-      <section className="py-20 bg-white text-center">
+      <section className="py-20 bg-[#FAF9F7] text-center">
         <div className="max-w-3xl mx-auto px-6 space-y-6">
           <h2 className="font-serif text-3xl md:text-5xl font-normal text-[#252525] tracking-tight">
             {t('home.finalCta.title')}

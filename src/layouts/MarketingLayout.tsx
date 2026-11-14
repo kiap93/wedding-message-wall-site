@@ -32,6 +32,11 @@ export const MarketingLayout: React.FC<MarketingLayoutProps> = ({ children }) =>
       desc: t('nav.solutionsMenu.whiteLabel.desc'),
     },
     {
+      title: t('nav.solutionsMenu.website.title'),
+      href: '/wedding-website-builder',
+      desc: t('nav.solutionsMenu.website.desc'),
+    },
+    {
       title: t('nav.solutionsMenu.invitations.title'),
       href: '/digital-wedding-invitations',
       desc: t('nav.solutionsMenu.invitations.desc'),
@@ -45,6 +50,11 @@ export const MarketingLayout: React.FC<MarketingLayoutProps> = ({ children }) =>
       title: t('nav.solutionsMenu.guest.title'),
       href: '/wedding-guest-management',
       desc: t('nav.solutionsMenu.guest.desc'),
+    },
+    {
+      title: t('nav.solutionsMenu.seating.title'),
+      href: '/wedding-seating-chart',
+      desc: t('nav.solutionsMenu.seating.desc'),
     },
     {
       title: t('nav.solutionsMenu.display.title'),
@@ -90,7 +100,7 @@ export const MarketingLayout: React.FC<MarketingLayoutProps> = ({ children }) =>
               </button>
 
               {solutionsOpen && (
-                <div className="absolute top-full left-0 w-72 bg-white border border-[#E8E8E5] rounded-lg shadow-lg p-3 z-50 space-y-1">
+                <div className="absolute top-full left-0 w-[500px] bg-white border border-[#E8E8E5] rounded-lg shadow-lg p-3 z-50 grid grid-cols-2 gap-1.5">
                   {solutions.map((item, idx) => (
                     <a
                       key={idx}
@@ -123,6 +133,13 @@ export const MarketingLayout: React.FC<MarketingLayoutProps> = ({ children }) =>
               className="hover:text-[#252525] transition-colors whitespace-nowrap shrink-0"
             >
               {t('nav.pricing')}
+            </a>
+            <a
+              href={getLocalizedPath('/blog')}
+              onClick={(e) => handleLinkClick(e, '/blog')}
+              className="hover:text-[#252525] transition-colors whitespace-nowrap shrink-0"
+            >
+              {t('nav.blog')}
             </a>
           </nav>
 
@@ -204,6 +221,13 @@ export const MarketingLayout: React.FC<MarketingLayoutProps> = ({ children }) =>
                 {t('nav.pricing')}
               </a>
               <a
+                href={getLocalizedPath('/blog')}
+                onClick={(e) => handleLinkClick(e, '/blog')}
+                className="py-2 text-[#252525] hover:text-[#8B806F]"
+              >
+                {t('nav.blog')}
+              </a>
+              <a
                 href="/login"
                 onClick={(e) => {
                   e.preventDefault();
@@ -275,6 +299,15 @@ export const MarketingLayout: React.FC<MarketingLayoutProps> = ({ children }) =>
                 </li>
                 <li>
                   <a
+                    href={getLocalizedPath('/wedding-website-builder')}
+                    onClick={(e) => handleLinkClick(e, '/wedding-website-builder')}
+                    className="hover:text-[#252525] transition-colors"
+                  >
+                    {t('footer.links.websiteBuilder')}
+                  </a>
+                </li>
+                <li>
+                  <a
                     href={getLocalizedPath('/digital-wedding-invitations')}
                     onClick={(e) => handleLinkClick(e, '/digital-wedding-invitations')}
                     className="hover:text-[#252525] transition-colors"
@@ -298,6 +331,15 @@ export const MarketingLayout: React.FC<MarketingLayoutProps> = ({ children }) =>
                     className="hover:text-[#252525] transition-colors"
                   >
                     {t('footer.links.guestManagement')}
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href={getLocalizedPath('/wedding-seating-chart')}
+                    onClick={(e) => handleLinkClick(e, '/wedding-seating-chart')}
+                    className="hover:text-[#252525] transition-colors"
+                  >
+                    {t('footer.links.seatingChart')}
                   </a>
                 </li>
                 <li>
@@ -410,11 +452,20 @@ export const MarketingLayout: React.FC<MarketingLayoutProps> = ({ children }) =>
                 </li>
                 <li>
                   <a
+                    href={getLocalizedPath('/blog')}
+                    onClick={(e) => handleLinkClick(e, '/blog')}
+                    className="hover:text-[#252525] transition-colors"
+                  >
+                    {t('footer.links.editorialBlog')}
+                  </a>
+                </li>
+                <li>
+                  <a
                     href="/login"
                     onClick={(e) => handleLinkClick(e, '/login')}
                     className="hover:text-[#252525] transition-colors"
                   >
-                    {t('footer.links.startTrial')}
+                    {t('footer.links.createFreeDraft')}
                   </a>
                 </li>
               </ul>
@@ -432,7 +483,7 @@ export const MarketingLayout: React.FC<MarketingLayoutProps> = ({ children }) =>
                 onClick={(e) => handleLinkClick(e, '/pricing')}
                 className="hover:text-[#252525] transition-colors"
               >
-                {t('footer.links.subscriptionTerms')}
+                {t('footer.links.payPerEventTerms')}
               </a>
               <span>·</span>
               <a

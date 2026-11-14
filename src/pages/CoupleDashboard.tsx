@@ -16,8 +16,9 @@ import {
 import { WeddingEvent, TEMPLATES, TemplateId } from '../types';
 import { isEventActive, getDaysRemaining, getPackageById } from '../lib/packages';
 import { EVENT_PRICING, formatPrice } from '../config/pricing';
-import RSVPManager from '../components/RSVPManager';
+import GuestManagementSuite from '../components/guest-management/GuestManagementSuite';
 import MessageModerator from '../components/MessageModerator';
+import EventOverviewDashboard, { OverviewNavigationTarget } from '../components/overview/EventOverviewDashboard';
 import { getSupabase } from '../lib/supabase';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import Button from '../design-system/components/Button';
@@ -33,7 +34,9 @@ export default function CoupleDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'aesthetic' | 'rsvp' | 'moderation' | 'invitation'>('aesthetic');
+  const [activeTab, setActiveTab] = useState<'overview' | 'aesthetic' | 'rsvp' | 'moderation' | 'invitation'>('overview');
+  const [guestSuiteSubTab, setGuestSuiteSubTab] = useState<'guests' | 'rsvp' | 'tables' | 'layout' | 'overview'>('guests');
+  const [openAddGuestSignal, setOpenAddGuestSignal] = useState(0);
 
   useEffect(() => {
     if (isLoadingWorkspace) return;
@@ -304,43 +307,47 @@ export default function CoupleDashboard() {
           );
         })()}
 
-        <PageHeader
-          title={coupleTitle}
-          description="Manage your guest responses, live message moderation, and cover photos."
-          actions={
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(`/${event.slug}/display`, '_blank')}
-                rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
-              >
-                Live Display
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(`/${event.slug}/guest`, '_blank')}
-                rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
-              >
-                Guest Hub
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(`/${event.slug}/rsvp`, '_blank')}
-                rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
-              >
-                RSVP
-              </Button>
-            </div>
-          }
-        />
+        {activeTab !== 'overview' && (
+          <PageHeader
+            title={coupleTitle}
+            description="Manage your guest responses, live message moderation, and cover photos."
+            actions={
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(`/${event.slug}/display`, '_blank')}
+                  rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
+                >
+                  Live Display
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(`/${event.slug}/guest`, '_blank')}
+                  rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
+                >
+                  Guest Hub
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(`/${event.slug}/rsvp`, '_blank')}
+                  rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
+                >
+                  RSVP
+                </Button>
+              </div>
+            }
+          />
+        )}
 
         <Tabs
+          className="overflow-x-auto no-scrollbar"
           items={[
+            { id: 'overview', label: 'Event Overview' },
             { id: 'aesthetic', label: 'Wedding Cover & Style' },
-            { id: 'rsvp', label: 'RSVP Guest List' },
+            { id: 'rsvp', label: 'Guests & Seating' },
             { id: 'moderation', label: 'Live Messages' },
             { id: 'invitation', label: 'Invitation Suite' },
           ]}
@@ -349,6 +356,41 @@ export default function CoupleDashboard() {
         />
 
         <div className="pt-2">
+          {activeTab === 'overview' && (
+            <EventOverviewDashboard
+              event={event}
+              agency={workspace}
+              websiteHref={`${window.location.origin}/${event.slug}/website`}
+              invitationHref={`${window.location.origin}/${event.slug}/invitation`}
+              rsvpHref={`${window.location.origin}/${event.slug}/rsvp`}
+              eventPin={event.access_password}
+              allowInlineModeration={Boolean(localStorage.getItem('wedding_session_token'))}
+              onEventUpdated={(updated) => setEvent({ ...event, ...updated } as WeddingEvent)}
+              onNavigate={(target: OverviewNavigationTarget) => {
+                if (target === 'edit_event') setActiveTab('aesthetic');
+                else if (target === 'guests') {
+                  setGuestSuiteSubTab('guests');
+                  setActiveTab('rsvp');
+                } else if (target === 'add_guest') {
+                  setGuestSuiteSubTab('guests');
+                  setActiveTab('rsvp');
+                  setOpenAddGuestSignal((n) => n + 1);
+                } else if (target === 'seating') {
+                  setGuestSuiteSubTab('tables');
+                  setActiveTab('rsvp');
+                } else if (target === 'floor_plan') {
+                  setGuestSuiteSubTab('layout');
+                  setActiveTab('rsvp');
+                } else if (target === 'moderation') {
+                  setActiveTab('moderation');
+                } else if (target === 'website_studio') {
+                  navigate(`/website-studio/${event.id}`);
+                } else if (target === 'invitation_studio') {
+                  navigate(`/editor/${event.id}`);
+                }
+              }}
+            />
+          )}
           {activeTab === 'aesthetic' && (
             <div className="space-y-6">
               {/* Cover Photo Upload */}
@@ -421,11 +463,23 @@ export default function CoupleDashboard() {
           )}
 
           {activeTab === 'rsvp' && (
-            <RSVPManager projectId={event.id} rsvpFields={event.rsvp_fields} />
+            <GuestManagementSuite
+              projectId={event.id}
+              rsvpFields={event.rsvp_fields}
+              defaultTab={guestSuiteSubTab}
+              openAddGuestSignal={openAddGuestSignal}
+            />
           )}
 
           {activeTab === 'moderation' && (
-            <MessageModerator projectId={event.id} />
+            <MessageModerator
+              projectId={event.id}
+              themeId={event.theme_id}
+              initialDisplayConfig={event.message_display_config}
+              onConfigSaved={(cfg) =>
+                setEvent((prev) => (prev ? { ...prev, message_display_config: cfg } : prev))
+              }
+            />
           )}
 
           {activeTab === 'invitation' && (

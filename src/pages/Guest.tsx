@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Send, CheckCircle2, QrCode, Zap, Calendar, MapPin, Heart } from 'lucide-react';
 import { postMessage } from '../lib/api';
 import confetti from 'canvas-confetti';
-import { WeddingEvent, WeddingTemplate, Agency, Message } from '../types';
+import { WeddingEvent, WeddingTemplate, Agency, Message, WishCategory } from '../types';
 import { resolveEventTheme, ResolvedEventTheme } from '../lib/eventTheme';
 import { ThemeOverlay } from '../components/ThemeDecorations';
 import { QRCodeSVG } from 'qrcode.react';
@@ -26,6 +26,7 @@ export default function Guest() {
   const [isLoading, setIsLoading] = useState(true);
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
+  const [wishCategory, setWishCategory] = useState<WishCategory>('normal');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showQR, setShowQR] = useState(false);
@@ -329,7 +330,8 @@ export default function Guest() {
 
       const created = await provider.submitMessage(trimmedName, trimmedMessage, {
         autoApprove: !!project?.auto_approve_messages,
-        guestCategory: designatedCategory
+        guestCategory: designatedCategory,
+        wishCategory
       });
 
       if (isDemo && created && created.id) {
@@ -344,7 +346,8 @@ export default function Guest() {
             id: String(Date.now()),
             name: trimmedName,
             message: trimmedMessage,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            wish_category: wishCategory
           }
         ]);
       }
@@ -360,6 +363,7 @@ export default function Guest() {
       setShowSuccess(true);
       setName('');
       setMessage('');
+      setWishCategory('normal');
       setTimeout(() => setShowSuccess(false), 5000);
     } catch (err: any) {
       setError(err.message || 'Failed to post message');
@@ -499,6 +503,38 @@ export default function Guest() {
                 rows={4}
                 className={`w-full px-3.5 py-2.5 text-xs sm:text-sm border transition-colors outline-none resize-none ${theme.input.base} ${theme.input.radius}`}
               />
+            </div>
+
+            <div>
+              <span className={`block text-[11px] font-medium mb-1.5 ${theme.colors.subtleText}`}>
+                Wish Style <span className="opacity-60 font-normal">(optional)</span>
+              </span>
+              <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Wish style">
+                {(
+                  [
+                    { id: 'normal', label: 'Standard' },
+                    { id: 'heartfelt', label: 'Heartfelt' },
+                    { id: 'family', label: 'Family' },
+                    { id: 'funny', label: 'Playful' },
+                  ] as const
+                ).map((opt) => {
+                  const selected = wishCategory === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setWishCategory(opt.id)}
+                      className={`py-1.5 px-2 text-[11px] border transition-colors ${theme.input.radius} ${
+                        selected ? theme.button.pillActive : theme.button.pillInactive
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {error && (

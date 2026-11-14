@@ -11,6 +11,8 @@
  * - Validates and sanitizes inputs and enforces per-IP rate limiting & spam checks
  */
 
+export type DemoWishCategory = 'normal' | 'funny' | 'heartfelt' | 'family';
+
 export interface DemoMessage {
   id: string;
   room_id: string;
@@ -20,6 +22,7 @@ export interface DemoMessage {
   timestamp: number;
   status: 'approved';
   classification: 'NORMAL' | 'COUPLE_SELECTED' | 'SPECIAL_GUEST';
+  wish_category?: DemoWishCategory;
   is_featured: boolean;
   is_pinned: boolean;
   isDemoSample: boolean;
@@ -84,6 +87,7 @@ export function createInitialSampleMessages(roomId: string = PUBLIC_DEMO_ROOM_ID
       timestamp: now - 240000,
       status: 'approved',
       classification: 'SPECIAL_GUEST',
+      wish_category: 'family',
       is_featured: true,
       is_pinned: false,
       isDemoSample: true,
@@ -98,6 +102,7 @@ export function createInitialSampleMessages(roomId: string = PUBLIC_DEMO_ROOM_ID
       timestamp: now - 180000,
       status: 'approved',
       classification: 'NORMAL',
+      wish_category: 'normal',
       is_featured: false,
       is_pinned: false,
       isDemoSample: true
@@ -111,6 +116,7 @@ export function createInitialSampleMessages(roomId: string = PUBLIC_DEMO_ROOM_ID
       timestamp: now - 120000,
       status: 'approved',
       classification: 'NORMAL',
+      wish_category: 'family',
       is_featured: false,
       is_pinned: false,
       isDemoSample: true
@@ -124,6 +130,7 @@ export function createInitialSampleMessages(roomId: string = PUBLIC_DEMO_ROOM_ID
       timestamp: now - 60000,
       status: 'approved',
       classification: 'NORMAL',
+      wish_category: 'funny',
       is_featured: false,
       is_pinned: false,
       isDemoSample: true
@@ -137,6 +144,7 @@ export function createInitialSampleMessages(roomId: string = PUBLIC_DEMO_ROOM_ID
       timestamp: now - 30000,
       status: 'approved',
       classification: 'SPECIAL_GUEST',
+      wish_category: 'heartfelt',
       is_featured: true,
       is_pinned: false,
       isDemoSample: true,
@@ -265,12 +273,30 @@ export interface AddDemoMessageResult {
   statusCode?: number;
 }
 
+const VALID_DEMO_WISH_CATEGORIES: ReadonlySet<DemoWishCategory> = new Set([
+  'normal',
+  'funny',
+  'heartfelt',
+  'family'
+]);
+
+export function normalizeDemoWishCategory(raw?: unknown): DemoWishCategory {
+  if (typeof raw === 'string') {
+    const clean = raw.trim().toLowerCase() as DemoWishCategory;
+    if (VALID_DEMO_WISH_CATEGORIES.has(clean)) {
+      return clean;
+    }
+  }
+  return 'normal';
+}
+
 // Add a guest message to isolated demo store
 export function addDemoGuestMessageCore(
   roomId: string,
   rawName: unknown,
   rawMessage: unknown,
-  ip: string = 'unknown'
+  ip: string = 'unknown',
+  rawWishCategory?: unknown
 ): AddDemoMessageResult {
   // Validate room strictly
   if (!isAllowedDemoRoom(roomId)) {
@@ -339,6 +365,7 @@ export function addDemoGuestMessageCore(
     timestamp: Date.now(),
     status: 'approved',
     classification: 'NORMAL',
+    wish_category: normalizeDemoWishCategory(rawWishCategory),
     is_featured: false,
     is_pinned: false,
     isDemoSample: false

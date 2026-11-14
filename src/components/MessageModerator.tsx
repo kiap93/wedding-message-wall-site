@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   MessageSquare, 
   Check, 
@@ -14,7 +14,14 @@ import {
   RefreshCw, 
   X as CloseIcon,
   CheckCircle2,
-  Info
+  Info,
+  ArrowLeft,
+  ArrowRight,
+  ArrowDown,
+  ArrowUp,
+  Shuffle,
+  Pause,
+  Play,
 } from 'lucide-react';
 import { 
   Message, 
@@ -27,28 +34,103 @@ import {
   analyzeMessagesWithAI, 
   updateMessageDisplayConfig 
 } from '../lib/api';
+import {
+  ALL_DANMAKU_DIRECTIONS,
+  DANMAKU_DENSITY_PRESETS,
+  DANMAKU_DIRECTION_META,
+  DanmakuDensity,
+  DanmakuDirection,
+  DanmakuDirectionMode,
+  DanmakuFontSize,
+  DanmakuSpecialStyle,
+  AnimationIntensity,
+  directionToSlug,
+  resolveDisplayConfig,
+} from '../types';
 import Tabs from '../design-system/components/Tabs';
 import Button from '../design-system/components/Button';
-import Badge from '../design-system/components/Badge';
 import EmptyState from '../design-system/components/EmptyState';
+import { DanmakuPillCard, DanmakuStage } from './display/DanmakuStage';
 import { resolveEventTheme } from '../lib/eventTheme';
 import { getSupabase } from '../lib/supabase';
+
+/**
+ * Isolated simulation-only sample wishes for the Display Settings live preview.
+ * Strictly local in memory — never sent to API endpoints or published to the real event room.
+ */
+const SIMULATED_PREVIEW_MESSAGES: Message[] = [
+  {
+    id: 'sim-preview-1',
+    name: 'Elena & Mark',
+    message: 'Wishing you both a lifetime of sunlit mornings and joyous toasts!',
+    timestamp: 1700000001000,
+    status: 'approved',
+    classification: 'NORMAL',
+  },
+  {
+    id: 'sim-preview-2',
+    name: 'Aunt Evelyn',
+    message: 'So proud to witness your forever begin today.',
+    timestamp: 1700000002000,
+    status: 'approved',
+    classification: 'SPECIAL_GUEST',
+    guest_category: 'Family',
+    wish_category: 'family',
+  },
+  {
+    id: 'sim-preview-3',
+    name: 'Julian Vance',
+    message: 'Best reception celebration of the year — cheers to the newlyweds!',
+    timestamp: 1700000003000,
+    status: 'approved',
+    classification: 'NORMAL',
+    wish_category: 'funny',
+  },
+  {
+    id: 'sim-preview-4',
+    name: 'Clara Chen',
+    message: 'May every chapter together shine brighter than tonight.',
+    timestamp: 1700000004000,
+    status: 'approved',
+    classification: 'AI_SUGGESTED',
+    wish_category: 'heartfelt',
+  },
+  {
+    id: 'sim-preview-5',
+    name: 'Liam & Hannah',
+    message: 'To endless laughter, love, and dancing!',
+    timestamp: 1700000005000,
+    status: 'approved',
+    classification: 'NORMAL',
+  },
+  {
+    id: 'sim-preview-6',
+    name: 'Dr. & Mrs. Patel',
+    message: 'Warmest blessings for a harmonious and radiant marriage.',
+    timestamp: 1700000006000,
+    status: 'approved',
+    classification: 'NORMAL',
+  },
+];
 
 interface MessageModeratorProps {
   projectId: string;
   themeId?: string;
   initialDisplayConfig?: MessageDisplayConfig;
+  onConfigSaved?: (config: MessageDisplayConfig) => void;
 }
 
 export default function MessageModerator({ 
   projectId, 
   themeId = 'minimal_luxury',
-  initialDisplayConfig 
+  initialDisplayConfig,
+  onConfigSaved
 }: MessageModeratorProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<'pending' | 'approved' | 'rejected'>('approved');
   const [classificationFilter, setClassificationFilter] = useState<string>('all');
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // AI Highlights state
   const [isAnalyzingAI, setIsAnalyzingAI] = useState(false);
@@ -60,11 +142,34 @@ export default function MessageModerator({
 
   // Display Configuration modal state
   const [showConfigModal, setShowConfigModal] = useState(false);
-  const [displayConfig, setDisplayConfig] = useState<MessageDisplayConfig>(
-    initialDisplayConfig || DEFAULT_MESSAGE_DISPLAY_CONFIG
+  const [displayConfig, setDisplayConfig] = useState<MessageDisplayConfig>(() =>
+    resolveDisplayConfig(initialDisplayConfig || DEFAULT_MESSAGE_DISPLAY_CONFIG)
   );
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [configSuccess, setConfigSuccess] = useState(false);
+  const [isPreviewPaused, setIsPreviewPaused] = useState(false);
+
+  const resolvedPreviewConfig = useMemo(
+    () => resolveDisplayConfig(displayConfig),
+    [displayConfig]
+  );
+
+  const updateDisplayConfigSynced = (patch: Partial<MessageDisplayConfig>) => {
+    setDisplayConfig((prev) => {
+      const merged = resolveDisplayConfig({
+        ...prev,
+        ...patch,
+      });
+      return merged;
+    });
+  };
+
+  // Sync displayConfig if parent event prop updates
+  useEffect(() => {
+    if (initialDisplayConfig) {
+      setDisplayConfig(resolveDisplayConfig(initialDisplayConfig));
+    }
+  }, [initialDisplayConfig]);
 
   // Resolved aesthetic theme for realistic wall preview
   const resolvedTheme = resolveEventTheme(themeId);
@@ -123,17 +228,18 @@ export default function MessageModerator({
   }
 
   const handleStatusUpdate = async (messageId: string, status: 'approved' | 'rejected') => {
+    setActionError(null);
     try {
       await updateMessageStatus(messageId, status);
       setMessages(messages.filter(m => m.id !== messageId));
-    } catch (err) {
-      alert('Failed to update message status');
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to update message status');
     }
   };
 
   const handleToggleFeatured = async (msg: Message) => {
+    setActionError(null);
     const nextFeatured = !msg.is_featured;
-    // When marking as featured, elevate to COUPLE_SELECTED if previously normal
     const nextClassification: MessageClassification = nextFeatured 
       ? (msg.classification === 'NORMAL' || !msg.classification ? 'COUPLE_SELECTED' : msg.classification)
       : (msg.classification === 'COUPLE_SELECTED' ? 'NORMAL' : (msg.classification || 'NORMAL'));
@@ -148,22 +254,24 @@ export default function MessageModerator({
         is_featured: nextFeatured, 
         classification: nextClassification 
       } : m));
-    } catch (err) {
-      alert('Failed to update featured status');
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to update featured status');
     }
   };
 
   const handleTogglePinned = async (msg: Message) => {
+    setActionError(null);
     const nextPinned = !msg.is_pinned;
     try {
       await updateMessageHighlight(msg.id, { is_pinned: nextPinned });
       setMessages(messages.map(m => m.id === msg.id ? { ...m, is_pinned: nextPinned } : m));
-    } catch (err) {
-      alert('Failed to update pinned status');
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to update pinned status');
     }
   };
 
   const handleChangeClassification = async (msg: Message, classification: MessageClassification) => {
+    setActionError(null);
     const isFeatured = classification === 'COUPLE_SELECTED' || classification === 'SPECIAL_GUEST' || msg.is_featured;
     try {
       await updateMessageHighlight(msg.id, {
@@ -175,25 +283,27 @@ export default function MessageModerator({
         classification, 
         is_featured: isFeatured 
       } : m));
-    } catch (err) {
-      alert('Failed to change message classification');
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to change message classification');
     }
   };
 
   const handleRunAiAnalysis = async () => {
+    setActionError(null);
     setIsAnalyzingAI(true);
     try {
       const res = await analyzeMessagesWithAI(projectId);
       setAiSuggestions(res.suggestions || []);
       setShowAiModal(true);
     } catch (err: any) {
-      alert('AI highlight analysis error: ' + (err.message || 'Please ensure messages are approved.'));
+      setActionError('AI highlight analysis error: ' + (err.message || 'Please ensure messages are approved.'));
     } finally {
       setIsAnalyzingAI(false);
     }
   };
 
   const handleApplyAiSuggestion = async (suggestion: { id: string; classification: MessageClassification; reason: string }, targetClass: MessageClassification = 'AI_SUGGESTED') => {
+    setActionError(null);
     try {
       await updateMessageHighlight(suggestion.id, {
         classification: targetClass,
@@ -206,24 +316,27 @@ export default function MessageModerator({
         ai_highlight_reason: suggestion.reason,
         is_featured: targetClass === 'COUPLE_SELECTED' ? true : m.is_featured
       } : m));
-      // Remove from pending suggestions list
       setAiSuggestions(aiSuggestions.filter(s => s.id !== suggestion.id));
-    } catch (err) {
-      alert('Failed to apply recommendation');
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to apply recommendation');
     }
   };
 
   const handleSaveDisplayConfig = async () => {
+    setActionError(null);
     setIsSavingConfig(true);
     try {
-      await updateMessageDisplayConfig(projectId, displayConfig);
+      const normalized = resolveDisplayConfig(displayConfig);
+      await updateMessageDisplayConfig(projectId, normalized);
+      setDisplayConfig(normalized);
+      onConfigSaved?.(normalized);
       setConfigSuccess(true);
       setTimeout(() => {
         setConfigSuccess(false);
         setShowConfigModal(false);
-      }, 1000);
+      }, 900);
     } catch (err: any) {
-      alert('Failed to save display config: ' + err.message);
+      setActionError('Failed to save display config: ' + (err?.message || 'Unknown error'));
     } finally {
       setIsSavingConfig(false);
     }
@@ -272,14 +385,14 @@ export default function MessageModerator({
             AI Highlight Curator
           </Button>
 
-          {/* Display Rotation Settings Button */}
+          {/* Display & Danmaku Settings Button */}
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowConfigModal(true)}
             leftIcon={<Sliders className="w-3.5 h-3.5 text-[#8B806F]" />}
           >
-            Display Rotation & Timings
+            Danmaku &amp; Display Settings
           </Button>
 
           <Tabs
@@ -290,6 +403,22 @@ export default function MessageModerator({
           />
         </div>
       </div>
+
+      {actionError && (
+        <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-red-800 text-xs flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {actionError}
+          </span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="text-red-700 hover:text-red-900 font-medium"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Classification Filters Bar (when viewing approved messages) */}
       {filter === 'approved' && (
@@ -402,6 +531,13 @@ export default function MessageModerator({
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-900 text-[10px] font-mono">
                           <Pin className="w-2.5 h-2.5 fill-blue-600 text-blue-700" />
                           PINNED
+                        </span>
+                      )}
+
+                      {/* Explicit Wish Category */}
+                      {msg.wish_category && msg.wish_category !== 'normal' && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-stone-100 text-stone-700 border border-stone-200 text-[10px] font-mono uppercase">
+                          {msg.wish_category}
                         </span>
                       )}
 
@@ -607,12 +743,12 @@ export default function MessageModerator({
       {/* Wall Preview Modal */}
       {previewMessage && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#1A1A1A] rounded-2xl max-w-xl w-full border border-white/20 shadow-2xl overflow-hidden flex flex-col">
+          <div className="bg-[#1A1A1A] rounded-2xl max-w-2xl w-full border border-white/20 shadow-2xl overflow-hidden flex flex-col">
             <div className="p-4 border-b border-white/10 flex items-center justify-between text-white">
               <div className="flex items-center gap-2">
                 <Eye className="w-4 h-4 text-amber-400" />
                 <span className="text-xs font-mono uppercase tracking-wider text-white/80">
-                  Ballroom Projector Wall Simulation
+                  Live Ballroom Danmaku &amp; Spotlight Preview
                 </span>
               </div>
               <button 
@@ -623,58 +759,45 @@ export default function MessageModerator({
               </button>
             </div>
 
-            <div className={`p-8 min-h-[340px] flex items-center justify-center ${resolvedTheme.colors.background} relative overflow-hidden`}>
-              {/* Card Rendering Simulation */}
-              <div className="w-full max-w-md">
-                {previewMessage.classification === 'COUPLE_SELECTED' ? (
-                  /* Spotlight Presentation Simulation */
-                  <div className="relative rounded-2xl p-7 text-center shadow-2xl border-2 border-amber-300 bg-linear-to-b from-white to-[#FDFBF7] ring-4 ring-amber-300/20 transform scale-105 transition-all">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500 text-white font-mono text-[10px] tracking-widest uppercase mb-3 shadow-xs">
-                      <Star className="w-3 h-3 fill-white" />
-                      COUPLE'S SPOTLIGHT MEMORY
-                    </div>
-                    <h3 className={`text-xl ${resolvedTheme.fontHeading} text-gray-900 font-semibold mb-2`}>
-                      {previewMessage.name}
-                    </h3>
-                    <p className="text-base font-serif italic text-gray-800 leading-relaxed mb-4">
-                      "{previewMessage.message}"
-                    </p>
-                    <div className="text-[10px] font-mono text-amber-800/60 uppercase border-t border-amber-200/60 pt-2">
-                      Spotlight Duration: {displayConfig.coupleSelectedDuration}s · Priority Level 1
-                    </div>
-                  </div>
-                ) : previewMessage.classification === 'SPECIAL_GUEST' ? (
-                  /* Special Guest Card Simulation */
-                  <div className="relative rounded-xl p-6 text-center shadow-lg border-2 border-emerald-600/40 bg-white ring-2 ring-emerald-600/10">
-                    <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-mono text-[10px] mb-2 font-medium">
-                      <Crown className="w-3 h-3 text-emerald-700" />
-                      SPECIAL GUEST {previewMessage.guest_category ? `• ${previewMessage.guest_category}` : ''}
-                    </div>
-                    <h3 className={`text-lg ${resolvedTheme.fontHeading} text-gray-900 font-semibold mb-2`}>
-                      {previewMessage.name}
-                    </h3>
-                    <p className="text-sm font-serif italic text-gray-800 leading-relaxed mb-3">
-                      "{previewMessage.message}"
-                    </p>
-                    <div className="text-[10px] font-mono text-gray-400 border-t border-gray-100 pt-2">
-                      Display Duration: {displayConfig.specialGuestDuration}s · Priority Level 2
-                    </div>
-                  </div>
-                ) : (
-                  /* Normal Card Simulation */
-                  <div className="relative rounded-xl p-6 text-center shadow-md border border-gray-200 bg-white">
-                    <h3 className={`text-base ${resolvedTheme.fontHeading} text-gray-900 font-semibold mb-2`}>
-                      {previewMessage.name}
-                    </h3>
-                    <p className="text-xs sm:text-sm font-serif italic text-gray-700 leading-relaxed mb-3">
-                      "{previewMessage.message}"
-                    </p>
-                    <div className="text-[10px] font-mono text-gray-400 border-t border-gray-100 pt-2">
-                      Standard Rotation: {displayConfig.normalDuration}s · Priority Level 4
-                    </div>
-                  </div>
-                )}
+            <div className={`p-8 min-h-[340px] flex flex-col items-center justify-center gap-6 ${resolvedTheme.colors.background} relative overflow-hidden`}>
+              {/* Floating Danmaku Pill Representation */}
+              <div className="w-full flex flex-col items-center gap-2">
+                <span className={`text-[10px] font-mono uppercase tracking-widest ${resolvedTheme.colors.subtleText}`}>
+                  Live Ballroom Stream Appearance
+                </span>
+                <div className="max-w-full overflow-x-auto py-1 flex flex-wrap items-center justify-center gap-4">
+                  <DanmakuPillCard
+                    message={previewMessage}
+                    theme={resolvedTheme}
+                    config={resolvedPreviewConfig}
+                    orientation={
+                      resolvedPreviewConfig.danmakuDirectionMode === 'single' &&
+                      (resolvedPreviewConfig.danmakuDirection === 'ttb' ||
+                        resolvedPreviewConfig.danmakuDirection === 'btt')
+                        ? 'vertical'
+                        : 'horizontal'
+                    }
+                  />
+                </div>
               </div>
+
+              {/* Centered Spotlight Representation when eligible */}
+              {(previewMessage.classification === 'COUPLE_SELECTED' || previewMessage.is_featured || previewMessage.is_pinned) && (
+                <div className="w-full max-w-md pt-4 border-t border-current/10">
+                  <div className="rounded-2xl p-6 text-center shadow-2xl border border-[#C9A24D]/55 bg-[#FFFDF8] text-[#1F1A12]">
+                    <div className="inline-flex items-center gap-1.5 text-[10px] font-mono tracking-widest uppercase text-[#A67C2E] mb-2">
+                      <Star className="w-3 h-3 fill-current" />
+                      Couple&apos;s Spotlight Takeover ({resolveDisplayConfig(displayConfig).spotlightDuration}s)
+                    </div>
+                    <p className={`text-base ${resolvedTheme.fontHeading} italic text-gray-900 leading-relaxed mb-2`}>
+                      &ldquo;{previewMessage.message}&rdquo;
+                    </p>
+                    <div className="text-xs font-medium text-gray-700">
+                      — {previewMessage.name}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="p-4 bg-[#141414] border-t border-white/10 flex items-center justify-between text-xs text-white/70">
@@ -692,18 +815,18 @@ export default function MessageModerator({
         </div>
       )}
 
-      {/* Display Configuration & Timing Modal */}
+      {/* Danmaku & Display Configuration Modal */}
       {showConfigModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full border border-[#E8E8E5] shadow-2xl overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-[#E8E8E5] flex items-center justify-between">
+          <div className="bg-white rounded-2xl max-w-3xl w-full border border-[#E8E8E5] shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="p-5 sm:p-6 border-b border-[#E8E8E5] flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-[#FAF9F7] border border-[#E8E8E5] flex items-center justify-center text-[#8B806F]">
                   <Sliders className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-[#252525]">Display Wall Timing & Rotation</h3>
-                  <p className="text-xs text-[#777777]">Tune durations, spotlight frequency, and animations</p>
+                  <h3 className="text-base font-semibold text-[#252525]">Luxury Wedding Danmaku &amp; Display Settings</h3>
+                  <p className="text-xs text-[#777777]">Configure 4-direction stream mode, density presets, spotlight duration, and live preview</p>
                 </div>
               </div>
               <button 
@@ -714,121 +837,454 @@ export default function MessageModerator({
               </button>
             </div>
 
-            <div className="p-6 space-y-5 text-xs">
-              {/* Duration Settings */}
-              <div className="space-y-4">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-[#8B806F] font-semibold">
-                  MESSAGE DISPLAY DURATIONS
-                </span>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="p-3 bg-[#FAF9F7] rounded-lg border border-[#E8E8E5] space-y-1.5">
-                    <label className="text-[11px] font-medium text-[#252525] block">Normal (sec)</label>
-                    <input
-                      type="number"
-                      min={4}
-                      max={30}
-                      value={displayConfig.normalDuration}
-                      onChange={(e) => setDisplayConfig({ ...displayConfig, normalDuration: parseInt(e.target.value, 10) || 8 })}
-                      className="w-full bg-white border border-[#D5D5D0] rounded px-2 py-1 text-center font-mono text-sm font-semibold text-[#252525]"
-                    />
-                    <span className="text-[10px] text-[#777777] block text-center">Standard cards</span>
+            <div className="p-5 sm:p-6 space-y-6 text-xs overflow-y-auto flex-1">
+              {/* Live Animated Simulated Preview Stage */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono uppercase tracking-wider text-[#8B806F] font-semibold">
+                      LIVE 4-DIRECTION STREAM PREVIEW
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#FAF9F7] border border-[#E8E8E5] text-[#666666]">
+                      Simulated Wishes Only
+                    </span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsPreviewPaused((p) => !p)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-[#E8E8E5] bg-[#FAF9F7] hover:bg-[#F1EFEA] text-[11px] font-medium text-[#252525]"
+                  >
+                    {isPreviewPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+                    {isPreviewPaused ? 'Resume Preview' : 'Pause Preview'}
+                  </button>
+                </div>
 
-                  <div className="p-3 bg-emerald-50/50 rounded-lg border border-emerald-200 space-y-1.5">
-                    <label className="text-[11px] font-medium text-emerald-900 block">VIP Guest (sec)</label>
-                    <input
-                      type="number"
-                      min={6}
-                      max={45}
-                      value={displayConfig.specialGuestDuration}
-                      onChange={(e) => setDisplayConfig({ ...displayConfig, specialGuestDuration: parseInt(e.target.value, 10) || 12 })}
-                      className="w-full bg-white border border-emerald-300 rounded px-2 py-1 text-center font-mono text-sm font-semibold text-emerald-900"
-                    />
-                    <span className="text-[10px] text-emerald-800 block text-center">Special guests</span>
-                  </div>
-
-                  <div className="p-3 bg-amber-50/50 rounded-lg border border-amber-200 space-y-1.5">
-                    <label className="text-[11px] font-medium text-amber-900 block">Spotlight (sec)</label>
-                    <input
-                      type="number"
-                      min={8}
-                      max={60}
-                      value={displayConfig.coupleSelectedDuration}
-                      onChange={(e) => setDisplayConfig({ ...displayConfig, coupleSelectedDuration: parseInt(e.target.value, 10) || 16 })}
-                      className="w-full bg-white border border-amber-300 rounded px-2 py-1 text-center font-mono text-sm font-semibold text-amber-900"
-                    />
-                    <span className="text-[10px] text-amber-800 block text-center">Couple selected</span>
+                <div
+                  className={`relative w-full h-52 sm:h-60 rounded-xl border border-[#E8E8E5] overflow-hidden ${resolvedTheme.colors.background}`}
+                >
+                  <DanmakuStage
+                    messages={SIMULATED_PREVIEW_MESSAGES}
+                    liveSignalCount={0}
+                    latestLiveMessage={null}
+                    theme={resolvedTheme}
+                    displayConfig={{
+                      ...resolvedPreviewConfig,
+                      danmakuFontSize: 'sm',
+                    }}
+                    isPaused={isPreviewPaused}
+                  />
+                  <div className="pointer-events-none absolute bottom-2 left-3 right-3 flex items-center justify-between text-[10px] font-mono opacity-65">
+                    <span className={resolvedTheme.colors.subtleText}>
+                      {resolvedPreviewConfig.danmakuDirectionMode === 'mixed'
+                        ? `Mixed Mode (${resolvedPreviewConfig.danmakuDirections.length} Directions)`
+                        : `Single: ${DANMAKU_DIRECTION_META[resolvedPreviewConfig.danmakuDirection].label}`}
+                    </span>
+                    <span className={resolvedTheme.colors.subtleText}>
+                      {DANMAKU_DENSITY_PRESETS[resolvedPreviewConfig.danmakuDensity].label} Preset
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Rotation Frequency & Anti-Starvation */}
-              <div className="space-y-3 pt-2 border-t border-[#E8E8E5]">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-[#8B806F] font-semibold">
-                  ROTATION FREQUENCY & FAIRNESS
+              {/* 1. Density Presets */}
+              <div className="space-y-2.5 pt-3 border-t border-[#E8E8E5]">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-[#8B806F] font-semibold">
+                    DANMAKU DENSITY PRESET
+                  </span>
+                  <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-[#252525]">
+                    <input
+                      type="checkbox"
+                      checked={resolvedPreviewConfig.danmakuEnabled}
+                      onChange={(e) => updateDisplayConfigSynced({ danmakuEnabled: e.target.checked })}
+                      className="rounded border-gray-300 text-[#252525] focus:ring-[#8B806F]"
+                    />
+                    Enable Live Danmaku Stream
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {(['relaxed', 'balanced', 'celebration'] as DanmakuDensity[]).map((presetKey) => {
+                    const preset = DANMAKU_DENSITY_PRESETS[presetKey];
+                    const active = resolvedPreviewConfig.danmakuDensity === presetKey;
+                    return (
+                      <button
+                        key={presetKey}
+                        type="button"
+                        onClick={() =>
+                          updateDisplayConfigSynced({
+                            danmakuDensity: presetKey,
+                            danmaku: {
+                              ...resolvedPreviewConfig.danmaku,
+                              preset: presetKey,
+                            },
+                          })
+                        }
+                        className={`text-left p-3 rounded-xl border transition-all ${
+                          active
+                            ? 'bg-[#252525] text-white border-[#252525] shadow-sm'
+                            : 'bg-[#FAF9F7] text-[#252525] border-[#E8E8E5] hover:border-[#8B806F]'
+                        }`}
+                      >
+                        <div className="font-semibold text-xs">{preset.label}</div>
+                        <div className={`text-[10px] mt-0.5 leading-snug ${active ? 'text-white/75' : 'text-[#777777]'}`}>
+                          {preset.description}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. Danmaku Direction Mode & 4-Direction Controls */}
+              <div className="space-y-3 pt-3 border-t border-[#E8E8E5]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="text-[11px] font-mono uppercase tracking-wider text-[#8B806F] font-semibold block">
+                      DANMAKU DIRECTION MODE
+                    </span>
+                    <p className="text-[11px] text-[#777777] mt-0.5">
+                      Choose one dedicated glide direction or blend horizontal and vertical streams
+                    </p>
+                  </div>
+
+                  <div className="inline-flex rounded-lg bg-[#FAF9F7] border border-[#E8E8E5] p-0.5 self-start">
+                    {(['single', 'mixed'] as DanmakuDirectionMode[]).map((mode) => {
+                      const active = resolvedPreviewConfig.danmakuDirectionMode === mode;
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => {
+                            const nextDirs =
+                              mode === 'mixed'
+                                ? ALL_DANMAKU_DIRECTIONS
+                                : [resolvedPreviewConfig.danmakuDirection];
+                            updateDisplayConfigSynced({
+                              danmakuDirectionMode: mode,
+                              danmakuDirections: nextDirs,
+                              danmaku: {
+                                directionMode: mode,
+                                directions: nextDirs.map(directionToSlug),
+                                preset: resolvedPreviewConfig.danmakuDensity,
+                              },
+                            });
+                          }}
+                          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                            active
+                              ? 'bg-[#252525] text-white shadow-xs'
+                              : 'text-[#555555] hover:text-[#252525]'
+                          }`}
+                        >
+                          {mode === 'mixed' && <Shuffle className="w-3 h-3" />}
+                          {mode === 'single' ? 'Single Direction' : 'Mixed Directions'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {resolvedPreviewConfig.danmakuDirectionMode === 'single' ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {ALL_DANMAKU_DIRECTIONS.map((dir) => {
+                      const meta = DANMAKU_DIRECTION_META[dir];
+                      const active = resolvedPreviewConfig.danmakuDirection === dir;
+                      const DirIcon =
+                        dir === 'rtl'
+                          ? ArrowLeft
+                          : dir === 'ltr'
+                            ? ArrowRight
+                            : dir === 'ttb'
+                              ? ArrowDown
+                              : ArrowUp;
+                      return (
+                        <button
+                          key={dir}
+                          type="button"
+                          onClick={() =>
+                            updateDisplayConfigSynced({
+                              danmakuDirectionMode: 'single',
+                              danmakuDirection: dir,
+                              danmakuDirections: [dir],
+                              danmaku: {
+                                directionMode: 'single',
+                                directions: [meta.slug],
+                                preset: resolvedPreviewConfig.danmakuDensity,
+                              },
+                            })
+                          }
+                          className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-2 ${
+                            active
+                              ? 'bg-[#252525] text-white border-[#252525] shadow-xs'
+                              : 'bg-[#FAF9F7] text-[#252525] border-[#E8E8E5] hover:border-[#8B806F]'
+                          }`}
+                        >
+                          <DirIcon className="w-4 h-4 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="font-medium text-xs truncate">{meta.label}</div>
+                            <div className={`text-[10px] ${active ? 'text-white/70' : 'text-[#777777]'}`}>
+                              {meta.axis === 'horizontal' ? 'Horizontal lane' : 'Vertical card'}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-[#FAF9F7] rounded-xl border border-[#E8E8E5] space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-[#252525]">
+                        Active Directions in Mixed Stream
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateDisplayConfigSynced({
+                            danmakuDirectionMode: 'mixed',
+                            danmakuDirections: [...ALL_DANMAKU_DIRECTIONS],
+                            danmaku: {
+                              directionMode: 'mixed',
+                              directions: ALL_DANMAKU_DIRECTIONS.map(directionToSlug),
+                              preset: resolvedPreviewConfig.danmakuDensity,
+                            },
+                          })
+                        }
+                        className="text-[11px] text-[#8B806F] hover:text-[#252525] font-medium"
+                      >
+                        Enable All 4
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {ALL_DANMAKU_DIRECTIONS.map((dir) => {
+                        const meta = DANMAKU_DIRECTION_META[dir];
+                        const enabled = resolvedPreviewConfig.danmakuDirections.includes(dir);
+                        const DirIcon =
+                          dir === 'rtl'
+                            ? ArrowLeft
+                            : dir === 'ltr'
+                              ? ArrowRight
+                              : dir === 'ttb'
+                                ? ArrowDown
+                                : ArrowUp;
+                        return (
+                          <button
+                            key={dir}
+                            type="button"
+                            onClick={() => {
+                              const current = resolvedPreviewConfig.danmakuDirections;
+                              let nextDirs: DanmakuDirection[];
+                              if (enabled) {
+                                // Keep at least 1 direction active
+                                if (current.length <= 1) return;
+                                nextDirs = current.filter((d) => d !== dir);
+                              } else {
+                                nextDirs = ALL_DANMAKU_DIRECTIONS.filter(
+                                  (d) => d === dir || current.includes(d)
+                                );
+                              }
+                              updateDisplayConfigSynced({
+                                danmakuDirectionMode: 'mixed',
+                                danmakuDirections: nextDirs,
+                                danmakuDirection: nextDirs[0] || 'rtl',
+                                danmaku: {
+                                  directionMode: 'mixed',
+                                  directions: nextDirs.map(directionToSlug),
+                                  preset: resolvedPreviewConfig.danmakuDensity,
+                                },
+                              });
+                            }}
+                            className={`p-2 rounded-lg border text-left transition-all flex items-center gap-2 ${
+                              enabled
+                                ? 'bg-white text-[#252525] border-[#252525] shadow-xs'
+                                : 'bg-white/50 text-[#888888] border-[#E8E8E5] opacity-70 hover:opacity-100'
+                            }`}
+                          >
+                            <DirIcon className="w-3.5 h-3.5 shrink-0" />
+                            <span className="text-[11px] font-medium truncate">{meta.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-[#777777]">
+                      Horizontal pills and horizontal-text vertical cards flow together with collision and intersection protection.
+                    </p>
+                  </div>
+                )}
+
+                {/* 3. Track Geometry, Speed & Typography */}
+                <span className="text-[11px] font-mono uppercase tracking-wider text-[#8B806F] font-semibold block pt-2">
+                  STREAM MOTION &amp; TYPOGRAPHY
                 </span>
 
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <div className="font-medium text-[#252525]">Featured Rotation Frequency</div>
-                      <div className="text-[11px] text-[#777777]">Insert a spotlight message every N standard cards</div>
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="p-3 bg-[#FAF9F7] rounded-lg border border-[#E8E8E5] space-y-1.5">
+                    <label className="text-[11px] font-medium text-[#252525] block">Tracks &amp; Columns</label>
                     <select
-                      value={displayConfig.featuredFrequency}
-                      onChange={(e) => setDisplayConfig({ ...displayConfig, featuredFrequency: parseInt(e.target.value, 10) || 3 })}
-                      className="bg-white border border-[#D5D5D0] rounded px-3 py-1 font-mono text-xs font-semibold text-[#252525]"
+                      value={String(resolvedPreviewConfig.danmakuTracks)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        updateDisplayConfigSynced({
+                          danmakuTracks: val === 'auto' ? 'auto' : parseInt(val, 10),
+                        });
+                      }}
+                      className="w-full bg-white border border-[#D5D5D0] rounded px-2.5 py-1.5 text-xs font-medium text-[#252525]"
                     >
-                      <option value={2}>Every 2 messages</option>
-                      <option value={3}>Every 3 messages (Recommended)</option>
-                      <option value={4}>Every 4 messages</option>
-                      <option value={5}>Every 5 messages</option>
+                      <option value="auto">Auto (Responsive to Screen Dimensions)</option>
+                      <option value="4">4 Spacious Lanes</option>
+                      <option value="6">6 Balanced Lanes</option>
+                      <option value="8">8 Wide Ballroom Lanes</option>
+                      <option value="10">10 Large LED Wall Lanes</option>
                     </select>
                   </div>
 
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <div className="font-medium text-[#252525]">Max Consecutive Featured Messages</div>
-                      <div className="text-[11px] text-[#777777]">Prevents back-to-back spotlight takeovers</div>
+                  <div className="p-3 bg-[#FAF9F7] rounded-lg border border-[#E8E8E5] space-y-1.5">
+                    <div className="flex justify-between">
+                      <label className="text-[11px] font-medium text-[#252525]">Scroll Speed</label>
+                      <span className="font-mono text-[11px] text-[#777777]">{resolvedPreviewConfig.danmakuSpeed} px/s</span>
                     </div>
+                    <input
+                      type="range"
+                      min={65}
+                      max={185}
+                      step={5}
+                      value={resolvedPreviewConfig.danmakuSpeed}
+                      onChange={(e) => updateDisplayConfigSynced({ danmakuSpeed: parseInt(e.target.value, 10) })}
+                      className="w-full accent-[#252525]"
+                    />
+                  </div>
+
+                  <div className="p-3 bg-[#FAF9F7] rounded-lg border border-[#E8E8E5] space-y-1.5">
+                    <div className="flex justify-between">
+                      <label className="text-[11px] font-medium text-[#252525]">Normal Pill Opacity</label>
+                      <span className="font-mono text-[11px] text-[#777777]">{Math.round(resolvedPreviewConfig.danmakuOpacity * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={55}
+                      max={100}
+                      step={5}
+                      value={Math.round(resolvedPreviewConfig.danmakuOpacity * 100)}
+                      onChange={(e) => updateDisplayConfigSynced({ danmakuOpacity: parseInt(e.target.value, 10) / 100 })}
+                      className="w-full accent-[#252525]"
+                    />
+                  </div>
+
+                  <div className="p-3 bg-[#FAF9F7] rounded-lg border border-[#E8E8E5] space-y-1.5">
+                    <label className="text-[11px] font-medium text-[#252525] block">Font Size</label>
                     <select
-                      value={displayConfig.maxConsecutiveFeatured}
-                      onChange={(e) => setDisplayConfig({ ...displayConfig, maxConsecutiveFeatured: parseInt(e.target.value, 10) || 1 })}
-                      className="bg-white border border-[#D5D5D0] rounded px-3 py-1 font-mono text-xs font-semibold text-[#252525]"
+                      value={resolvedPreviewConfig.danmakuFontSize}
+                      onChange={(e) => updateDisplayConfigSynced({ danmakuFontSize: e.target.value as DanmakuFontSize })}
+                      className="w-full bg-white border border-[#D5D5D0] rounded px-2.5 py-1.5 text-xs font-medium text-[#252525]"
                     >
-                      <option value={1}>1 featured message</option>
-                      <option value={2}>Up to 2 consecutive</option>
+                      <option value="sm">Compact Editorial</option>
+                      <option value="md">Medium Ballroom (Recommended)</option>
+                      <option value="lg">Large Projector Scale</option>
                     </select>
                   </div>
 
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <div className="font-medium text-[#252525]">Spotlight Animation Style</div>
-                      <div className="text-[11px] text-[#777777]">Visual transition effect for Couple Spotlight cards</div>
-                    </div>
+                  <div className="p-3 bg-[#FAF9F7] rounded-lg border border-[#E8E8E5] space-y-1.5 sm:col-span-2">
+                    <label className="text-[11px] font-medium text-[#252525] block">Special Wish Styling</label>
                     <select
-                      value={displayConfig.spotlightAnimation}
-                      onChange={(e) => setDisplayConfig({ ...displayConfig, spotlightAnimation: e.target.value as any })}
-                      className="bg-white border border-[#D5D5D0] rounded px-3 py-1 text-xs font-medium text-[#252525]"
+                      value={resolvedPreviewConfig.danmakuSpecialStyle}
+                      onChange={(e) => updateDisplayConfigSynced({ danmakuSpecialStyle: e.target.value as DanmakuSpecialStyle })}
+                      className="w-full bg-white border border-[#D5D5D0] rounded px-2.5 py-1.5 text-xs font-medium text-[#252525]"
                     >
-                      <option value="elegant-spotlight">✨ Elegant Spotlight (Soft Golden Halo)</option>
-                      <option value="fade-scale">🔍 Smooth Zoom & Fade</option>
-                      <option value="cinematic-glide">🎬 Cinematic Glide</option>
+                      <option value="champagne-gold">Champagne Gold Serif Accent</option>
+                      <option value="theme-accent">Event Theme Accent</option>
+                      <option value="minimal-editorial">Minimal Editorial Border</option>
                     </select>
                   </div>
+                </div>
+              </div>
+
+              {/* 3. Spotlight, Celebration Effects & Visibility */}
+              <div className="space-y-3 pt-3 border-t border-[#E8E8E5]">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-[#8B806F] font-semibold block">
+                  COUPLE SPOTLIGHT &amp; CELEBRATION EFFECTS
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="p-3 bg-amber-50/50 rounded-lg border border-amber-200 space-y-1.5">
+                    <label className="text-[11px] font-medium text-amber-900 block">
+                      Centered Spotlight Duration (5–12s)
+                    </label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={12}
+                      value={displayConfig.spotlightDuration ?? 7}
+                      onChange={(e) =>
+                        setDisplayConfig({
+                          ...displayConfig,
+                          spotlightDuration: Math.max(4, Math.min(15, parseInt(e.target.value, 10) || 7)),
+                        })
+                      }
+                      className="w-full bg-white border border-amber-300 rounded px-2.5 py-1 text-center font-mono text-sm font-semibold text-amber-900"
+                    />
+                  </div>
+
+                  <div className="p-3 bg-[#FAF9F7] rounded-lg border border-[#E8E8E5] space-y-1.5">
+                    <label className="text-[11px] font-medium text-[#252525] block">Animation Intensity</label>
+                    <select
+                      value={displayConfig.animationIntensity || 'moderate'}
+                      onChange={(e) => setDisplayConfig({ ...displayConfig, animationIntensity: e.target.value as AnimationIntensity })}
+                      className="w-full bg-white border border-[#D5D5D0] rounded px-2.5 py-1.5 text-xs font-medium text-[#252525]"
+                    >
+                      <option value="subtle">Subtle (Minimal Particles)</option>
+                      <option value="moderate">Moderate (Floating Hearts on Live Wishes)</option>
+                      <option value="lively">Lively Celebration Accents</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-5 pt-1">
+                  <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-[#252525]">
+                    <input
+                      type="checkbox"
+                      checked={displayConfig.showSenderNames ?? true}
+                      onChange={(e) => setDisplayConfig({ ...displayConfig, showSenderNames: e.target.checked })}
+                      className="rounded border-gray-300 text-[#252525]"
+                    />
+                    Show Sender Names on Danmaku
+                  </label>
+
+                  <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-[#252525]">
+                    <input
+                      type="checkbox"
+                      checked={displayConfig.showActivityStats ?? true}
+                      onChange={(e) => setDisplayConfig({ ...displayConfig, showActivityStats: e.target.checked })}
+                      className="rounded border-gray-300 text-[#252525]"
+                    />
+                    Show Wish Counter Header
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 pt-2">
+                  <div>
+                    <div className="font-medium text-[#252525]">Spotlight Transition Style</div>
+                    <div className="text-[11px] text-[#777777]">Entrance effect when showcasing Couple&apos;s Spotlight wishes</div>
+                  </div>
+                  <select
+                    value={displayConfig.spotlightAnimation}
+                    onChange={(e) => setDisplayConfig({ ...displayConfig, spotlightAnimation: e.target.value as any })}
+                    className="bg-white border border-[#D5D5D0] rounded px-3 py-1.5 text-xs font-medium text-[#252525]"
+                  >
+                    <option value="elegant-spotlight">Elegant Editorial Halo</option>
+                    <option value="fade-scale">Smooth Zoom &amp; Fade</option>
+                    <option value="cinematic-glide">Cinematic Glide</option>
+                  </select>
                 </div>
               </div>
             </div>
 
-            <div className="p-4 bg-[#FAF9F7] border-t border-[#E8E8E5] flex items-center justify-between">
+            <div className="p-4 bg-[#FAF9F7] border-t border-[#E8E8E5] flex items-center justify-between shrink-0">
               {configSuccess ? (
                 <div className="text-xs text-emerald-800 flex items-center gap-1.5 font-medium">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Display timing settings saved!</span>
+                  <span>Danmaku &amp; display settings saved!</span>
                 </div>
               ) : (
-                <span className="text-[11px] text-[#777777]">Settings apply live to active screens</span>
+                <span className="text-[11px] text-[#777777]">Settings apply live to active ballroom screens</span>
               )}
 
               <div className="flex items-center gap-2">

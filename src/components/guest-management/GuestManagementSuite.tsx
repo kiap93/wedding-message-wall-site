@@ -18,14 +18,20 @@ interface GuestManagementSuiteProps {
   projectId: string;
   rsvpFields?: RSVPField[];
   defaultTab?: 'guests' | 'rsvp' | 'tables' | 'layout' | 'overview';
+  openAddGuestSignal?: number;
 }
 
 export default function GuestManagementSuite({ 
   projectId, 
   rsvpFields,
-  defaultTab = 'guests' 
+  defaultTab = 'guests',
+  openAddGuestSignal = 0
 }: GuestManagementSuiteProps) {
   const [activeTab, setActiveTab] = useState<'guests' | 'rsvp' | 'tables' | 'layout' | 'overview'>(defaultTab);
+
+  React.useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   const navItems = [
     { id: 'guests', label: 'Guest List', icon: Users },
@@ -70,7 +76,7 @@ export default function GuestManagementSuite({
       {/* Tab Panels */}
       <div>
         {activeTab === 'guests' && (
-          <GuestListManager projectId={projectId} />
+          <GuestListManager projectId={projectId} openAddGuestSignal={openAddGuestSignal} />
         )}
 
         {activeTab === 'tables' && (

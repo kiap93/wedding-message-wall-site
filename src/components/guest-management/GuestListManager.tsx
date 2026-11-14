@@ -44,9 +44,10 @@ import Modal from '../../design-system/components/Modal';
 
 interface GuestListManagerProps {
   projectId: string;
+  openAddGuestSignal?: number;
 }
 
-export default function GuestListManager({ projectId }: GuestListManagerProps) {
+export default function GuestListManager({ projectId, openAddGuestSignal = 0 }: GuestListManagerProps) {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [groups, setGroups] = useState<GuestGroup[]>([]);
   const [tables, setTables] = useState<SeatingTable[]>([]);
@@ -88,6 +89,12 @@ export default function GuestListManager({ projectId }: GuestListManagerProps) {
   useEffect(() => {
     loadAllData();
   }, [projectId]);
+
+  useEffect(() => {
+    if (openAddGuestSignal > 0) {
+      handleOpenAddModal();
+    }
+  }, [openAddGuestSignal]);
 
   async function loadAllData() {
     setIsLoading(true);

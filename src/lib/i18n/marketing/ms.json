@@ -3,6 +3,7 @@
     "solutions": "Penyelesaian",
     "themesSuites": "Tema & Jemputan",
     "pricing": "Harga",
+    "blog": "Jurnal",
     "signIn": "Log Masuk",
     "getStarted": "Mula Sekarang",
     "languageLabel": "Bahasa",
@@ -17,6 +18,10 @@
         "title": "Perisian Label Putih",
         "desc": "Subdomain agensi tersuai & penjenamaan"
       },
+      "website": {
+        "title": "Pembina Laman Perkahwinan",
+        "desc": "Laman kisah cinta, atur cara & RSVP modular"
+      },
       "invitations": {
         "title": "Kad Jemputan Digital",
         "desc": "Studio kanvas jemputan & pautan RSVP"
@@ -29,6 +34,10 @@
         "title": "Pengurusan Tetamu Perkahwinan",
         "desc": "Penjejakan kehadiran & moderasi langsung"
       },
+      "seating": {
+        "title": "Pelan Tempat Duduk Perkahwinan",
+        "desc": "Pelan lantai dewan berskala sebenar & meja"
+      },
       "display": {
         "title": "Paparan Resepsi Perkahwinan",
         "desc": "Dinding memori projektor dewan majlis"
@@ -36,7 +45,7 @@
     }
   },
   "footer": {
-    "description": "Platform perkahwinan bersepadu untuk studio moden, perancang majlis dan pasangan pengantin. Menyatukan kad jemputan digital, logik RSVP tersuai, moderasi tetamu dan paparan skrin resepsi secara langsung.",
+    "description": "Platform perkahwinan bersepadu untuk studio moden, perancang majlis dan pasangan pengantin. Menyatukan laman web perkahwinan, kad jemputan digital, logik RSVP tersuai, pelan tempat duduk dan paparan skrin resepsi secara langsung.",
     "tagline": "Infrastruktur label putih untuk majlis perkahwinan mewah.",
     "columns": {
       "solutions": "Penyelesaian",
@@ -46,10 +55,13 @@
     "links": {
       "plannerSoftware": "Perisian Perancang",
       "whiteLabelSoftware": "Perisian Label Putih",
+      "websiteBuilder": "Pembina Laman Perkahwinan",
       "digitalInvitations": "Jemputan Digital",
       "rsvpManagement": "Pengurusan RSVP",
       "guestManagement": "Pengurusan Tetamu",
+      "seatingChart": "Pelan Tempat Duduk & Dewan",
       "receptionDisplays": "Paparan Resepsi",
+      "editorialBlog": "Jurnal Perancangan",
       "allDisplayThemes": "Semua Tema Paparan",
       "minimalLuxury": "Minimal Luxury",
       "naturalGarden": "Natural Garden",
@@ -59,8 +71,8 @@
       "pricingPlans": "Harga & Pelan",
       "studioSignIn": "Log Masuk Studio",
       "couplePortalLogin": "Log Masuk Portal Pasangan",
-      "startTrial": "Mula Percubaan 30 Hari",
-      "subscriptionTerms": "Terma Langganan",
+      "createFreeDraft": "Cipta Draf Majlis Percuma",
+      "payPerEventTerms": "Pelesenan Bayar-Per-Majlis ($5)",
       "agencyPortal": "Portal Agensi"
     },
     "copyright": "© {{year}} EventFrame.io. Hak cipta terpelihara.",
@@ -68,24 +80,24 @@
   },
   "home": {
     "hero": {
-      "badgeLeft": "Platform Studio EventFrame",
-      "badgeRight": "OS Perkahwinan Label Putih",
-      "title": "Perisian Perancangan Perkahwinan untuk Studio Moden",
-      "subtitle": "Satukan kad jemputan perkahwinan digital, RSVP tetamu, pengalaman tetamu dan paparan skrin resepsi secara langsung dalam satu platform.",
-      "primaryCta": "Cipta Ruang Kerja Agensi",
+      "badgeLeft": "Platform Bersepadu EventFrame",
+      "badgeRight": "OS Perkahwinan Semua-dalam-Satu",
+      "title": "Perisian Perancangan Perkahwinan Semua-dalam-Satu untuk Pasangan & Studio",
+      "subtitle": "Satukan laman web perkahwinan tersuai, jemputan digital, soal selidik RSVP bersyarat, senarai tetamu, pelan tempat duduk interaktif dan paparan skrin resepsi secara langsung dalam satu ruang kerja.",
+      "primaryCta": "Cipta Ruang Kerja Percuma",
       "secondaryCta": "Teroka Suite Jemputan",
-      "bullet1": "Subdomain label putih",
-      "bullet2": "Moderasi tetamu masa nyata",
-      "bullet3": "Eksport RSVP serta-merta",
-      "imageAlt": "Fotografi perkahwinan editorial pengantin di Lembah Sonoma",
+      "bullet1": "Laman web, jemputan & RSVP",
+      "bullet2": "Pelan lantai tempat duduk & senarai tetamu",
+      "bullet3": "Dinding foto & ucapan resepsi langsung",
+      "imageAlt": "Paparan perisian perancangan perkahwinan EventFrame merangkumi jemputan digital, pelan lantai tempat duduk dan aliran RSVP",
       "cardCouple": "Celia & Elias",
       "cardMeta": "Lembah Sonoma · 142 RSVP Disahkan",
       "cardBadge": "SUITE LANGSUNG"
     },
     "ecosystem": {
       "eyebrow": "Perisian Perkahwinan Bersepadu",
-      "title": "Ekosistem bersepadu untuk studio moden dan pasangan pengantin.",
-      "subtitle": "Enam alat khusus yang dibina untuk berfungsi bersama dengan lancar — daripada jemputan digital awal hingga paparan skrin dewan resepsi.",
+      "title": "Lapan alat khusus yang dibina untuk majlis perkahwinan moden.",
+      "subtitle": "Daripada laman web perkahwinan dan kad jemputan digital hingga pelan lantai dewan berskala sebenar dan dinding foto resepsi.",
       "cards": {
         "planner": {
           "tag": "Pengurusan Studio",
@@ -98,6 +110,12 @@
           "title": "Perisian Perkahwinan Label Putih",
           "desc": "Beroperasi di bawah subdomain tersuai studio anda dengan kad jemputan berjenama dan log masuk PIN peribadi pelanggan.",
           "cta": "Teroka ciri label putih →"
+        },
+        "website": {
+          "tag": "Hub Kisah & Lokasi",
+          "title": "Pembina Laman Perkahwinan",
+          "desc": "Terbitkan atur cara majlis modular, panduan lokasi, galeri foto dan kawalan privasi carian dalam beberapa minit.",
+          "cta": "Teroka pembina laman →"
         },
         "invitations": {
           "tag": "Studio Rekaan",
@@ -114,13 +132,19 @@
         "guest": {
           "tag": "Operasi",
           "title": "Pengurusan Tetamu Perkahwinan",
-          "desc": "Simpan rekod jumlah tetamu disahkan, semak keperluan diet dan tapis ucapan serta muat naik foto resepsi secara langsung.",
+          "desc": "Simpan rekod jumlah tetamu disahkan, semak keperluan diet, tag tetamu VIP dan tapis ucapan secara langsung.",
           "cta": "Teroka operasi tetamu →"
+        },
+        "seating": {
+          "tag": "Studio Pelan Lantai",
+          "title": "Pelan Tempat Duduk Perkahwinan",
+          "desc": "Bina susun atur dewan berskala sebenar dalam meter atau kaki, susun meja jamuan dan agih kerusi mengikut diet.",
+          "cta": "Rancang tempat duduk →"
         },
         "display": {
           "tag": "Pengalaman Dewan",
           "title": "Paparan Resepsi Perkahwinan",
-          "desc": "Tayangkan dinding foto tetamu dan ucapan mesra secara langsung pada skrin dewan dengan imbasan kod QR meja dan 8 tema pilihan.",
+          "desc": "Tayangkan dinding foto tetamu, ucapan pilihan dan kod QR meja secara langsung pada skrin dewan merentas 8 tema curated.",
           "cta": "Sediakan paparan resepsi →"
         }
       }
@@ -198,8 +222,8 @@
     },
     "finalCta": {
       "title": "Tingkatkan pengalaman agensi perkahwinan anda hari ini.",
-      "subtitle": "Sertai ratusan studio terkemuka yang menyampaikan kad jemputan digital eksklusif dan moderasi majlis yang lancar.",
-      "cta": "Mulakan Percubaan Agensi Percuma"
+      "subtitle": "Sertai studio terkemuka dan pasangan moden dalam menyampaikan laman web perkahwinan, kad jemputan digital, pelan lantai tempat duduk dan moderasi majlis yang lancar.",
+      "cta": "Cipta Ruang Kerja Studio Percuma"
     }
   },
   "common": {
@@ -210,9 +234,11 @@
     "browseThemeGallery": "Layari Galeri Tema",
     "cards": {
       "whiteLabel": { "title": "Perisian Label Putih", "desc": "Penjenamaan studio & subdomain" },
+      "website": { "title": "Pembina Laman Perkahwinan", "desc": "Halaman kisah & atur cara modular" },
       "invitations": { "title": "Jemputan Digital", "desc": "Editor kanvas jemputan" },
       "rsvp": { "title": "Pengurusan RSVP", "desc": "Soal selidik bersyarat" },
       "guest": { "title": "Pengurusan Tetamu", "desc": "Senarai hadirin & moderasi" },
+      "seating": { "title": "Pelan Tempat Duduk", "desc": "Pelan lantai dewan berskala sebenar" },
       "display": { "title": "Paparan Resepsi", "desc": "Strim skrin dewan langsung" },
       "planner": { "title": "Perisian Perancang", "desc": "Pengurusan studio lengkap" },
       "studio": { "title": "Perisian Studio", "desc": "Ruang kerja pelbagai pelanggan" },
@@ -281,8 +307,8 @@
     },
     "bottomCta": {
       "title": "Sedia menaik taraf aliran kerja perkahwinan studio anda?",
-      "subtitle": "Mulakan dengan percubaan studio 30 hari atau aktifkan lesen satu majlis.",
-      "cta": "Mula Percubaan Studio"
+      "subtitle": "Cipta draf perkahwinan percuma tanpa had atau aktifkan lesen majlis penuh dengan bayaran $5.00 USD.",
+      "cta": "Cipta Ruang Kerja Studio"
     }
   },
   "whiteLabel": {
@@ -551,8 +577,8 @@
     },
     "bottomCta": {
       "title": "Susun pengalaman tetamu anda dengan penuh yakin",
-      "subtitle": "Segala yang diperlukan untuk mengurus hadirin, sekatan diet dan memori resepsi.",
-      "cta": "Mulakan Percubaan Percuma"
+      "subtitle": "Segala yang diperlukan untuk mengurus hadirin, sekatan diet, susunan tempat duduk dan memori resepsi.",
+      "cta": "Cipta Draf Majlis Percuma"
     }
   },
   "displayPage": {
@@ -661,27 +687,213 @@
       "creative": { "name": "Creative Canvas", "desc": "Lakunan seni, tekstur campuran dan bentuk yang unik." }
     }
   },
+  "pricingPage": {
+    "hero": {
+      "badgeLeft": "Pelesenan Bayar-Per-Majlis",
+      "badgeRight": "Akses Penuh 12 Bulan Disertakan",
+      "title": "Satu Majlis. Satu Bayaran. {{price}}.",
+      "subtitle": "Pelesenan perkahwinan bayar-per-majlis yang telus tanpa langganan bulanan, tanpa ikatan kredit pukal dan dilengkapi keupayaan studio penuh.",
+      "bullet1": "Tiada caj bulanan berulang",
+      "bullet2": "12 bulan kalendar penuh setiap majlis",
+      "bullet3": "Penciptaan draf percuma untuk studio & pasangan"
+    },
+    "card": {
+      "desc": "Setiap lesen majlis yang diaktifkan merangkumi laman web perkahwinan, jemputan digital, RSVP, senarai tetamu, pelan tempat duduk dan paparan resepsi langsung."
+    },
+    "included": {
+      "i1": "Laman Web Perkahwinan Tersuai & Seksyen Modular",
+      "i2": "Studio Kanvas Jemputan Digital Seret-dan-Lepas",
+      "i3": "Soal Selidik RSVP Bersyarat & Penjejakan Alahan",
+      "i4": "Pelan Tempat Duduk Dewan Interaktif (Meter atau Kaki)",
+      "i5": "Paparan Skrin Resepsi Langsung & Sorotan Ucapan",
+      "i6": "Buku Tamu Digital & Dinding Foto Resolusi Tinggi",
+      "i7": "Subdomain Studio Label Putih & Portal PIN Pasangan",
+      "i8": "Eksport CSV Katering Satu Klik & Arkib Seumur Hidup"
+    },
+    "calculator": {
+      "eyebrow": "Penganggar Kos Agensi & Pasangan",
+      "title": "Bayar hanya untuk majlis perkahwinan yang diterbitkan.",
+      "desc": "Pilih bilangan majlis perkahwinan aktif yang anda rancang untuk dilesenkan musim ini.",
+      "eventSingular": "Majlis",
+      "eventPlural": "Majlis",
+      "summaryLabel": "Anggaran Jumlah Sekali Bayar",
+      "validityNote": "Termasuk {{months}} bulan kalendar akses aktif bagi setiap majlis berlesen."
+    },
+    "pillars": {
+      "p1Title": "Tempoh Aktif 12 Bulan",
+      "p1Desc": "Lancarkan laman web berbulan-bulan sebelum majlis dan kekalkan buku tamu digital terbuka selepas bulan madu.",
+      "p2Title": "Draf Percuma Tanpa Had",
+      "p2Desc": "Reka laman pelanggan, pelan tempat duduk dan jemputan dalam mod draf tanpa kos sehingga sedia untuk diterbitkan.",
+      "p3Title": "Tiada Yuran Ikatan Bulanan",
+      "p3Desc": "Sama ada satu majlis peribadi atau agensi dengan 20 majlis bermusim, kadar anda kekal tepat $5.00 USD setiap majlis."
+    },
+    "faqTitle": "Soalan Harga & Pelesenan",
+    "faqs": {
+      "q1": "Apakah yang termasuk dalam lesen $5.00 USD setiap majlis?",
+      "a1": "Kesemua ciri EventFrame disertakan: Pembina Laman Perkahwinan, Studio Jemputan Digital, Soal Selidik RSVP Bersyarat, Senarai Tetamu & Tag VIP, Pelan Tempat Duduk Dewan dan Paparan Resepsi Langsung.",
+      "q2": "Adakah anda mengenakan yuran langganan bulanan atau tahunan?",
+      "a2": "Tidak. EventFrame menggunakan pelesenan bayar-per-majlis sekali bayar pada harga $5.00 USD setiap majlis, memberikan anda akses aktif 12 bulan kalendar penuh tanpa pembaharuan automatik.",
+      "q3": "Bolehkah agensi mengurus pelbagai majlis di bawah satu akaun studio?",
+      "a3": "Ya. Perancang boleh mencipta draf majlis tanpa had secara percuma dalam ruang kerja berjenama dan hanya membayar $5.00 USD apabila mengaktifkan setiap majlis pelanggan.",
+      "q4": "Adakah tetamu dikenakan bayaran untuk RSVP atau memuat naik foto?",
+      "a4": "Tidak sama sekali. Tetamu tidak perlu mendaftar akaun atau membayar sebarang yuran untuk melihat jemputan, menghantar RSVP atau berkongsi foto.",
+      "q5": "Apakah yang berlaku selepas tempoh lesen 12 bulan tamat?",
+      "a5": "Anda mengekalkan akses arkib baca-sahaja penuh untuk mengeksport data CSV hadirin serta memuat turun memori tetamu daripada papan pemuka anda."
+    }
+  },
+  "websiteBuilderPage": {
+    "guideLinkTitle": "Laman Web vs. Jemputan Digital",
+    "guideLinkDesc": "Bila masa terbaik menerbitkan setiap satu",
+    "hero": {
+      "badgeLeft": "Studio Laman Perkahwinan",
+      "badgeRight": "Hub Majlis Modular",
+      "title": "Bina Laman Web Perkahwinan Sebindah Cetakan Editorial",
+      "subtitle": "Cipta laman web perkahwinan tersuai lengkap dengan garis masa kisah cinta, atur cara majlis, peta lokasi interaktif, kad FAQ dan kawalan privasi carian — diselaraskan terus dengan senarai tetamu dan aliran RSVP.",
+      "primaryCta": "Mula Bina Laman Perkahwinan",
+      "secondaryCta": "Teroka Tema Visual",
+      "bullet1": "Pratonton desktop & mudah alih langsung",
+      "bullet2": "Togol privasi enjin carian",
+      "bullet3": "Pautan terus RSVP & dinding foto",
+      "imageAlt": "Antara muka Pembina Laman Web Perkahwinan EventFrame memaparkan pratonton mudah alih dan desktop langsung",
+      "captionLeft": "Studio Laman Web Visual",
+      "captionRight": "Seksyen Modular + Kawalan SEO"
+    },
+    "features": {
+      "eyebrow": "Seni Bina Laman Editorial",
+      "title": "Setiap perincian majlis tersusun rapi untuk tetamu yang berkunjung.",
+      "subtitle": "Berikan rakan dan keluarga satu pautan tunggal untuk waktu atur cara, kod pakaian, pengangkutan dan RSVP pantas.",
+      "f1Title": "Susun Semula Seksyen Modular",
+      "f1Desc": "Hidupkan, susun semula dan sesuaikan seksyen Muka Hadapan, Kisah Pasangan, Atur Cara Majlis, Panduan Lokasi, Penginapan, FAQ serta Galeri Foto.",
+      "f2Title": "Tipografi & Palet Sekata",
+      "f2Desc": "Setiap laman mewarisi estetika visual EventFrame pilihan anda dengan tajuk serif seimbang dan butiran yang jelas merentas semua skrin.",
+      "f3Title": "Integrasi Buku Tamu & RSVP",
+      "f3Desc": "Sambungkan tetamu terus daripada maklumat majlis ke borang RSVP bersyarat dan dinding ucapan langsung dengan satu ketikan.",
+      "f4Title": "Kawalan Kata Laluan & Pengindeksan",
+      "f4Desc": "Kekalkan majlis tertutup tidak tersenarai dalam enjin carian atau dilindungi PIN tetamu, atau terbitkan secara terbuka untuk perkongsian mudah."
+    },
+    "modules": {
+      "eyebrow": "Modul Halaman Tersedia",
+      "title": "Blok berstruktur yang direka untuk perkahwinan sebenar.",
+      "subtitle": "Aktifkan hanya seksyen yang diperlukan untuk majlis anda dan kemas kini waktu bila-bila masa.",
+      "m1Name": "Kulit Hadapan & Kiraan Detik",
+      "m1Desc": "Paparkan nama pasangan, tarikh perkahwinan, lokasi utama dan pautan tindakan pantas.",
+      "m2Name": "Garis Masa Kisah Cinta",
+      "m2Desc": "Kongsi detik pertunangan dan fotografi potret pilihan dalam susun atur yang kemas.",
+      "m3Name": "Atur Cara Hujung Minggu",
+      "m3Desc": "Perincikan majlis makan malam latihan, akad nikah, sesi koktel dan jadual jamuan.",
+      "m4Name": "Logistik Lokasi & Perjalanan",
+      "m4Desc": "Sertakan maklumat penginapan hotel, panduan parkir, bas ulang-alik dan kod pakaian.",
+      "m5Name": "Senarai Hadiah & Soalan Lazim",
+      "m5Desc": "Jawab soalan lazim tetamu dengan jelas supaya pasangan tidak perlu membalas mesej berulang kali.",
+      "m6Name": "RSVP Bersepadu & Dinding Langsung",
+      "m6Desc": "Sertakan pengesahan kehadiran pantas dan muat naik foto sambutan secara langsung."
+    },
+    "faqTitle": "Soalan Pembina Laman Perkahwinan",
+    "faqs": {
+      "q1": "Bolehkah kami letak kata laluan atau sembunyikan laman perkahwinan daripada Google?",
+      "a1": "Ya. Dalam Website Studio, pasangan dan perancang boleh menetapkan kata laluan akses atau mengaktifkan Privasi Carian (noindex) pada bila-bila masa.",
+      "q2": "Adakah laman web perkahwinan termasuk dalam lesen majlis $5.00 USD?",
+      "a2": "Ya. Lesen bayar-per-majlis $5.00 USD anda merangkumi Studio Laman Perkahwinan penuh bersama jemputan digital, RSVP, pelan tempat duduk dan paparan resepsi langsung.",
+      "q3": "Bolehkah kami menyesuaikan pautan URL untuk laman perkahwinan?",
+      "a3": "Ya. Setiap projek diterbitkan dengan kemas di eventframe.io/slug-anda/website atau di bawah subdomain label putih studio anda.",
+      "q4": "Adakah suntingan dikemas kini serta-merta tanpa menghantar semula pautan?",
+      "a4": "Ya. Pertukaran waktu, maklumat hotel atau pembetulan peta terus terpapar pada laman web perkahwinan yang diterbitkan secara masa nyata."
+    },
+    "bottomCta": {
+      "title": "Sedia mereka bentuk laman web perkahwinan anda?",
+      "subtitle": "Pratonton laman mudah alih dan desktop secara percuma dan terbitkan apabila tetamu anda sedia.",
+      "cta": "Buka Studio Laman Web"
+    }
+  },
+  "seatingPage": {
+    "guideLinkTitle": "Rangka Kerja Pelan Tempat Duduk",
+    "guideLinkDesc": "Panduan langkah demi langkah susun atur dewan",
+    "hero": {
+      "badgeLeft": "Pelan Lantai & Susunan Meja",
+      "badgeRight": "Dimensi Dewan Skala Sebenar",
+      "title": "Reka Pelan Tempat Duduk Perkahwinan pada Skala Sebenar",
+      "subtitle": "Tetapkan dimensi dewan sebenar dalam meter atau kaki, susun meja bulat, meja panjang dan meja utama dengan tepat serta agihkan tetamu RSVP disahkan berserta nota diet mengikut kerusi.",
+      "primaryCta": "Buka Studio Pelan Lantai",
+      "secondaryCta": "Teroka Pengurusan Tetamu",
+      "bullet1": "Skala tepat meter & kaki",
+      "bullet2": "Mod maksimum muat skrin",
+      "bullet3": "Penyelarasan keluarga & diet",
+      "imageAlt": "Editor pelan lantai tempat duduk perkahwinan interaktif memaparkan grid skala sebenar dan meja jamuan bulat",
+      "captionLeft": "Studio Pelan Lantai Dewan",
+      "captionRight": "Skala Sebenar (m / ft) + Muat Skrin"
+    },
+    "features": {
+      "eyebrow": "Kejuruteraan Susun Atur Tepat",
+      "title": "Dibina untuk pihak katering, penyelaras dewan dan pasangan yang teliti.",
+      "subtitle": "Tinggalkan hamparan kerja yang terpisah. Rancang laluan meja, jarak lorong, lantai tarian dan kerusi individu secara visual.",
+      "f1Title": "Dimensi Dewan Dinamik (m / ft)",
+      "f1Desc": "Tetapkan lebar dan panjang bilik sebenar dalam meter atau kaki, tukar orientasi landskap atau potret dan mula daripada pratetap dewan.",
+      "f2Title": "Meja, Pentas & Zon Majlis",
+      "f2Desc": "Letakkan meja utama pengantin, meja bulat tetamu, meja panjang, pentas pelamin dan pintu masuk pada kanvas yang ditentukur.",
+      "f3Title": "Penyelarasan Kerusi & Diet Tetamu",
+      "f3Desc": "Agihkan tetamu RSVP yang disahkan dan isi rumah keluarga ke kerusi individu sambil memaparkan pilihan hidangan dan alahan.",
+      "f4Title": "Paparan Maksimum & Muat Skrin",
+      "f4Desc": "Runtuhkan panel sisi untuk penyuntingan skrin penuh dan pusatkan semula setiap meja secara automatik dengan satu klik."
+    },
+    "presets": {
+      "eyebrow": "Saiz Dewan Pratetap Sedia Ubah",
+      "title": "Mula daripada pratetap dewan atau masukkan ukuran tepat.",
+      "subtitle": "Tukar unit antara meter dan kaki pada bila-bila masa tanpa kehilangan susunan meja atau agihan tempat duduk.",
+      "p1Name": "Dewan Intim Kecil",
+      "p1Desc": "Sesuai untuk bilik makan peribadi, pavilion taman butik dan majlis kecil sehingga 60 tetamu.",
+      "p2Name": "Bilik Jamuan Sederhana",
+      "p2Desc": "Perkadaran seimbang untuk 100–150 tetamu, meja utama, pentas DJ dan ruang lantai tarian.",
+      "p3Name": "Dewan Bankuet Besar",
+      "p3Desc": "Pelan lantai pelbagai zon luas yang memuatkan lebih 200 tetamu, pentas utama dan ruang bergambar.",
+      "p4Name": "Galeri Resepsi Panjang",
+      "p4Desc": "Susun atur seni bina memanjang atau konservatori yang ideal untuk meja jamuan panjang."
+    },
+    "faqTitle": "Soalan Pelan Tempat Duduk Perkahwinan",
+    "faqs": {
+      "q1": "Bolehkah saya menukar antara meter dan kaki semasa menyusun pelan?",
+      "a1": "Ya. Ukuran dewan disimpan secara bebas daripada zum kanvas, jadi anda boleh mengkonfigurasi dewan dalam meter atau kaki pada bila-bila masa.",
+      "q2": "Adakah pelan tempat duduk berhubung dengan senarai tetamu RSVP saya?",
+      "a2": "Ya. Tetamu yang disahkan melalui RSVP EventFrame atau diimport ke dalam senarai akan muncul terus di bar sisi tempat duduk lengkap dengan saiz rombongan dan nota diet.",
+      "q3": "Bagaimanakah perancang boleh menyemak pelan dewan padat pada komputer riba kecil?",
+      "a3": "Klik Maksimumkan Ruang Kerja untuk menyembunyikan panel tepi ke mod skrin penuh, dan gunakan Muat Skrin untuk memusatkan semua meja secara automatik.",
+      "q4": "Bolehkah saya melabel meja khas seperti Meja Utama atau Keluarga VIP?",
+      "a4": "Ya. Setiap meja menyokong nombor tersuai, nama meja, kapasiti kerusi dan label zon untuk rujukan pihak katering."
+    },
+    "bottomCta": {
+      "title": "Rangka pelan lantai resepsi perkahwinan anda dengan jelas.",
+      "subtitle": "Reka susun atur dewan berskala sebenar, agih kerusi daripada senarai RSVP disahkan dan kongsi dengan pasukan lokasi anda.",
+      "cta": "Mula Draf Pelan Lantai"
+    }
+  },
   "seo": {
     "routes": {
       "/": {
-        "title": "Platform Perancangan Perkahwinan & Jemputan Digital untuk Studio | EventFrame",
-        "description": "Platform perisian editorial untuk studio dan perancang perkahwinan moden. Suite jemputan digital eksklusif, moderasi tetamu masa nyata dan soal selidik RSVP tersuai."
+        "title": "Perisian Perancangan Perkahwinan Semua-dalam-Satu | EventFrame",
+        "description": "Perisian perancangan perkahwinan semua-dalam-satu untuk pasangan, perancang dan studio. Cipta laman web perkahwinan, jemputan digital, borang RSVP, senarai tetamu, pelan tempat duduk dan paparan resepsi langsung."
       },
       "/templates": {
         "title": "Katalog Tema Paparan Perkahwinan & Suite Jemputan | EventFrame",
-        "description": "Teroka tema paparan perkahwinan pilihan dan suite tipografi untuk projektor majlis langsung, buku tamu digital dan jemputan mewah."
+        "description": "Teroka tema paparan perkahwinan pilihan dan suite tipografi untuk projektor majlis langsung, laman web perkahwinan, buku tamu digital dan jemputan mewah."
       },
       "/pricing": {
-        "title": "Harga EventFrame — Pelan untuk Studio Perkahwinan & Pasangan",
-        "description": "Harga ringkas dan telus untuk studio perkahwinan mewah serta pasangan pengantin. Jemputan digital, paparan resepsi langsung dan soal selidik RSVP tersuai."
+        "title": "Harga EventFrame — Pelesenan Perkahwinan Bayar-Per-Majlis $5 USD",
+        "description": "Harga sekali bayar $5.00 USD per majlis yang telus dengan akses penuh 12 bulan. Tiada langganan bulanan. Termasuk pembina laman, jemputan, RSVP, pelan tempat duduk & skrin langsung."
+      },
+      "/wedding-website-builder": {
+        "title": "Pembina Laman Web Perkahwinan untuk Pasangan & Perancang | EventFrame",
+        "description": "Bina laman web perkahwinan tersuai mewah dengan seksyen modular kisah, atur cara, peta lokasi, galeri, RSVP dan kawalan privasi carian."
+      },
+      "/wedding-seating-chart": {
+        "title": "Perancang Pelan Tempat Duduk & Susun Atur Dewan Perkahwinan | EventFrame",
+        "description": "Reka pelan lantai dewan perkahwinan berskala sebenar dalam meter atau kaki, susun meja jamuan dan agih tempat duduk tetamu berserta pilihan diet."
       },
       "/wedding-planner-software": {
         "title": "Perisian Perancang Perkahwinan untuk Studio Moden | EventFrame",
-        "description": "Perisian perkahwinan semua-dalam-satu untuk studio dan perancang. Selaraskan jemputan digital, soal selidik RSVP tersuai, moderasi tetamu dan paparan resepsi langsung."
+        "description": "Perisian perkahwinan semua-dalam-satu untuk studio dan perancang. Selaraskan laman web, jemputan digital, pelan tempat duduk, soal selidik RSVP dan paparan resepsi langsung."
       },
       "/white-label-wedding-software": {
         "title": "Perisian Perkahwinan Label Putih untuk Agensi | EventFrame",
-        "description": "Tawarkan suite perkahwinan digital berjenama di bawah nama studio anda. Subdomain agensi tersuai, portal pasangan peribadi dan kad jemputan eksklusif."
+        "description": "Tawarkan suite perkahwinan digital berjenama di bawah nama studio anda. Subdomain agensi tersuai, portal pasangan peribadi, laman web dan kad jemputan eksklusif."
       },
       "/digital-wedding-invitations": {
         "title": "Kad Jemputan Perkahwinan Digital & Rekaan | EventFrame",
@@ -693,15 +905,19 @@
       },
       "/wedding-guest-management": {
         "title": "Perisian Pengurusan Tetamu Perkahwinan | EventFrame",
-        "description": "Satukan penyelarasan senarai tetamu, penjejakan RSVP, maklumat hubungan dan moderasi foto serta ucapan langsung dalam satu portal perkahwinan bersepadu."
+        "description": "Satukan penyelarasan senarai tetamu, penandaan VIP, penjejakan RSVP dan moderasi foto serta ucapan langsung dalam satu portal perkahwinan bersepadu."
       },
       "/wedding-reception-display": {
         "title": "Paparan Resepsi Perkahwinan & Pengalaman Tetamu | EventFrame",
-        "description": "Serikan dewan resepsi dengan dinding foto tetamu yang dipancarkan secara langsung, ucapan mesra, perkongsian kod QR dinamik dan tema estetika pilihan."
+        "description": "Serikan dewan resepsi dengan dinding foto tetamu yang dipancarkan secara langsung, sorotan ucapan istimewa, perkongsian kod QR dinamik dan tema estetika pilihan."
+      },
+      "/blog": {
+        "title": "Jurnal Perancangan Perkahwinan, Panduan & Rujukan Studio | EventFrame",
+        "description": "Panduan praktikal mengenai kad jemputan digital, automasi RSVP, pelan tempat duduk perkahwinan dan pengalaman skrin resepsi interaktif."
       },
       "/subscription": {
-        "title": "Harga EventFrame — Pelan untuk Studio Perkahwinan & Pasangan",
-        "description": "Harga ringkas dan telus untuk studio perkahwinan mewah serta pasangan pengantin. Jemputan digital, paparan resepsi langsung dan soal selidik RSVP tersuai."
+        "title": "Harga EventFrame — Pelesenan Perkahwinan Bayar-Per-Majlis $5 USD",
+        "description": "Harga sekali bayar $5.00 USD per majlis yang telus dengan akses penuh 12 bulan. Tiada langganan bulanan."
       }
     }
   }

@@ -7,11 +7,15 @@ import { createDefaultWebsiteConfig } from '../website-builder/presets';
 import { WeddingWebsiteRenderer } from '../website-builder/WeddingWebsiteRenderer';
 import { TranslationProvider } from '../lib/i18n/TranslationContext';
 import { API_BASE } from '../lib/config';
+import { PageSEO } from '../components/SEO';
+import { SEO_CONFIG } from '../seo/config';
+import { getWeddingEventSchema } from '../seo/structuredData';
 
 interface WebsiteDataResponse {
   status: 'draft' | 'published' | 'unpublished';
   published: boolean;
   isPreview: boolean;
+  isPasswordProtected?: boolean;
   config?: WebsiteConfig;
   project?: WeddingEvent;
   error?: string;
@@ -27,6 +31,7 @@ export default function WeddingWebsite() {
   const [config, setConfig] = useState<WebsiteConfig | null>(null);
   const [publicationStatus, setPublicationStatus] = useState<'draft' | 'published' | 'unpublished'>('draft');
   const [isPreview, setIsPreview] = useState(false);
+  const [isPasswordProtected, setIsPasswordProtected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -67,6 +72,7 @@ export default function WeddingWebsite() {
 
         setPublicationStatus(data.status || 'draft');
         setIsPreview(Boolean(data.isPreview));
+        setIsPasswordProtected(Boolean(data.isPasswordProtected));
 
         if (data.project) {
           setProject(data.project);
@@ -105,112 +111,44 @@ export default function WeddingWebsite() {
     fetchEventWebsite();
   }, [slug, previewToken]);
 
-  // Dynamic SEO, Open Graph & Structured Data (JSON-LD) injection
-  useEffect(() => {
-    if (!config || !project) return;
-
-    const seo = config.seo || {};
-    const groom = project.groom_name || 'Lucas';
-    const bride = project.bride_name || 'Sofia';
-    const defaultTitle = `${groom} & ${bride} • Wedding Celebration`;
-    const pageTitle = seo.pageTitle || defaultTitle;
-    const metaDesc = seo.metaDescription || `Join us in celebrating the wedding of ${groom} & ${bride}. View our love story, wedding schedule, travel guide, and RSVP online.`;
-    const ogImage = seo.ogImage || project.image_url || 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=1600';
-    const canonicalUrl = typeof window !== 'undefined' ? `${window.location.origin}/${project.slug}/website` : '';
-
-    // Set Document Title
-    const originalTitle = document.title;
-    document.title = isPreview ? `[Preview] ${pageTitle}` : pageTitle;
-
-    // Helper to set or create meta tag
-    const setMetaTag = (attrName: 'name' | 'property', attrValue: string, content: string) => {
-      let meta = document.head.querySelector<HTMLMetaElement>(`meta[${attrName}="${attrValue}"]`);
-      if (!meta) {
-        meta = document.createElement('meta');
-        meta.setAttribute(attrName, attrValue);
-        document.head.appendChild(meta);
-      }
-      meta.content = content;
-    };
-
-    // Standard Meta
-    setMetaTag('name', 'description', metaDesc);
-    if (seo.keywords) setMetaTag('name', 'keywords', seo.keywords);
-
-    // Robots: Noindex if preview or if author explicitly selected noIndex
-    const shouldNoIndex = Boolean(seo.noIndex || isPreview || publicationStatus !== 'published');
-    setMetaTag('name', 'robots', shouldNoIndex ? 'noindex, nofollow' : 'index, follow');
-
-    // OpenGraph Tags
-    setMetaTag('property', 'og:type', 'website');
-    setMetaTag('property', 'og:title', pageTitle);
-    setMetaTag('property', 'og:description', metaDesc);
-    setMetaTag('property', 'og:image', ogImage);
-    setMetaTag('property', 'og:url', canonicalUrl);
-    setMetaTag('property', 'og:site_name', 'EventFrame Wedding Website');
-
-    // Twitter Card Tags
-    setMetaTag('name', 'twitter:card', 'summary_large_image');
-    setMetaTag('name', 'twitter:title', pageTitle);
-    setMetaTag('name', 'twitter:description', metaDesc);
-    setMetaTag('name', 'twitter:image', ogImage);
-
-    // Canonical link
-    let linkCanonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
-    if (!linkCanonical) {
-      linkCanonical = document.createElement('link');
-      linkCanonical.rel = 'canonical';
-      document.head.appendChild(linkCanonical);
-    }
-    linkCanonical.href = canonicalUrl;
-
-    // Phase 8: hreflang alternate tags for multilingual SEO
-    const supportedLangs = ['en', 'zh-CN', 'zh-TW', 'ms'];
-    supportedLangs.forEach((l) => {
-      let altLink = document.head.querySelector<HTMLLinkElement>(`link[rel="alternate"][hreflang="${l}"]`);
-      if (!altLink) {
-        altLink = document.createElement('link');
-        altLink.rel = 'alternate';
-        altLink.hreflang = l;
-        document.head.appendChild(altLink);
-      }
-      altLink.href = l === 'en' ? canonicalUrl : `${canonicalUrl}?lang=${l}`;
-    });
-
-    // Schema.org JSON-LD structured data for Event
-    const jsonLdId = 'eventframe-wedding-jsonld';
-    let scriptTag = document.getElementById(jsonLdId) as HTMLScriptElement | null;
-    if (!scriptTag) {
-      scriptTag = document.createElement('script');
-      scriptTag.id = jsonLdId;
-      scriptTag.type = 'application/ld+json';
-      document.head.appendChild(scriptTag);
-    }
-
-    const structuredData = {
-      '@context': 'https://schema.org',
-      '@type': 'Event',
-      'name': pageTitle,
-      'startDate': project.wedding_date || undefined,
-      'location': project.location ? {
-        '@type': 'Place',
-        'name': project.location,
-        'address': project.location
-      } : undefined,
-      'image': ogImage,
-      'description': metaDesc,
-      'eventStatus': 'https://schema.org/EventScheduled',
-      'eventAttendanceMode': 'https://schema.org/OfflineEventAttendanceMode'
-    };
-
-    scriptTag.textContent = JSON.stringify(structuredData);
-
-    return () => {
-      document.title = originalTitle;
-      const scriptToRemove = document.getElementById(jsonLdId);
-      if (scriptToRemove) scriptToRemove.remove();
-    };
-  }, [config, project, isPreview, publicationStatus]);
+  const seoConfig = config?.seo || {};
+  const groom = project?.groom_name || 'Lucas';
+  const bride = project?.bride_name || 'Sofia';
+  const coupleDisplayName = `${groom} & ${bride}`;
+  const defaultTitle = `${coupleDisplayName} — Wedding Website | EventFrame`;
+  const rawPageTitle = seoConfig.pageTitle || seoConfig.title || defaultTitle;
+  const effectiveTitle = isPreview ? `[Preview] ${rawPageTitle}` : rawPageTitle;
+  const effectiveDescription =
+    seoConfig.metaDescription ||
+    seoConfig.description ||
+    `Celebrate the wedding of ${coupleDisplayName}. View event details, wedding schedule, venue directions, and submit your RSVP online.`;
+  const effectiveOgImage = seoConfig.ogImage || project?.image_url || SEO_CONFIG.defaultOgImage;
+  const effectiveCanonical =
+    seoConfig.canonicalUrl ||
+    (project?.slug ? `${SEO_CONFIG.productionDomain}/${encodeURIComponent(project.slug)}/website` : undefined);
+  const isIndexableWebsite = Boolean(
+    !isLoading &&
+      project &&
+      config &&
+      publicationStatus === 'published' &&
+      !isPreview &&
+      !isPasswordProtected &&
+      seoConfig.noIndex !== true &&
+      project.slug !== 'demo'
+  );
+  const eventJsonLd =
+    isIndexableWebsite && project && effectiveCanonical
+      ? [
+          getWeddingEventSchema({
+            name: rawPageTitle,
+            description: effectiveDescription,
+            url: effectiveCanonical,
+            image: effectiveOgImage,
+            startDate: project.wedding_date || undefined,
+            location: project.location || undefined,
+          }),
+        ]
+      : undefined;
 
   const handleCopyPreviewLink = () => {
     if (typeof window !== 'undefined') {
@@ -223,6 +161,13 @@ export default function WeddingWebsite() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#FAF9F7] flex flex-col items-center justify-center p-6 text-center">
+        <PageSEO
+          title="Wedding Website | EventFrame"
+          description="Loading wedding celebration details."
+          noindex={true}
+          nofollow={true}
+          disableMarketingHreflang={true}
+        />
         <div className="w-12 h-12 rounded-full border border-stone-200 bg-white flex items-center justify-center shadow-xs mb-4">
           <Loader2 className="w-5 h-5 text-stone-600 animate-spin" />
         </div>
@@ -243,6 +188,13 @@ export default function WeddingWebsite() {
 
     return (
       <div className="min-h-screen bg-[#FAF9F7] flex flex-col items-center justify-center p-6 text-center antialiased selection:bg-amber-100">
+        <PageSEO
+          title={`${coupleName} — Private Wedding Website | EventFrame`}
+          description="This wedding website is currently private or unpublished."
+          noindex={true}
+          nofollow={true}
+          disableMarketingHreflang={true}
+        />
         <div className="w-full max-w-md bg-white rounded-2xl border border-stone-200/80 shadow-subtle p-8 sm:p-10 space-y-6">
           <div className="w-16 h-16 rounded-full border border-stone-200 bg-[#FAF9F7] flex items-center justify-center mx-auto text-stone-500">
             {isUnpublished ? <Lock className="w-7 h-7 text-stone-400" /> : <Sparkles className="w-7 h-7 text-amber-600" />}
@@ -316,6 +268,13 @@ export default function WeddingWebsite() {
   if (!project || !config) {
     return (
       <div className="min-h-screen bg-[#FAF9F7] flex flex-col items-center justify-center p-6 text-center">
+        <PageSEO
+          title="Wedding Celebration Not Found | EventFrame"
+          description="The requested wedding website could not be found."
+          noindex={true}
+          nofollow={true}
+          disableMarketingHreflang={true}
+        />
         <div className="w-14 h-14 rounded-full border border-stone-200 bg-white flex items-center justify-center shadow-sm mb-4 text-stone-400">
           <Heart className="w-6 h-6" />
         </div>
@@ -337,6 +296,19 @@ export default function WeddingWebsite() {
   // State 2 & 3: Render Wedding Website (Published or Private Preview Mode)
   return (
     <div className="min-h-screen w-full bg-[#FAF9F7] antialiased selection:bg-amber-200 selection:text-stone-900">
+      <PageSEO
+        title={effectiveTitle}
+        description={effectiveDescription}
+        keywords={seoConfig.keywords}
+        canonical={effectiveCanonical}
+        noindex={!isIndexableWebsite}
+        nofollow={!isIndexableWebsite}
+        ogImage={effectiveOgImage}
+        ogImageAlt={`${coupleDisplayName} Wedding Website`}
+        ogType="website"
+        disableMarketingHreflang={true}
+        customSchemas={eventJsonLd}
+      />
       {/* Sticky Top Banner for Private Preview Mode */}
       {isPreview && (
         <aside aria-label="Website preview banner" className="sticky top-0 z-50 w-full bg-stone-900 text-white px-4 py-2.5 shadow-md border-b border-stone-800">

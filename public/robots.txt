@@ -1,15 +1,21 @@
 User-agent: *
 Allow: /
-Allow: /templates
-Allow: /pricing
+Allow: /wedding-website-builder
+Allow: /wedding-seating-chart
 Allow: /wedding-planner-software
 Allow: /white-label-wedding-software
 Allow: /digital-wedding-invitations
 Allow: /wedding-rsvp-management
 Allow: /wedding-guest-management
 Allow: /wedding-reception-display
+Allow: /templates
+Allow: /pricing
+Allow: /blog
+Allow: /zh-cn
+Allow: /zh-tw
+Allow: /ms
 
-# Disallow private application and auth paths
+# Disallow private application, studio, billing, and auth paths
 Disallow: /login
 Disallow: /verify
 Disallow: /reset-password
@@ -22,6 +28,7 @@ Disallow: /website-studio
 Disallow: /website-studio/
 Disallow: /couple
 Disallow: /couple/
+Disallow: /subscription
 Disallow: /templates/manage
 Disallow: /api/
 

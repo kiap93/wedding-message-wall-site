@@ -16,6 +16,19 @@ import uploadRouter from './server/uploadRouter';
 import { activateEventPurchase } from './server/billingService';
 import { EVENT_PRICING, formatPrice } from './src/config/pricing';
 import { EVENT_PACKAGES, getPackageById, isEventActive, getDaysRemaining } from './src/lib/packages';
+import { buildSitemapXml } from './src/seo/sitemap';
+import {
+  BLOG_CATEGORIES,
+  buildBlogPostHreflangLinks,
+  buildBlogPostPath,
+  getAdjacentBlogPosts,
+  getAllBlogPosts,
+  getBlogCategoryLabel,
+  getBlogPostBySlug,
+  getBlogUiLabels,
+  getRelatedBlogPosts,
+  normalizeBlogLocale,
+} from './src/content/blog';
 import {
   getEventGuests,
   createGuest,
@@ -262,7 +275,7 @@ async function startServer() {
   apiRouter.post('/demo/messages', (req, res) => {
     const body = req.body || {};
     const room = normalizeDemoRoomId(body.roomId || body.room || (req.query.room as string));
-    const { name, message } = body;
+    const { name, message, wish_category, wishCategory } = body;
     const forwardedFor = req.headers['x-forwarded-for'] as string | undefined;
     const clientIp = (forwardedFor ? forwardedFor.split(',')[0].trim() : '') || req.socket.remoteAddress || '127.0.0.1';
 
@@ -271,7 +284,7 @@ async function startServer() {
       return res.status(400).json({ error: 'Invalid room. Public demo only accepts the shared demo room identifier.' });
     }
 
-    const result = addDemoGuestMessage(room, name, message, clientIp);
+    const result = addDemoGuestMessage(room, name, message, clientIp, wish_category ?? wishCategory);
     if (!result.success) {
       return res.status(result.statusCode || 400).json({ error: result.error });
     }
@@ -1542,7 +1555,7 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
     try {
       jwt.verify(token, JWT_SECRET);
       const { id } = req.params;
-      const { classification, is_featured, is_pinned, guest_category, ai_highlight_reason } = req.body;
+      const { classification, is_featured, is_pinned, guest_category, ai_highlight_reason, wish_category } = req.body;
 
       const updateData: any = {};
       if (classification !== undefined) updateData.classification = classification;
@@ -1550,13 +1563,28 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
       if (is_pinned !== undefined) updateData.is_pinned = is_pinned;
       if (guest_category !== undefined) updateData.guest_category = guest_category;
       if (ai_highlight_reason !== undefined) updateData.ai_highlight_reason = ai_highlight_reason;
+      if (wish_category !== undefined && ['normal', 'funny', 'heartfelt', 'family'].includes(wish_category)) {
+        updateData.wish_category = wish_category;
+      }
 
-      const { data, error } = await getSupabaseAdmin()
+      let { data, error } = await getSupabaseAdmin()
         .from('messages')
         .update(updateData)
         .eq('id', id)
         .select()
         .single();
+
+      if (error && updateData.wish_category !== undefined && /wish_category/i.test(error.message || '')) {
+        delete updateData.wish_category;
+        const retry = await getSupabaseAdmin()
+          .from('messages')
+          .update(updateData)
+          .eq('id', id)
+          .select()
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) throw error;
       res.json({ success: true, message: data });
@@ -2530,7 +2558,7 @@ Return ONLY a valid JSON array of objects with the following schema:
 
       const { data: project, error } = await getSupabaseAdmin()
         .from('projects')
-        .select('id, agency_id, name, slug, groom_name, bride_name, wedding_date, location, theme_id, image_url, website_status, website_published_at, website_published_config, website_config, website_preview_token')
+        .select('id, agency_id, name, slug, groom_name, bride_name, wedding_date, location, theme_id, image_url, website_status, website_published_at, website_published_config, website_config, website_preview_token, access_password')
         .eq('slug', slug)
         .maybeSingle();
 
@@ -2539,8 +2567,9 @@ Return ONLY a valid JSON array of objects with the following schema:
       }
 
       const isPublished = project.website_status === 'published';
+      const isPasswordProtected = Boolean(project.access_password && String(project.access_password).trim().length > 0);
 
-      // Safe project payload (excludes private agency/auth tokens)
+      // Safe project payload (excludes private agency/auth tokens and passwords)
       const safeProject = {
         id: project.id,
         name: project.name,
@@ -2560,6 +2589,7 @@ Return ONLY a valid JSON array of objects with the following schema:
           status: 'published',
           published: true,
           isPreview: false,
+          isPasswordProtected,
           config: project.website_published_config || project.website_config,
           project: safeProject
         });
@@ -2593,6 +2623,7 @@ Return ONLY a valid JSON array of objects with the following schema:
           status: project.website_status || 'draft',
           published: false,
           isPreview: true,
+          isPasswordProtected,
           config: project.website_config,
           project: safeProject
         });
@@ -2603,6 +2634,7 @@ Return ONLY a valid JSON array of objects with the following schema:
         status: project.website_status || 'draft',
         published: false,
         isPreview: false,
+        isPasswordProtected,
         error: project.website_status === 'unpublished' 
           ? 'This wedding website is currently unpublished.'
           : 'This wedding website is currently in private draft mode.',
@@ -2957,6 +2989,73 @@ Return ONLY a valid JSON array of objects with the following schema:
     }
   });
 
+  // Public Localized Blog Content APIs
+  apiRouter.get('/blog/posts', (req, res) => {
+    const requestedLanguage = normalizeBlogLocale(String(req.query.lang || 'en'));
+    const categoryFilter = req.query.category ? String(req.query.category) : null;
+    const posts = getAllBlogPosts(requestedLanguage);
+    const filtered =
+      categoryFilter && categoryFilter !== 'all'
+        ? posts.filter((p) => p.categoryId === categoryFilter)
+        : posts;
+    const resolvedLanguage =
+      filtered.length > 0 && filtered.every((p) => p.resolvedLanguage === requestedLanguage)
+        ? requestedLanguage
+        : filtered[0]?.resolvedLanguage || 'en';
+
+    res.json({
+      requestedLanguage,
+      resolvedLanguage,
+      categories: BLOG_CATEGORIES.map((id) => ({
+        id,
+        label: getBlogCategoryLabel(id, requestedLanguage),
+      })),
+      ui: getBlogUiLabels(requestedLanguage),
+      posts: filtered.map((post) => ({
+        ...post,
+        urlPath: buildBlogPostPath(post.id, post.resolvedLanguage),
+      })),
+    });
+  });
+
+  apiRouter.get('/blog/posts/:slug', (req, res) => {
+    const requestedLanguage = normalizeBlogLocale(String(req.query.lang || 'en'));
+    const post = getBlogPostBySlug(req.params.slug, requestedLanguage);
+    if (!post) {
+      return res.status(404).json({
+        error: 'Blog article not found',
+        requestedLanguage,
+      });
+    }
+
+    const { prev, next } = getAdjacentBlogPosts(post.id, post.resolvedLanguage);
+    const related = getRelatedBlogPosts(post, post.resolvedLanguage);
+
+    res.json({
+      requestedLanguage,
+      resolvedLanguage: post.resolvedLanguage,
+      isFallback: post.isFallback,
+      ui: getBlogUiLabels(post.resolvedLanguage),
+      post: {
+        ...post,
+        urlPath: buildBlogPostPath(post.id, post.resolvedLanguage),
+      },
+      hreflangLinks: buildBlogPostHreflangLinks(post.id),
+      adjacent: {
+        prev: prev ? { id: prev.id, slug: prev.slug, title: prev.title, urlPath: buildBlogPostPath(prev.id, prev.resolvedLanguage) } : null,
+        next: next ? { id: next.id, slug: next.slug, title: next.title, urlPath: buildBlogPostPath(next.id, next.resolvedLanguage) } : null,
+      },
+      related: related.map((r) => ({
+        id: r.id,
+        slug: r.slug,
+        title: r.title,
+        excerpt: r.excerpt,
+        category: r.category,
+        urlPath: buildBlogPostPath(r.id, r.resolvedLanguage),
+      })),
+    });
+  });
+
   // Mount API router
   app.use('/api', apiRouter);
 
@@ -2974,48 +3073,19 @@ Return ONLY a valid JSON array of objects with the following schema:
     try {
       const { data: publishedProjects } = await getSupabaseAdmin()
         .from('projects')
-        .select('slug, updated_at, website_published_at, website_config, website_status')
+        .select('slug, updated_at, website_published_at, website_published_config, website_config, website_status, access_password')
         .eq('website_status', 'published');
 
-      const staticUrls = [
-        { loc: 'https://eventframe.io/', priority: '1.0', changefreq: 'weekly' },
-        { loc: 'https://eventframe.io/wedding-planner-software', priority: '0.9', changefreq: 'weekly' },
-        { loc: 'https://eventframe.io/white-label-wedding-software', priority: '0.9', changefreq: 'weekly' },
-        { loc: 'https://eventframe.io/digital-wedding-invitations', priority: '0.9', changefreq: 'weekly' },
-        { loc: 'https://eventframe.io/wedding-rsvp-management', priority: '0.9', changefreq: 'weekly' },
-        { loc: 'https://eventframe.io/wedding-guest-management', priority: '0.9', changefreq: 'weekly' },
-        { loc: 'https://eventframe.io/wedding-reception-display', priority: '0.9', changefreq: 'weekly' },
-        { loc: 'https://eventframe.io/templates', priority: '0.8', changefreq: 'weekly' },
-        { loc: 'https://eventframe.io/pricing', priority: '0.8', changefreq: 'monthly' }
-      ];
-
-      let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-      xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
-
-      for (const item of staticUrls) {
-        xml += `  <url>\n    <loc>${item.loc}</loc>\n    <changefreq>${item.changefreq}</changefreq>\n    <priority>${item.priority}</priority>\n  </url>\n`;
-      }
-
-      if (publishedProjects && publishedProjects.length > 0) {
-        for (const p of publishedProjects) {
-          if (!p.slug) continue;
-          let cfg: any = p.website_config;
-          if (typeof cfg === 'string') {
-            try { cfg = JSON.parse(cfg); } catch (e) { cfg = null; }
-          }
-          if (cfg?.seo?.noIndex === true) continue; // Respect user indexing preference
-
-          const rawDate = p.website_published_at || p.updated_at || new Date().toISOString();
-          const lastmod = rawDate.split('T')[0];
-          xml += `  <url>\n    <loc>https://eventframe.io/${encodeURIComponent(p.slug)}/website</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
-        }
-      }
-
-      xml += '</urlset>';
+      const xml = buildSitemapXml({
+        publishedProjects: publishedProjects || [],
+      });
+      res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
       res.type('application/xml').send(xml);
     } catch (err: any) {
       console.error('Error generating dynamic sitemap:', err);
-      res.type('application/xml').sendFile(path.join(__dirname, 'public', 'sitemap.xml'));
+      const fallbackXml = buildSitemapXml({ publishedProjects: [] });
+      res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+      res.type('application/xml').send(fallbackXml);
     }
   });
 

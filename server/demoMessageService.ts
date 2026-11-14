@@ -45,9 +45,10 @@ export function addDemoGuestMessage(
   roomId: string,
   rawName: unknown,
   rawMessage: unknown,
-  ip: string = 'unknown'
+  ip: string = 'unknown',
+  rawWishCategory?: unknown
 ): AddDemoMessageResult {
-  const result = addDemoGuestMessageCore(roomId, rawName, rawMessage, ip);
+  const result = addDemoGuestMessageCore(roomId, rawName, rawMessage, ip, rawWishCategory);
   if (result.success && result.message) {
     broadcastDemoMessage(roomId, result.message);
   }

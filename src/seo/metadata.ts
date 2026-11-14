@@ -1,3 +1,16 @@
+export type StructuredDataType =
+  | 'SoftwareApplication'
+  | 'WebSite'
+  | 'Organization'
+  | 'WebPage'
+  | 'Article'
+  | 'Event';
+
+export interface BreadcrumbItem {
+  name: string;
+  path: string;
+}
+
 export interface RouteMetadata {
   title: string;
   description: string;
@@ -10,9 +23,14 @@ export interface RouteMetadata {
   twitterCard?: 'summary' | 'summary_large_image';
   keywords?: string[];
   includeInSitemap?: boolean;
+  isLocalizedMarketing?: boolean;
   priority?: number;
   changefreq?: 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
-  structuredDataType?: 'SoftwareApplication' | 'WebSite' | 'Organization';
+  structuredDataType?: StructuredDataType;
+  breadcrumbs?: BreadcrumbItem[];
+  publishedTime?: string;
+  modifiedTime?: string;
+  authorName?: string;
 }
 
 export interface ResolvedSEO {
@@ -30,5 +48,5 @@ export interface ResolvedSEO {
   twitterTitle: string;
   twitterDescription: string;
   twitterImage: string;
-  jsonLd?: Record<string, any>;
+  jsonLd?: Record<string, any>[];
 }

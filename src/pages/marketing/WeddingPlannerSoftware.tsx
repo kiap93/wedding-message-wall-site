@@ -12,8 +12,6 @@ import {
 import MarketingLayout from '../../layouts/MarketingLayout';
 import Button from '../../design-system/components/Button';
 import { useMarketingTranslation } from '../../lib/i18n/MarketingTranslationContext';
-import heroWeddingImage from '../../assets/images/hero_wedding_editorial_1793501242401.jpg';
-import celebrationVenueImage from '../../assets/images/celebration_venue_mood_1793501242406.jpg';
 
 export default function WeddingPlannerSoftware() {
   const navigate = useNavigate();
@@ -57,10 +55,10 @@ export default function WeddingPlannerSoftware() {
 
   const crossLinks = [
     { href: '/white-label-wedding-software', title: t('common.cards.whiteLabel.title'), desc: t('common.cards.whiteLabel.desc') },
+    { href: '/wedding-website-builder', title: t('common.cards.website.title'), desc: t('common.cards.website.desc') },
     { href: '/digital-wedding-invitations', title: t('common.cards.invitations.title'), desc: t('common.cards.invitations.desc') },
+    { href: '/wedding-seating-chart', title: t('common.cards.seating.title'), desc: t('common.cards.seating.desc') },
     { href: '/wedding-rsvp-management', title: t('common.cards.rsvp.title'), desc: t('common.cards.rsvp.desc') },
-    { href: '/wedding-guest-management', title: t('common.cards.guest.title'), desc: t('common.cards.guest.desc') },
-    { href: '/wedding-reception-display', title: t('common.cards.display.title'), desc: t('common.cards.display.desc') },
   ];
 
   return (
@@ -121,17 +119,16 @@ export default function WeddingPlannerSoftware() {
             {/* Right Visual */}
             <div className="lg:col-span-5 relative">
               <div className="relative rounded-lg overflow-hidden border border-[#E8E8E5] shadow-card bg-white p-2">
-                <div className="aspect-[4/3] overflow-hidden rounded">
+                <div className="aspect-[16/9] overflow-hidden rounded bg-[#FAF9F7]">
                   <img
-                    src={heroWeddingImage}
+                    src="/images/seo/wedding-management-workspace-dashboard.webp"
                     alt={t('planners.hero.imageAlt')}
                     className="w-full h-full object-cover"
                     loading="eager"
                     fetchPriority="high"
                     decoding="async"
-                    width={800}
-                    height={600}
-                    referrerPolicy="no-referrer"
+                    width={1200}
+                    height={670}
                   />
                 </div>
                 <div className="p-4 flex items-center justify-between border-t border-[#E8E8E5] mt-2 bg-[#FAF9F7] rounded">
@@ -202,21 +199,21 @@ export default function WeddingPlannerSoftware() {
                 <div className="flex gap-3">
                   <span className="w-5 h-5 rounded-full bg-[#252525] text-white text-[11px] font-mono flex items-center justify-center shrink-0 mt-0.5">1</span>
                   <div>
-                    <h4 className="text-xs font-semibold text-[#252525]">{t('planners.workflow.s1Title')}</h4>
+                    <h3 className="text-xs font-semibold text-[#252525]">{t('planners.workflow.s1Title')}</h3>
                     <p className="text-xs text-[#777777] mt-0.5">{t('planners.workflow.s1Desc')}</p>
                   </div>
                 </div>
                 <div className="flex gap-3">
                   <span className="w-5 h-5 rounded-full bg-[#252525] text-white text-[11px] font-mono flex items-center justify-center shrink-0 mt-0.5">2</span>
                   <div>
-                    <h4 className="text-xs font-semibold text-[#252525]">{t('planners.workflow.s2Title')}</h4>
+                    <h3 className="text-xs font-semibold text-[#252525]">{t('planners.workflow.s2Title')}</h3>
                     <p className="text-xs text-[#777777] mt-0.5">{t('planners.workflow.s2Desc')}</p>
                   </div>
                 </div>
                 <div className="flex gap-3">
                   <span className="w-5 h-5 rounded-full bg-[#252525] text-white text-[11px] font-mono flex items-center justify-center shrink-0 mt-0.5">3</span>
                   <div>
-                    <h4 className="text-xs font-semibold text-[#252525]">{t('planners.workflow.s3Title')}</h4>
+                    <h3 className="text-xs font-semibold text-[#252525]">{t('planners.workflow.s3Title')}</h3>
                     <p className="text-xs text-[#777777] mt-0.5">{t('planners.workflow.s3Desc')}</p>
                   </div>
                 </div>
@@ -242,16 +239,15 @@ export default function WeddingPlannerSoftware() {
 
             <div className="lg:col-span-6">
               <div className="rounded-lg overflow-hidden border border-[#E8E8E5] shadow-card bg-white p-2">
-                <div className="aspect-[16/10] overflow-hidden rounded relative">
+                <div className="aspect-[16/9] overflow-hidden rounded relative bg-[#FAF9F7]">
                   <img
-                    src={celebrationVenueImage}
+                    src="/images/seo/wedding-reception-live-display.webp"
                     alt={t('planners.workflow.imageAlt')}
                     className="w-full h-full object-cover"
                     loading="lazy"
                     decoding="async"
-                    width={800}
-                    height={500}
-                    referrerPolicy="no-referrer"
+                    width={1200}
+                    height={670}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent flex items-end p-6">
                     <div className="text-white space-y-1">
@@ -271,9 +267,9 @@ export default function WeddingPlannerSoftware() {
       <section className="py-16 border-b border-[#E8E8E5] bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="mb-8">
-            <h3 className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">
+            <h2 className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">
               {t('planners.crossLinksTitle')}
-            </h3>
+            </h2>
             <p className="text-base font-serif text-[#252525] mt-1">
               {t('planners.crossLinksSubtitle')}
             </p>
@@ -333,7 +329,7 @@ export default function WeddingPlannerSoftware() {
           </div>
 
           <div className="mt-16 text-center space-y-4">
-            <h3 className="font-serif text-2xl text-[#252525]">{t('planners.bottomCta.title')}</h3>
+            <h2 className="font-serif text-2xl text-[#252525]">{t('planners.bottomCta.title')}</h2>
             <p className="text-xs sm:text-sm text-[#777777] max-w-md mx-auto">
               {t('planners.bottomCta.subtitle')}
             </p>

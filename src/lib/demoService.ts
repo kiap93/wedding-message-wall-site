@@ -58,7 +58,8 @@ export async function fetchDemoMessages(roomId: string = PUBLIC_DEMO_ROOM_ID): P
 export async function postDemoMessage(
   name: string,
   message: string,
-  roomId: string = PUBLIC_DEMO_ROOM_ID
+  roomId: string = PUBLIC_DEMO_ROOM_ID,
+  wishCategory?: string
 ): Promise<Message> {
   const res = await fetch(`${API_BASE}/api/demo/messages`, {
     method: 'POST',
@@ -66,7 +67,8 @@ export async function postDemoMessage(
     body: JSON.stringify({
       roomId,
       name,
-      message
+      message,
+      ...(wishCategory ? { wish_category: wishCategory } : {})
     })
   });
 
@@ -112,6 +114,9 @@ export function subscribeToDemoMessages(
     }
   };
 
+  let wsReconnectAttempts = 0;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
   // Helper to fallback to SSE
   const setupSSE = () => {
     if (isClosed || eventSource) return;
@@ -144,7 +149,7 @@ export function subscribeToDemoMessages(
     }
   };
 
-  // Helper to fallback to polling
+  // Helper to fallback to polling with snapshot reconciliation
   const setupPolling = () => {
     if (isClosed || pollInterval) return;
     pollInterval = setInterval(async () => {
@@ -172,46 +177,72 @@ export function subscribeToDemoMessages(
     }, 3000);
   };
 
-  // 1. Try WebSocket first
-  try {
-    const isHttps = window.location.protocol === 'https:';
-    const wsProto = isHttps ? 'wss:' : 'ws:';
-    const wsHost = window.location.host;
-    const wsUrl = `${wsProto}//${wsHost}/api/demo-ws?room=${encodeURIComponent(roomId)}`;
+  const connectWebSocket = () => {
+    if (isClosed) return;
+    try {
+      const isHttps = window.location.protocol === 'https:';
+      const wsProto = isHttps ? 'wss:' : 'ws:';
+      const wsHost = window.location.host;
+      const wsUrl = `${wsProto}//${wsHost}/api/demo-ws?room=${encodeURIComponent(roomId)}`;
 
-    ws = new WebSocket(wsUrl);
+      ws = new WebSocket(wsUrl);
 
-    ws.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        if (payload.type === 'snapshot' && payload.messages) {
-          handleSnapshot(payload.messages);
-        } else if (payload.type === 'new_message' && payload.message) {
-          handleMessage(payload.message);
+      ws.onopen = () => {
+        wsReconnectAttempts = 0;
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
         }
-      } catch (err) {
-        console.error('[DemoWS] Parse error:', err);
-      }
-    };
+      };
 
-    ws.onerror = () => {
-      if (!isClosed && !eventSource) {
-        setupSSE();
-      }
-    };
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === 'snapshot' && payload.messages) {
+            handleSnapshot(payload.messages);
+          } else if (payload.type === 'new_message' && payload.message) {
+            handleMessage(payload.message);
+          }
+        } catch (err) {
+          console.error('[DemoWS] Parse error:', err);
+        }
+      };
 
-    ws.onclose = () => {
-      if (!isClosed && !eventSource) {
-        setupSSE();
-      }
-    };
-  } catch {
-    setupSSE();
-  }
+      ws.onerror = () => {
+        if (!isClosed && !eventSource) {
+          setupSSE();
+        }
+      };
+
+      ws.onclose = () => {
+        if (isClosed) return;
+        ws = null;
+        if (!eventSource) {
+          setupSSE();
+        }
+        // Exponential backoff WS retry if dropped cleanly after having connected
+        if (wsReconnectAttempts < 4) {
+          const delay = Math.min(15000, 1500 * Math.pow(2, wsReconnectAttempts));
+          wsReconnectAttempts += 1;
+          reconnectTimer = setTimeout(() => {
+            if (!isClosed) connectWebSocket();
+          }, delay);
+        }
+      };
+    } catch {
+      setupSSE();
+    }
+  };
+
+  connectWebSocket();
 
   // Cleanup function
   return () => {
     isClosed = true;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     if (ws) {
       try { ws.close(); } catch {}
       ws = null;

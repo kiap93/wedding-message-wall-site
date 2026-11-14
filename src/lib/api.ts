@@ -69,6 +69,7 @@ export async function updateMessageHighlight(
     is_pinned?: boolean;
     ai_highlight_reason?: string;
     guest_category?: string;
+    wish_category?: 'normal' | 'funny' | 'heartfelt' | 'family';
   }
 ): Promise<void> {
   try {
@@ -139,7 +140,8 @@ export async function postMessage(
   message: string, 
   projectId?: string, 
   autoApprove: boolean = false,
-  guestCategory?: string
+  guestCategory?: string,
+  wishCategory?: 'normal' | 'funny' | 'heartfelt' | 'family'
 ): Promise<void> {
   if (!projectId || projectId === 'eventframe-public-demo' || projectId === 'demo' || projectId === 'demo-project') {
     throw new Error('Demo messages cannot be persisted to production database. Use /api/demo/messages endpoint.');
@@ -148,22 +150,36 @@ export async function postMessage(
     const supabase = getSupabase();
     const isVip = guestCategory === 'VIP' || guestCategory === 'Family' || guestCategory === 'Bridal Party';
     const classification: MessageClassification = isVip ? 'SPECIAL_GUEST' : 'NORMAL';
+    const cleanWishCategory = wishCategory && ['normal', 'funny', 'heartfelt', 'family'].includes(wishCategory)
+      ? wishCategory
+      : undefined;
 
-    const { error } = await supabase
+    const payload: Record<string, any> = {
+      name: name || 'Anonymous Guest', 
+      message, 
+      timestamp: Date.now(),
+      project_id: projectId,
+      status: autoApprove ? 'approved' : 'pending',
+      classification,
+      is_featured: false,
+      is_pinned: false,
+      guest_category: guestCategory || null,
+    };
+
+    if (cleanWishCategory) {
+      payload.wish_category = cleanWishCategory;
+    }
+
+    let { error } = await supabase
       .from('messages')
-      .insert([
-        { 
-          name: name || 'Anonymous Guest', 
-          message, 
-          timestamp: Date.now(),
-          project_id: projectId,
-          status: autoApprove ? 'approved' : 'pending',
-          classification,
-          is_featured: false,
-          is_pinned: false,
-          guest_category: guestCategory || null
-        }
-      ]);
+      .insert([payload]);
+
+    // Graceful schema fallback if Supabase table doesn't yet have wish_category column
+    if (error && cleanWishCategory && /wish_category/i.test(error.message || '')) {
+      delete payload.wish_category;
+      const retry = await supabase.from('messages').insert([payload]);
+      error = retry.error;
+    }
     
     if (error) {
       console.error('Supabase insert error:', error);

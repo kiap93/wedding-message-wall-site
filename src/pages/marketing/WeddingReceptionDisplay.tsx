@@ -12,7 +12,6 @@ import {
 import MarketingLayout from '../../layouts/MarketingLayout';
 import Button from '../../design-system/components/Button';
 import { useMarketingTranslation } from '../../lib/i18n/MarketingTranslationContext';
-import celebrationVenueImage from '../../assets/images/celebration_venue_mood_1793501242406.jpg';
 
 export default function WeddingReceptionDisplay() {
   const navigate = useNavigate();
@@ -63,10 +62,10 @@ export default function WeddingReceptionDisplay() {
 
   const relatedLinks = [
     { href: '/templates', title: t('common.cards.themes.title'), desc: t('common.cards.themes.desc') },
-    { href: '/digital-wedding-invitations', title: t('common.cards.invitations.title'), desc: t('common.cards.invitations.desc') },
+    { href: '/wedding-website-builder', title: t('common.cards.website.title'), desc: t('common.cards.website.desc') },
+    { href: '/wedding-seating-chart', title: t('common.cards.seating.title'), desc: t('common.cards.seating.desc') },
     { href: '/wedding-guest-management', title: t('common.cards.guest.title'), desc: t('common.cards.guest.desc') },
     { href: '/wedding-rsvp-management', title: t('common.cards.rsvp.title'), desc: t('common.cards.rsvp.desc') },
-    { href: '/wedding-planner-software', title: t('common.cards.studio.title'), desc: t('common.cards.studio.desc') },
   ];
 
   return (
@@ -127,25 +126,24 @@ export default function WeddingReceptionDisplay() {
             {/* Right Visual */}
             <div className="lg:col-span-5 relative">
               <div className="rounded-lg border border-[#E8E8E5] shadow-card bg-white p-3 space-y-3">
-                <div className="aspect-[16/10] rounded overflow-hidden relative border border-[#E8E8E5]">
+                <div className="aspect-[16/9] rounded overflow-hidden relative border border-[#E8E8E5] bg-[#FAF9F7]">
                   <img
-                    src={celebrationVenueImage}
+                    src="/images/seo/wedding-reception-live-display.webp"
                     alt={t('displayPage.hero.imageAlt')}
                     className="w-full h-full object-cover"
                     loading="eager"
                     fetchPriority="high"
                     decoding="async"
-                    width={800}
-                    height={500}
-                    referrerPolicy="no-referrer"
+                    width={1200}
+                    height={670}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent flex flex-col justify-between p-4">
                     <div className="flex justify-between items-center text-white">
                       <span className="text-[10px] font-mono tracking-wider bg-black/40 backdrop-blur-xs px-2 py-0.5 rounded border border-white/20">
                         {t('displayPage.hero.screenTag')}
                       </span>
-                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> {t('displayPage.hero.liveStream')}
+                      <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-500/30">
+                        {t('displayPage.hero.liveStream')}
                       </span>
                     </div>
                     <div className="text-white space-y-1">
@@ -250,9 +248,9 @@ export default function WeddingReceptionDisplay() {
       <section className="py-16 border-b border-[#E8E8E5] bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="mb-8">
-            <h3 className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">
+            <h2 className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">
               {t('common.relatedSolutions')}
-            </h3>
+            </h2>
             <p className="text-base font-serif text-[#252525] mt-1">{t('displayPage.relatedSubtitle')}</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -310,7 +308,7 @@ export default function WeddingReceptionDisplay() {
           </div>
 
           <div className="mt-16 text-center space-y-4">
-            <h3 className="font-serif text-2xl text-[#252525]">{t('displayPage.bottomCta.title')}</h3>
+            <h2 className="font-serif text-2xl text-[#252525]">{t('displayPage.bottomCta.title')}</h2>
             <p className="text-xs sm:text-sm text-[#777777] max-w-md mx-auto">
               {t('displayPage.bottomCta.subtitle')}
             </p>

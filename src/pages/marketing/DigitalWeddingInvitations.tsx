@@ -13,7 +13,6 @@ import {
 import MarketingLayout from '../../layouts/MarketingLayout';
 import Button from '../../design-system/components/Button';
 import { useMarketingTranslation } from '../../lib/i18n/MarketingTranslationContext';
-import invitationCraftImage from '../../assets/images/invitation_craft_showcase_1793501242453.jpg';
 
 export default function DigitalWeddingInvitations() {
   const navigate = useNavigate();
@@ -65,11 +64,11 @@ export default function DigitalWeddingInvitations() {
   ];
 
   const relatedLinks = [
+    { href: '/wedding-website-builder', title: t('common.cards.website.title'), desc: t('common.cards.website.desc') },
     { href: '/wedding-rsvp-management', title: t('common.cards.rsvp.title'), desc: t('common.cards.rsvp.desc') },
+    { href: '/wedding-seating-chart', title: t('common.cards.seating.title'), desc: t('common.cards.seating.desc') },
     { href: '/wedding-guest-management', title: t('common.cards.guest.title'), desc: t('common.cards.guest.desc') },
     { href: '/wedding-reception-display', title: t('common.cards.display.title'), desc: t('common.cards.display.desc') },
-    { href: '/wedding-planner-software', title: t('common.cards.studio.title'), desc: t('common.cards.studio.desc') },
-    { href: '/white-label-wedding-software', title: t('common.cards.whiteLabel.title'), desc: t('common.cards.whiteLabel.desc') },
   ];
 
   return (
@@ -132,15 +131,14 @@ export default function DigitalWeddingInvitations() {
               <div className="rounded-lg border border-[#E8E8E5] shadow-card bg-white p-3 space-y-3">
                 <div className="aspect-[4/3] rounded overflow-hidden relative border border-[#E8E8E5] bg-[#FAF9F7]">
                   <img
-                    src={invitationCraftImage}
+                    src="/images/seo/digital-wedding-invitations-stationery.webp"
                     alt={t('invitations.hero.imageAlt')}
                     className="w-full h-full object-cover"
                     loading="eager"
                     fetchPriority="high"
                     decoding="async"
-                    width={800}
-                    height={600}
-                    referrerPolicy="no-referrer"
+                    width={1200}
+                    height={896}
                   />
                   <div className="absolute top-3 right-3 bg-white/95 px-2.5 py-1 rounded text-[11px] font-mono text-[#8B806F] border border-[#E8E8E5] shadow-xs">
                     {t('invitations.hero.badgeTag')}
@@ -252,9 +250,9 @@ export default function DigitalWeddingInvitations() {
       <section className="py-16 border-b border-[#E8E8E5] bg-white">
         <div className="max-w-6xl mx-auto px-6">
           <div className="mb-8">
-            <h3 className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">
+            <h2 className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">
               {t('common.relatedSolutions')}
-            </h3>
+            </h2>
             <p className="text-base font-serif text-[#252525] mt-1">{t('invitations.relatedSubtitle')}</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -312,7 +310,7 @@ export default function DigitalWeddingInvitations() {
           </div>
 
           <div className="mt-16 text-center space-y-4">
-            <h3 className="font-serif text-2xl text-[#252525]">{t('invitations.bottomCta.title')}</h3>
+            <h2 className="font-serif text-2xl text-[#252525]">{t('invitations.bottomCta.title')}</h2>
             <p className="text-xs sm:text-sm text-[#777777] max-w-md mx-auto">
               {t('invitations.bottomCta.subtitle')}
             </p>

@@ -54,11 +54,11 @@ export default function WeddingGuestManagement() {
   ];
 
   const relatedLinks = [
+    { href: '/wedding-seating-chart', title: t('common.cards.seating.title'), desc: t('common.cards.seating.desc') },
     { href: '/wedding-reception-display', title: t('common.cards.display.title'), desc: t('common.cards.display.desc') },
     { href: '/wedding-rsvp-management', title: t('common.cards.rsvp.title'), desc: t('common.cards.rsvp.desc') },
+    { href: '/wedding-website-builder', title: t('common.cards.website.title'), desc: t('common.cards.website.desc') },
     { href: '/digital-wedding-invitations', title: t('common.cards.invitations.title'), desc: t('common.cards.invitations.desc') },
-    { href: '/wedding-planner-software', title: t('common.cards.studio.title'), desc: t('common.cards.studio.desc') },
-    { href: '/white-label-wedding-software', title: t('common.cards.whiteLabel.title'), desc: t('common.cards.whiteLabel.desc') },
   ];
 
   return (
@@ -207,9 +207,9 @@ export default function WeddingGuestManagement() {
       <section className="py-16 border-b border-[#E8E8E5] bg-[#FAF9F7]">
         <div className="max-w-6xl mx-auto px-6">
           <div className="mb-8">
-            <h3 className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">
+            <h2 className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">
               {t('common.relatedSolutions')}
-            </h3>
+            </h2>
             <p className="text-base font-serif text-[#252525] mt-1">{t('guestMgmt.relatedSubtitle')}</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -267,7 +267,7 @@ export default function WeddingGuestManagement() {
           </div>
 
           <div className="mt-16 text-center space-y-4">
-            <h3 className="font-serif text-2xl text-[#252525]">{t('guestMgmt.bottomCta.title')}</h3>
+            <h2 className="font-serif text-2xl text-[#252525]">{t('guestMgmt.bottomCta.title')}</h2>
             <p className="text-xs sm:text-sm text-[#777777] max-w-md mx-auto">
               {t('guestMgmt.bottomCta.subtitle')}
             </p>

@@ -34,6 +34,7 @@ export async function getUserWorkspaces(userId: string): Promise<Agency[]> {
 }
 
 export function getCurrentSubdomain(): string | null {
+  if (typeof window === 'undefined') return null;
   const hostname = window.location.hostname;
   const parts = hostname.split('.');
   

@@ -41,7 +41,9 @@ import { getSupabase } from '../lib/supabase';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { useUser } from '../lib/UserContext';
 import { fetchTemplates } from '../lib/templates';
-import DashboardLayout from '../layouts/DashboardLayout';
+import DashboardLayout, { EventSidebarNav } from '../layouts/DashboardLayout';
+import EventOverviewDashboard, { OverviewNavigationTarget } from '../components/overview/EventOverviewDashboard';
+import { LayoutDashboard, Mail, ClipboardList } from 'lucide-react';
 import invitationCraftImage from '../assets/images/invitation_craft_showcase_1793501242453.jpg';
 import Button from '../design-system/components/Button';
 import Input from '../design-system/components/Input';
@@ -76,7 +78,9 @@ export default function Workspace() {
   const [editingEvent, setEditingEvent] = useState<Partial<WeddingEvent> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
-  const [activeEditorTab, setActiveEditorTab] = useState<'aesthetic' | 'rsvp' | 'form' | 'moderation' | 'invitation' | 'website'>('aesthetic');
+  const [activeEditorTab, setActiveEditorTab] = useState<'overview' | 'aesthetic' | 'rsvp' | 'form' | 'moderation' | 'invitation' | 'website'>('overview');
+  const [guestSuiteSubTab, setGuestSuiteSubTab] = useState<'guests' | 'rsvp' | 'tables' | 'layout' | 'overview'>('guests');
+  const [openAddGuestSignal, setOpenAddGuestSignal] = useState(0);
 
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showRSVPPreview, setShowRSVPPreview] = useState(false);
@@ -157,13 +161,15 @@ export default function Workspace() {
         const targetEvent = eventList.find(e => e.id === targetProjectId);
         if (targetEvent) {
           setEditingEvent(targetEvent);
-          setActiveEditorTab('aesthetic');
+          setActiveEditorTab('overview');
+          setGuestSuiteSubTab('guests');
           setView('editor');
         }
       } else if (role === 'couple' && eventList.length > 0 && view === 'list' && !editingEvent) {
         const firstEvent = eventList[0];
         setEditingEvent(firstEvent);
-        setActiveEditorTab('aesthetic');
+        setActiveEditorTab('overview');
+        setGuestSuiteSubTab('guests');
         setView('editor');
       }
     }
@@ -274,7 +280,8 @@ export default function Workspace() {
 
   const handleEdit = (event: WeddingEvent) => {
     setEditingEvent({ ...event });
-    setActiveEditorTab('aesthetic');
+    setActiveEditorTab(event.id ? 'overview' : 'aesthetic');
+    setGuestSuiteSubTab('guests');
     setView('editor');
   };
 
@@ -451,8 +458,64 @@ export default function Workspace() {
 
   const activeNavItem = view === 'calendar' ? 'calendar' : view === 'agency_settings' ? 'settings' : 'events';
 
+  const handleOverviewNavigate = (target: OverviewNavigationTarget) => {
+    if (!editingEvent?.id) return;
+    switch (target) {
+      case 'edit_event':
+        setActiveEditorTab('aesthetic');
+        break;
+      case 'guests':
+        setGuestSuiteSubTab('guests');
+        setActiveEditorTab('rsvp');
+        break;
+      case 'add_guest':
+        setGuestSuiteSubTab('guests');
+        setActiveEditorTab('rsvp');
+        setOpenAddGuestSignal((n) => n + 1);
+        break;
+      case 'seating':
+        setGuestSuiteSubTab('tables');
+        setActiveEditorTab('rsvp');
+        break;
+      case 'floor_plan':
+        setGuestSuiteSubTab('layout');
+        setActiveEditorTab('rsvp');
+        break;
+      case 'moderation':
+        setActiveEditorTab('moderation');
+        break;
+      case 'website_studio':
+        navigate(`/website-studio/${editingEvent.id}`);
+        break;
+      case 'invitation_studio':
+        navigate(`/editor/${editingEvent.id}`);
+        break;
+    }
+  };
+
+  const eventSidebarNav: EventSidebarNav | null =
+    view === 'editor' && editingEvent?.id
+      ? {
+          eventName:
+            editingEvent.groom_name && editingEvent.bride_name
+              ? `${editingEvent.groom_name} & ${editingEvent.bride_name}`
+              : editingEvent.name || 'Wedding Event',
+          activeTab: activeEditorTab,
+          onSelectTab: (tabId) => setActiveEditorTab(tabId as any),
+          items: [
+            { id: 'overview', label: 'Event Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
+            { id: 'aesthetic', label: 'Event Details & Style', icon: <Settings className="w-4 h-4" /> },
+            { id: 'website', label: 'Website Studio', icon: <Globe className="w-4 h-4" /> },
+            { id: 'rsvp', label: 'Guests & Seating', icon: <Users className="w-4 h-4" /> },
+            { id: 'form', label: 'RSVP Form Schema', icon: <ClipboardList className="w-4 h-4" /> },
+            { id: 'moderation', label: 'Wish Wall Messages', icon: <MessageSquare className="w-4 h-4" /> },
+            { id: 'invitation', label: 'Stationery Studio', icon: <Mail className="w-4 h-4" /> },
+          ],
+        }
+      : null;
+
   return (
-    <DashboardLayout activeItem={activeNavItem} onNewEvent={handleCreateNew}>
+    <DashboardLayout activeItem={activeNavItem} onNewEvent={handleCreateNew} eventNav={eventSidebarNav}>
       {view === 'agency_settings' ? (
         <div className="space-y-6 max-w-3xl">
           <PageHeader
@@ -703,9 +766,15 @@ export default function Workspace() {
                       </div>
 
                       {/* Main Title */}
-                      <h3 className="text-base font-semibold text-[#252525] leading-snug">
-                        {coupleTitle}
-                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(event)}
+                        className="text-left group"
+                      >
+                        <h3 className="text-base font-semibold text-[#252525] group-hover:text-[#8B7344] transition-colors leading-snug">
+                          {coupleTitle}
+                        </h3>
+                      </button>
 
                       <div className="text-xs text-[#777777] font-mono mt-1 truncate">
                         /{event.slug}
@@ -845,6 +914,14 @@ export default function Workspace() {
 
                       <div className="flex flex-wrap gap-1.5">
                         <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleEdit(event)}
+                          className="w-full !h-7 !text-[11px] !bg-[#23201C] mb-0.5"
+                        >
+                          Open Event Overview
+                        </Button>
+                        <Button
                           variant="secondary"
                           size="sm"
                           onClick={() => window.open(getEventUrl(event, 'display'), '_blank')}
@@ -869,10 +946,10 @@ export default function Workspace() {
                           RSVP
                         </Button>
                         <Button
-                          variant="primary"
+                          variant="outline"
                           size="sm"
                           onClick={() => navigate(`/website-studio/${event.id}`)}
-                          className="flex-1 !h-7 !text-[11px] !bg-[#252525]"
+                          className="flex-1 !h-7 !text-[11px]"
                         >
                           Website
                         </Button>
@@ -1032,42 +1109,49 @@ export default function Workspace() {
       ) : (
         /* Event Configuration Editor */
         <div className="space-y-6">
-          <PageHeader
-            title={
-              editingEvent?.groom_name && editingEvent?.bride_name
-                ? `${editingEvent.groom_name} & ${editingEvent.bride_name}`
-                : editingEvent?.name || 'Wedding Configuration'
-            }
-            description="Configure event details, RSVP fields, and live guest moderation."
-            breadcrumbs={[
-              { label: 'Weddings', onClick: () => setView('list') },
-              { label: editingEvent?.slug || 'Event Configuration' }
-            ]}
-            actions={
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setView('list')}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleSave}
-                  isLoading={isSaving}
-                  leftIcon={<Save className="w-3.5 h-3.5" />}
-                >
-                  Save Changes
-                </Button>
-              </div>
-            }
-          />
+          {activeEditorTab !== 'overview' && (
+            <PageHeader
+              title={
+                editingEvent?.groom_name && editingEvent?.bride_name
+                  ? `${editingEvent.groom_name} & ${editingEvent.bride_name}`
+                  : editingEvent?.name || 'Wedding Configuration'
+              }
+              description="Configure event details, RSVP fields, and live guest moderation."
+              breadcrumbs={[
+                { label: 'Weddings', onClick: () => setView('list') },
+                ...(editingEvent?.id
+                  ? [{ label: 'Overview', onClick: () => setActiveEditorTab('overview') }]
+                  : []),
+                { label: editingEvent?.slug || 'Event Configuration' }
+              ]}
+              actions={
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setView('list')}
+                  >
+                    Back to Events
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleSave}
+                    isLoading={isSaving}
+                    leftIcon={<Save className="w-3.5 h-3.5" />}
+                  >
+                    Save Changes
+                  </Button>
+                </div>
+              }
+            />
+          )}
 
           {/* Editor Tabs */}
           <Tabs
+            className="overflow-x-auto no-scrollbar"
             items={[
+              ...(editingEvent?.id ? [{ id: 'overview', label: 'Event Overview' }] : []),
               { id: 'aesthetic', label: 'Event Details & Style' },
               { id: 'website', label: 'Website Studio' },
               { id: 'rsvp', label: 'Guest & Seating Suite' },
@@ -1081,6 +1165,23 @@ export default function Workspace() {
 
           {/* Tab Content */}
           <div className="pt-2">
+            {activeEditorTab === 'overview' && editingEvent?.id && (
+              <EventOverviewDashboard
+                event={editingEvent}
+                agency={agency}
+                websiteHref={`${window.location.origin}/${editingEvent.slug}/website`}
+                invitationHref={getEventUrl(editingEvent as WeddingEvent, 'invitation')}
+                rsvpHref={getEventUrl(editingEvent as WeddingEvent, 'rsvp')}
+                onNavigate={handleOverviewNavigate}
+                onPreviewWebsite={() => handleOpenDraftPreview(editingEvent.id!)}
+                onEventUpdated={(updated) => {
+                  setEditingEvent(updated);
+                  setEvents((prev) =>
+                    prev.map((ev) => (ev.id === updated.id ? { ...ev, ...updated } : ev))
+                  );
+                }}
+              />
+            )}
             {activeEditorTab === 'aesthetic' && editingEvent && (
               <div className="space-y-8 max-w-4xl">
                 {/* Event Details Card */}
@@ -1239,6 +1340,8 @@ export default function Workspace() {
               <GuestManagementSuite
                 projectId={editingEvent.id}
                 rsvpFields={editingEvent.rsvp_fields}
+                defaultTab={guestSuiteSubTab}
+                openAddGuestSignal={openAddGuestSignal}
               />
             )}
 
@@ -1252,7 +1355,14 @@ export default function Workspace() {
             )}
 
             {activeEditorTab === 'moderation' && editingEvent?.id && (
-              <MessageModerator projectId={editingEvent.id} />
+              <MessageModerator
+                projectId={editingEvent.id}
+                themeId={editingEvent.theme_id}
+                initialDisplayConfig={editingEvent.message_display_config}
+                onConfigSaved={(cfg) =>
+                  setEditingEvent((prev) => (prev ? { ...prev, message_display_config: cfg } : prev))
+                }
+              />
             )}
 
             {activeEditorTab === 'invitation' && editingEvent?.id && (

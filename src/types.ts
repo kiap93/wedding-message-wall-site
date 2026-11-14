@@ -63,13 +63,174 @@ export interface WeddingEvent {
 
 export type MessageClassification = 'NORMAL' | 'AI_SUGGESTED' | 'SPECIAL_GUEST' | 'COUPLE_SELECTED';
 
+export type WishCategory = 'normal' | 'funny' | 'heartfelt' | 'family';
+export type DanmakuDirection = 'rtl' | 'ltr' | 'ttb' | 'btt';
+export type DanmakuDirectionSlug =
+  | 'right-to-left'
+  | 'left-to-right'
+  | 'top-to-bottom'
+  | 'bottom-to-top';
+export type DanmakuDirectionInput = DanmakuDirection | DanmakuDirectionSlug;
+export type DanmakuDirectionMode = 'single' | 'mixed';
+export type DanmakuDensity = 'relaxed' | 'balanced' | 'celebration';
+export type DanmakuFontSize = 'sm' | 'md' | 'lg';
+export type DanmakuSpecialStyle = 'champagne-gold' | 'theme-accent' | 'minimal-editorial';
+export type AnimationIntensity = 'subtle' | 'moderate' | 'lively';
+
+export const ALL_DANMAKU_DIRECTIONS: DanmakuDirection[] = ['rtl', 'ltr', 'ttb', 'btt'];
+
+export const DANMAKU_DIRECTION_META: Record<
+  DanmakuDirection,
+  {
+    code: DanmakuDirection;
+    slug: DanmakuDirectionSlug;
+    label: string;
+    shortLabel: string;
+    axis: 'horizontal' | 'vertical';
+  }
+> = {
+  rtl: {
+    code: 'rtl',
+    slug: 'right-to-left',
+    label: 'Right → Left',
+    shortLabel: 'RTL',
+    axis: 'horizontal',
+  },
+  ltr: {
+    code: 'ltr',
+    slug: 'left-to-right',
+    label: 'Left → Right',
+    shortLabel: 'LTR',
+    axis: 'horizontal',
+  },
+  ttb: {
+    code: 'ttb',
+    slug: 'top-to-bottom',
+    label: 'Top → Bottom',
+    shortLabel: 'TTB',
+    axis: 'vertical',
+  },
+  btt: {
+    code: 'btt',
+    slug: 'bottom-to-top',
+    label: 'Bottom → Top',
+    shortLabel: 'BTT',
+    axis: 'vertical',
+  },
+};
+
+export function normalizeDanmakuDirection(raw?: unknown): DanmakuDirection {
+  if (typeof raw !== 'string') return 'rtl';
+  switch (raw.trim().toLowerCase()) {
+    case 'ltr':
+    case 'left-to-right':
+      return 'ltr';
+    case 'ttb':
+    case 'top-to-bottom':
+      return 'ttb';
+    case 'btt':
+    case 'bottom-to-top':
+      return 'btt';
+    case 'rtl':
+    case 'right-to-left':
+    default:
+      return 'rtl';
+  }
+}
+
+export function directionToSlug(raw: DanmakuDirectionInput): DanmakuDirectionSlug {
+  return DANMAKU_DIRECTION_META[normalizeDanmakuDirection(raw)].slug;
+}
+
+export function slugToDirection(raw: DanmakuDirectionInput): DanmakuDirection {
+  return normalizeDanmakuDirection(raw);
+}
+
+export interface DanmakuNestedConfig {
+  directionMode: DanmakuDirectionMode;
+  directions: DanmakuDirectionSlug[];
+  preset: DanmakuDensity;
+}
+
+export interface DanmakuDensityPreset {
+  id: DanmakuDensity;
+  label: string;
+  description: string;
+  spawnIntervalMs: number;
+  minGapPx: number;
+  minVerticalGapPx: number;
+  crossGapPx: number;
+  maxConcurrentPerTrack: number;
+  maxConcurrentPerVerticalTrack: number;
+  maxTotalActive: number;
+  speedMultiplier: number;
+}
+
+export const DANMAKU_DENSITY_PRESETS: Record<DanmakuDensity, DanmakuDensityPreset> = {
+  relaxed: {
+    id: 'relaxed',
+    label: 'Relaxed',
+    description: 'Generous breathing room & unhurried ballroom pace',
+    spawnIntervalMs: 1850,
+    minGapPx: 140,
+    minVerticalGapPx: 110,
+    crossGapPx: 48,
+    maxConcurrentPerTrack: 2,
+    maxConcurrentPerVerticalTrack: 2,
+    maxTotalActive: 8,
+    speedMultiplier: 0.82,
+  },
+  balanced: {
+    id: 'balanced',
+    label: 'Balanced',
+    description: 'Refined editorial cadence for effortless reading',
+    spawnIntervalMs: 1100,
+    minGapPx: 88,
+    minVerticalGapPx: 72,
+    crossGapPx: 30,
+    maxConcurrentPerTrack: 3,
+    maxConcurrentPerVerticalTrack: 3,
+    maxTotalActive: 14,
+    speedMultiplier: 1.0,
+  },
+  celebration: {
+    id: 'celebration',
+    label: 'Celebration',
+    description: 'Lively multi-track stream for peak reception moments',
+    spawnIntervalMs: 650,
+    minGapPx: 54,
+    minVerticalGapPx: 46,
+    crossGapPx: 20,
+    maxConcurrentPerTrack: 5,
+    maxConcurrentPerVerticalTrack: 4,
+    maxTotalActive: 22,
+    speedMultiplier: 1.16,
+  },
+};
+
 export interface MessageDisplayConfig {
   normalDuration: number; // Duration in seconds
   specialGuestDuration: number; // Duration in seconds
   coupleSelectedDuration: number; // Duration in seconds
-  featuredFrequency: number; // Every N messages
+  featuredFrequency: number; // Every N messages / cycles
   spotlightAnimation: 'fade-scale' | 'cinematic-glide' | 'elegant-spotlight';
   maxConsecutiveFeatured: number; // Max consecutive featured
+  // Luxury Wedding Danmaku Engine Settings
+  danmakuEnabled?: boolean;
+  danmakuDirectionMode?: DanmakuDirectionMode;
+  danmakuDirection?: DanmakuDirection;
+  danmakuDirections?: DanmakuDirection[];
+  danmaku?: Partial<DanmakuNestedConfig>;
+  danmakuSpeed?: number; // Base speed in px/s (e.g. 75 - 180)
+  danmakuTracks?: 'auto' | number;
+  danmakuFontSize?: DanmakuFontSize;
+  danmakuDensity?: DanmakuDensity;
+  danmakuOpacity?: number; // 0.55 - 1.0
+  danmakuSpecialStyle?: DanmakuSpecialStyle;
+  spotlightDuration?: number; // 5 - 12 seconds
+  showSenderNames?: boolean;
+  showActivityStats?: boolean;
+  animationIntensity?: AnimationIntensity;
 }
 
 export const DEFAULT_MESSAGE_DISPLAY_CONFIG: MessageDisplayConfig = {
@@ -78,8 +239,123 @@ export const DEFAULT_MESSAGE_DISPLAY_CONFIG: MessageDisplayConfig = {
   coupleSelectedDuration: 16,
   featuredFrequency: 3,
   spotlightAnimation: 'elegant-spotlight',
-  maxConsecutiveFeatured: 1
+  maxConsecutiveFeatured: 1,
+  danmakuEnabled: true,
+  danmakuDirectionMode: 'single',
+  danmakuDirection: 'rtl',
+  danmakuDirections: ['rtl', 'ltr', 'ttb', 'btt'],
+  danmaku: {
+    directionMode: 'single',
+    directions: ['right-to-left'],
+    preset: 'balanced',
+  },
+  danmakuSpeed: 112,
+  danmakuTracks: 'auto',
+  danmakuFontSize: 'md',
+  danmakuDensity: 'balanced',
+  danmakuOpacity: 0.92,
+  danmakuSpecialStyle: 'champagne-gold',
+  spotlightDuration: 7,
+  showSenderNames: true,
+  showActivityStats: true,
+  animationIntensity: 'moderate',
 };
+
+export type ResolvedMessageDisplayConfig = Required<
+  Omit<MessageDisplayConfig, 'danmaku'>
+> & {
+  danmaku: DanmakuNestedConfig;
+};
+
+function normalizeDirectionList(rawList?: unknown): DanmakuDirection[] {
+  if (!Array.isArray(rawList) || rawList.length === 0) {
+    return [];
+  }
+  const seen = new Set<DanmakuDirection>();
+  for (const item of rawList) {
+    seen.add(normalizeDanmakuDirection(item));
+  }
+  return Array.from(seen);
+}
+
+export function resolveDisplayConfig(
+  config?: Partial<MessageDisplayConfig> | null
+): ResolvedMessageDisplayConfig {
+  const rawNested = config?.danmaku;
+
+  const rawDensity =
+    config?.danmakuDensity !== undefined
+      ? config.danmakuDensity
+      : rawNested?.preset;
+  const danmakuDensity: DanmakuDensity =
+    rawDensity === 'relaxed' || rawDensity === 'celebration' ? rawDensity : 'balanced';
+
+  const rawMode =
+    config?.danmakuDirectionMode !== undefined
+      ? config.danmakuDirectionMode
+      : rawNested?.directionMode;
+  const danmakuDirectionMode: DanmakuDirectionMode =
+    rawMode === 'mixed' ? 'mixed' : 'single';
+
+  const nestedDirs = normalizeDirectionList(rawNested?.directions);
+  const flatDirs = normalizeDirectionList(config?.danmakuDirections);
+
+  const primaryDirection =
+    config?.danmakuDirection !== undefined
+      ? normalizeDanmakuDirection(config.danmakuDirection)
+      : nestedDirs.length > 0
+        ? nestedDirs[0]
+        : 'rtl';
+
+  let danmakuDirections: DanmakuDirection[];
+  if (danmakuDirectionMode === 'mixed') {
+    if (flatDirs.length > 0) {
+      danmakuDirections = flatDirs;
+    } else if (nestedDirs.length > 0) {
+      danmakuDirections = nestedDirs;
+    } else {
+      danmakuDirections = [...ALL_DANMAKU_DIRECTIONS];
+    }
+  } else {
+    danmakuDirections = [primaryDirection];
+  }
+
+  return {
+    ...DEFAULT_MESSAGE_DISPLAY_CONFIG,
+    ...(config || {}),
+    danmakuEnabled: config?.danmakuEnabled ?? true,
+    danmakuDirectionMode,
+    danmakuDirection: primaryDirection,
+    danmakuDirections,
+    danmaku: {
+      directionMode: danmakuDirectionMode,
+      directions: danmakuDirections.map(directionToSlug),
+      preset: danmakuDensity,
+    },
+    danmakuSpeed: typeof config?.danmakuSpeed === 'number'
+      ? Math.max(50, Math.min(240, config.danmakuSpeed))
+      : DEFAULT_MESSAGE_DISPLAY_CONFIG.danmakuSpeed!,
+    danmakuTracks: config?.danmakuTracks === 'auto' || config?.danmakuTracks === undefined
+      ? 'auto'
+      : Math.max(2, Math.min(14, Number(config.danmakuTracks) || 6)),
+    danmakuFontSize: config?.danmakuFontSize === 'sm' || config?.danmakuFontSize === 'lg' ? config.danmakuFontSize : 'md',
+    danmakuDensity,
+    danmakuOpacity: typeof config?.danmakuOpacity === 'number'
+      ? Math.max(0.45, Math.min(1, config.danmakuOpacity))
+      : DEFAULT_MESSAGE_DISPLAY_CONFIG.danmakuOpacity!,
+    danmakuSpecialStyle: config?.danmakuSpecialStyle === 'theme-accent' || config?.danmakuSpecialStyle === 'minimal-editorial'
+      ? config.danmakuSpecialStyle
+      : 'champagne-gold',
+    spotlightDuration: typeof config?.spotlightDuration === 'number'
+      ? Math.max(4, Math.min(15, config.spotlightDuration))
+      : DEFAULT_MESSAGE_DISPLAY_CONFIG.spotlightDuration!,
+    showSenderNames: config?.showSenderNames ?? true,
+    showActivityStats: config?.showActivityStats ?? true,
+    animationIntensity: config?.animationIntensity === 'subtle' || config?.animationIntensity === 'lively'
+      ? config.animationIntensity
+      : 'moderate',
+  };
+}
 
 export interface Message {
   id: string;
@@ -90,12 +366,14 @@ export interface Message {
   room_id?: string;
   status?: 'pending' | 'approved' | 'rejected';
   classification?: MessageClassification;
+  wish_category?: WishCategory;
   is_featured?: boolean;
   is_pinned?: boolean;
   isDemoSample?: boolean;
   ai_highlight_reason?: string;
   guest_category?: string;
 }
+
 
 export interface EventOrder {
   id: string;

@@ -2,23 +2,24 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useLocation, useNavigate } from 'react-router-dom';
 import i18n from './i18n';
 import { SUPPORTED_LANGUAGES, LanguageMeta, SupportedLanguageCode } from '../../types';
-import { normalizePathname } from '../../seo/canonical';
+import {
+  buildLocalizedRoutePath,
+  extractLocaleFromPathname,
+  isBlogArticlePath,
+  isLocalizedMarketingBasePath,
+  LOCALIZED_MARKETING_BASE_PATHS,
+  normalizeLangParam,
+  normalizePathname,
+} from '../../seo/canonical';
+import { buildBlogPostPath, findBaseBlogPost } from '../../content/blog';
 
 export const MARKETING_LANG_STORAGE_KEY = 'ef_marketing_lang';
 
 export const MARKETING_LANGUAGE_CODES: SupportedLanguageCode[] = ['en', 'zh-CN', 'zh-TW', 'ms'];
 
 export const PUBLIC_MARKETING_PATHS = new Set<string>([
-  '/',
-  '/templates',
-  '/pricing',
-  '/wedding-planner-software',
-  '/white-label-wedding-software',
-  '/digital-wedding-invitations',
-  '/wedding-rsvp-management',
-  '/wedding-guest-management',
-  '/wedding-reception-display',
-  '/subscription',
+  ...LOCALIZED_MARKETING_BASE_PATHS,
+  '/blog',
 ]);
 
 export function isValidMarketingLanguage(code?: string | null): code is SupportedLanguageCode {
@@ -26,14 +27,24 @@ export function isValidMarketingLanguage(code?: string | null): code is Supporte
 }
 
 export function normalizeMarketingLanguage(code?: string | null): SupportedLanguageCode {
-  if (isValidMarketingLanguage(code)) {
-    return code;
+  const parsed = normalizeLangParam(code);
+  if (parsed && isValidMarketingLanguage(parsed)) {
+    return parsed;
   }
   return 'en';
 }
 
 export function isPublicMarketingPath(pathname: string): boolean {
-  return PUBLIC_MARKETING_PATHS.has(normalizePathname(pathname));
+  const normalized = normalizePathname(pathname);
+  const { basePath } = extractLocaleFromPathname(normalized);
+  if (PUBLIC_MARKETING_PATHS.has(basePath)) return true;
+  if (isBlogArticlePath(basePath)) return true;
+  return false;
+}
+
+export function isLocalizedMarketingPath(pathname: string): boolean {
+  const { basePath } = extractLocaleFromPathname(pathname);
+  return isLocalizedMarketingBasePath(basePath);
 }
 
 export function getStoredMarketingLanguage(): SupportedLanguageCode | null {
@@ -58,21 +69,30 @@ export function saveStoredMarketingLanguage(lang: SupportedLanguageCode): void {
 
 /**
  * Resolves the active marketing language strictly from explicit sources:
- * 1. URL `?lang=` parameter (if supported)
- * 2. Stored preference in localStorage (`ef_marketing_lang`)
- * 3. Default `'en'`
- *
- * Intentionally does NOT auto-detect `navigator.language` so manual selections
- * and default English behavior remain deterministic.
+ * 1. Clean URL locale prefix (`/zh-cn/...`, `/zh-tw/...`, `/ms/...`)
+ * 2. URL `?lang=` query parameter (legacy compatibility)
+ * 3. Stored preference in localStorage (`ef_marketing_lang`)
+ * 4. Default `'en'`
  */
 export function resolveInitialMarketingLanguage(
   search?: string,
-  stored?: string | null
+  stored?: string | null,
+  pathname?: string
 ): SupportedLanguageCode {
+  if (pathname) {
+    const extracted = extractLocaleFromPathname(pathname);
+    if (extracted.hasLocalePrefix) {
+      return extracted.lang;
+    }
+    if (extracted.hasExplicitEnglishPrefix) {
+      return 'en';
+    }
+  }
+
   if (search) {
     try {
       const params = new URLSearchParams(search);
-      const urlLang = params.get('lang');
+      const urlLang = normalizeLangParam(params.get('lang'));
       if (isValidMarketingLanguage(urlLang)) {
         return urlLang;
       }
@@ -89,8 +109,9 @@ export function resolveInitialMarketingLanguage(
 }
 
 /**
- * Preserves existing query parameters on a marketing target href while
- * applying or clearing the `?lang=` parameter cleanly.
+ * Resolves a marketing or blog target href to its clean localized path (e.g. `/zh-cn/pricing`
+ * or `/zh-cn/blog/shuzi-hunli-yaoqinghan-zhinan`) while preserving article identity,
+ * query params (excluding redundant `lang`), and hash fragments.
  */
 export function buildMarketingLocalizedPath(
   targetHref: string,
@@ -98,30 +119,33 @@ export function buildMarketingLocalizedPath(
 ): string {
   const [pathAndQuery, hash = ''] = targetHref.split('#');
   const [rawPath, rawQuery = ''] = pathAndQuery.split('?');
-  const normalizedPath = normalizePathname(rawPath || '/');
+  const { basePath } = extractLocaleFromPathname(rawPath || '/');
 
-  // Only attach `?lang=` to public marketing routes; leave app/demo routes untouched
-  if (!isPublicMarketingPath(normalizedPath)) {
+  if (!isLocalizedMarketingBasePath(basePath)) {
     return targetHref;
   }
 
-  const params = new URLSearchParams(rawQuery);
-  if (lang === 'en') {
-    params.delete('lang');
+  let localizedBase: string;
+  if (isBlogArticlePath(basePath)) {
+    const slugSegment = basePath.slice('/blog/'.length);
+    const basePost = findBaseBlogPost(slugSegment);
+    localizedBase = basePost
+      ? buildBlogPostPath(basePost.id || basePost.slug, lang)
+      : buildLocalizedRoutePath(basePath, lang);
   } else {
-    params.set('lang', lang);
+    localizedBase = buildLocalizedRoutePath(basePath, lang);
   }
 
+  const params = new URLSearchParams(rawQuery);
+  params.delete('lang');
+
   const queryString = params.toString();
-  const base = normalizedPath === '/' ? '/' : normalizedPath;
-  const withQuery = queryString ? `${base}?${queryString}` : base;
+  const withQuery = queryString ? `${localizedBase}?${queryString}` : localizedBase;
   return hash ? `${withQuery}#${hash}` : withQuery;
 }
 
 /**
  * Pure translation helper for the `marketing` namespace.
- * Explicitly scopes lookups to `ns: 'marketing'` and `lng: lang` so event-specific
- * `i18n.changeLanguage()` calls never interfere with marketing translations.
  */
 export function translateMarketing(
   key: string,
@@ -154,39 +178,82 @@ export interface MarketingTranslationContextValue {
 
 const MarketingTranslationContext = createContext<MarketingTranslationContextValue | null>(null);
 
-export const MarketingTranslationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const MarketingTranslationProvider: React.FC<{
+  children: React.ReactNode;
+  initialLanguage?: SupportedLanguageCode;
+}> = ({ children, initialLanguage }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
   const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguageCode>(() => {
-    const initial = resolveInitialMarketingLanguage(
+    if (initialLanguage) return initialLanguage;
+    return resolveInitialMarketingLanguage(
       typeof window !== 'undefined' ? window.location.search : location.search,
-      getStoredMarketingLanguage()
+      getStoredMarketingLanguage(),
+      typeof window !== 'undefined' ? window.location.pathname : location.pathname
     );
-    return initial;
   });
 
-  // Persist URL `?lang=` parameter when visitor arrives with one
+  // Sync URL locale prefix or legacy `?lang=` query when navigating on localized marketing/blog routes
   useEffect(() => {
     if (!isPublicMarketingPath(location.pathname)) return;
+    const extracted = extractLocaleFromPathname(location.pathname);
+
+    if (extracted.hasLocalePrefix) {
+      if (extracted.lang !== currentLanguage) {
+        setCurrentLanguage(extracted.lang);
+      }
+      saveStoredMarketingLanguage(extracted.lang);
+      return;
+    }
+
+    if (extracted.hasExplicitEnglishPrefix) {
+      if (currentLanguage !== 'en') {
+        setCurrentLanguage('en');
+      }
+      saveStoredMarketingLanguage('en');
+      return;
+    }
+
     try {
       const params = new URLSearchParams(location.search);
-      const urlLang = params.get('lang');
-      if (isValidMarketingLanguage(urlLang)) {
-        if (urlLang !== currentLanguage) {
-          setCurrentLanguage(urlLang);
+      const queryLang = normalizeLangParam(params.get('lang'));
+      if (queryLang && isValidMarketingLanguage(queryLang)) {
+        if (queryLang !== currentLanguage) {
+          setCurrentLanguage(queryLang);
         }
-        saveStoredMarketingLanguage(urlLang);
+        saveStoredMarketingLanguage(queryLang);
+
+        if (queryLang !== 'en' && isLocalizedMarketingBasePath(extracted.basePath)) {
+          params.delete('lang');
+          const searchStr = params.toString();
+          const targetPathname = isBlogArticlePath(extracted.basePath)
+            ? buildMarketingLocalizedPath(extracted.basePath, queryLang)
+            : buildLocalizedRoutePath(extracted.basePath, queryLang);
+          navigate(
+            {
+              pathname: targetPathname,
+              search: searchStr ? `?${searchStr}` : '',
+              hash: location.hash,
+            },
+            { replace: true }
+          );
+        }
+      } else if (extracted.basePath && isLocalizedMarketingBasePath(extracted.basePath)) {
+        if (currentLanguage !== 'en' && !getStoredMarketingLanguage()) {
+          setCurrentLanguage('en');
+        }
       }
     } catch {
       // Ignore query errors
     }
   }, [location.pathname, location.search]);
 
-  // Keep <html lang="..."> synced on public marketing routes without affecting private/event pages
+  // Keep <html lang="..."> synced on public marketing & blog routes
   useEffect(() => {
     if (typeof document !== 'undefined' && isPublicMarketingPath(location.pathname)) {
-      document.documentElement.lang = currentLanguage;
+      const effectiveLang = isLocalizedMarketingPath(location.pathname) ? currentLanguage : 'en';
+      document.documentElement.lang = effectiveLang;
     }
   }, [currentLanguage, location.pathname]);
 
@@ -196,17 +263,15 @@ export const MarketingTranslationProvider: React.FC<{ children: React.ReactNode 
       setCurrentLanguage(nextLang);
       saveStoredMarketingLanguage(nextLang);
 
-      if (isPublicMarketingPath(location.pathname)) {
+      const { basePath } = extractLocaleFromPathname(location.pathname);
+      if (isLocalizedMarketingBasePath(basePath)) {
         const params = new URLSearchParams(location.search);
-        if (nextLang === 'en') {
-          params.delete('lang');
-        } else {
-          params.set('lang', nextLang);
-        }
+        params.delete('lang');
         const searchStr = params.toString();
+        const nextPath = buildMarketingLocalizedPath(location.pathname, nextLang);
         navigate(
           {
-            pathname: location.pathname,
+            pathname: nextPath,
             search: searchStr ? `?${searchStr}` : '',
             hash: location.hash,
           },
@@ -219,9 +284,11 @@ export const MarketingTranslationProvider: React.FC<{ children: React.ReactNode 
 
   const t = useCallback(
     (key: string, params?: Record<string, string | number>) => {
-      return translateMarketing(key, currentLanguage, params);
+      const { basePath } = extractLocaleFromPathname(location.pathname);
+      const effectiveLang = isLocalizedMarketingBasePath(basePath) ? currentLanguage : 'en';
+      return translateMarketing(key, effectiveLang, params);
     },
-    [currentLanguage]
+    [currentLanguage, location.pathname]
   );
 
   const getLocalizedPath = useCallback(

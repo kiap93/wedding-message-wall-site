@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { WeddingTemplate } from '../types';
-import { Loader2, ArrowRight, ExternalLink, Sparkles } from 'lucide-react';
+import { WeddingTemplate, DEFAULT_TEMPLATES } from '../types';
+import { ArrowRight, ExternalLink, Sparkles } from 'lucide-react';
 import { fetchTemplates } from '../lib/templates';
 import Button from '../design-system/components/Button';
 import Badge from '../design-system/components/Badge';
@@ -11,15 +11,19 @@ import { useMarketingTranslation } from '../lib/i18n/MarketingTranslationContext
 export default function TemplateSelector() {
   const navigate = useNavigate();
   const { t, getLocalizedPath } = useMarketingTranslation();
-  const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [templates, setTemplates] = useState<WeddingTemplate[]>(DEFAULT_TEMPLATES);
   const [selectedVariant, setSelectedVariant] = useState<string>('all');
 
   useEffect(() => {
     async function load() {
-      const data = await fetchTemplates();
-      setTemplates(data);
-      setIsLoading(false);
+      try {
+        const data = await fetchTemplates();
+        if (data && data.length > 0) {
+          setTemplates(data);
+        }
+      } catch {
+        // Keep built-in DEFAULT_TEMPLATES
+      }
     }
     load();
   }, []);
@@ -52,16 +56,6 @@ export default function TemplateSelector() {
     if (translated !== key) return translated;
     return template.description || t('templates.defaultDesc');
   };
-
-  if (isLoading) {
-    return (
-      <MarketingLayout>
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <Loader2 className="w-6 h-6 text-[#252525] animate-spin" />
-        </div>
-      </MarketingLayout>
-    );
-  }
 
   return (
     <MarketingLayout>
@@ -199,7 +193,7 @@ export default function TemplateSelector() {
                 <span className="text-xs font-semibold text-[#8B806F] uppercase tracking-wider">
                   {t('templates.bannerEyebrow')}
                 </span>
-                <h3 className="font-serif text-2xl text-[#252525]">{t('templates.bannerTitle')}</h3>
+                <h2 className="font-serif text-2xl text-[#252525]">{t('templates.bannerTitle')}</h2>
                 <p className="text-xs sm:text-sm text-[#777777] leading-relaxed">
                   {t('templates.bannerDesc')}
                 </p>

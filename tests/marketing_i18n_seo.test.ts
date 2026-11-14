@@ -101,21 +101,39 @@ async function runTests() {
   assert.equal(normalizeMarketingLanguage('zh-TW'), 'zh-TW');
   console.log('✓ Verified URL query & localStorage resolution rules (no browser overwrite)');
 
-  // 4. Route & query parameter preservation
-  assert.equal(buildMarketingLocalizedPath('/pricing?utm_source=ig', 'zh-CN'), '/pricing?utm_source=ig&lang=zh-CN');
+  // 4. Clean locale route prefixes & query parameter preservation
+  assert.equal(buildMarketingLocalizedPath('/pricing?utm_source=ig', 'zh-CN'), '/zh-cn/pricing?utm_source=ig');
+  assert.equal(buildMarketingLocalizedPath('/zh-cn/pricing?utm_source=ig', 'en'), '/pricing?utm_source=ig');
   assert.equal(buildMarketingLocalizedPath('/pricing?lang=zh-CN&utm_source=ig', 'en'), '/pricing?utm_source=ig');
-  assert.equal(buildMarketingLocalizedPath('/?ref=hero#pricing', 'ms'), '/?ref=hero&lang=ms#pricing');
-  // App/event routes must not receive marketing ?lang= param injection
+  assert.equal(buildMarketingLocalizedPath('/?ref=hero#pricing', 'ms'), '/ms?ref=hero#pricing');
+  // App/event routes must not receive localized marketing prefix injection
   assert.equal(buildMarketingLocalizedPath('/display?template=garden', 'zh-CN'), '/display?template=garden');
   assert.equal(buildMarketingLocalizedPath('/login', 'zh-CN'), '/login');
+  // Blog routes now localize cleanly while preserving article identity
+  assert.equal(buildMarketingLocalizedPath('/blog', 'zh-CN'), '/zh-cn/blog');
+  assert.equal(
+    buildMarketingLocalizedPath('/blog/digital-wedding-invitations-guide', 'zh-CN'),
+    '/zh-cn/blog/shuzi-hunli-yaoqinghan-zhinan'
+  );
+  assert.equal(
+    buildMarketingLocalizedPath('/zh-cn/blog/shuzi-hunli-yaoqinghan-zhinan', 'en'),
+    '/blog/digital-wedding-invitations-guide'
+  );
   assert.equal(isPublicMarketingPath('/wedding-planner-software'), true);
+  assert.equal(isPublicMarketingPath('/zh-cn/wedding-website-builder'), true);
+  assert.equal(isPublicMarketingPath('/zh-cn/blog'), true);
   assert.equal(isPublicMarketingPath('/workspace'), false);
-  console.log('✓ Verified localized path builder & query param preservation');
+  console.log('✓ Verified clean localized path builder & query param preservation');
 
   // 5. SEO canonicals, route titles/descriptions, and hreflang links
   assert.equal(buildCanonicalUrl('/', '?lang=en&utm_source=fb'), 'https://eventframe.io/');
-  assert.equal(buildCanonicalUrl('/', '?lang=zh-CN&utm_source=fb'), 'https://eventframe.io/?lang=zh-CN');
-  assert.equal(buildCanonicalUrl('/pricing', '?lang=zh-TW'), 'https://eventframe.io/pricing?lang=zh-TW');
+  assert.equal(buildCanonicalUrl('/zh-cn', '?utm_source=fb'), 'https://eventframe.io/zh-cn');
+  assert.equal(buildCanonicalUrl('/', '?lang=zh-CN&utm_source=fb'), 'https://eventframe.io/zh-cn');
+  assert.equal(buildCanonicalUrl('/pricing', '?lang=zh-TW'), 'https://eventframe.io/zh-tw/pricing');
+  assert.equal(buildCanonicalUrl('/blog', '?ref=home'), 'https://eventframe.io/blog');
+  assert.equal(buildCanonicalUrl('/blog?ref=home'), 'https://eventframe.io/blog');
+  assert.equal(buildCanonicalUrl('/en/blog'), 'https://eventframe.io/blog');
+  assert.equal(buildCanonicalUrl('/blog', '?lang=zh-CN'), 'https://eventframe.io/zh-cn/blog');
 
   const homeHreflangs = buildMarketingHreflangLinks('/');
   assert.deepEqual(
@@ -123,7 +141,9 @@ async function runTests() {
     ['en', 'zh-CN', 'zh-TW', 'ms', 'x-default']
   );
   assert.equal(homeHreflangs.find((l) => l.hreflang === 'en')?.href, 'https://eventframe.io/');
-  assert.equal(homeHreflangs.find((l) => l.hreflang === 'zh-CN')?.href, 'https://eventframe.io/?lang=zh-CN');
+  assert.equal(homeHreflangs.find((l) => l.hreflang === 'zh-CN')?.href, 'https://eventframe.io/zh-cn');
+  assert.equal(homeHreflangs.find((l) => l.hreflang === 'zh-TW')?.href, 'https://eventframe.io/zh-tw');
+  assert.equal(homeHreflangs.find((l) => l.hreflang === 'ms')?.href, 'https://eventframe.io/ms');
   assert.equal(homeHreflangs.find((l) => l.hreflang === 'x-default')?.href, 'https://eventframe.io/');
 
   // Ensure every PUBLIC_SEO_ROUTES entry has translated SEO metadata in all dictionaries

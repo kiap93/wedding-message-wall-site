@@ -9,6 +9,28 @@ import { EVENT_PACKAGES, getPackageById, isEventActive, getDaysRemaining } from 
 import { EVENT_PRICING, formatPrice } from '../src/config/pricing';
 import { activateEventPurchase } from '../server/billingService';
 import { configureSupabase } from '../server/supabaseAdmin';
+import { buildSitemapXml } from '../src/seo/sitemap';
+import {
+  buildLocalizedRoutePath,
+  extractLocaleFromPathname,
+  isBlogArticlePath,
+  isLocalizedMarketingBasePath,
+  normalizeLangParam,
+  normalizePathname,
+} from '../src/seo/canonical';
+import {
+  BLOG_CATEGORIES,
+  buildBlogPostHreflangLinks,
+  buildBlogPostPath,
+  getAdjacentBlogPosts,
+  getAllBlogPosts,
+  getBlogCategoryLabel,
+  getBlogPostBySlug,
+  getBlogUiLabels,
+  getRelatedBlogPosts,
+  normalizeBlogLocale,
+} from '../src/content/blog';
+import { PRIVATE_ROUTE_PATTERNS } from '../src/seo/routes';
 import {
   getEventGuests,
   createGuest,
@@ -197,7 +219,13 @@ app.post('/api/demo/messages', async (c) => {
     (c.req.header('x-forwarded-for') || '').split(',')[0].trim() ||
     '127.0.0.1';
 
-  const result = addDemoGuestMessageCore(room, body?.name, body?.message, clientIp);
+  const result = addDemoGuestMessageCore(
+    room,
+    body?.name,
+    body?.message,
+    clientIp,
+    body?.wish_category ?? body?.wishCategory
+  );
   if (!result.success) {
     return c.json({ error: result.error }, (result.statusCode || 400) as any);
   }
@@ -1718,7 +1746,7 @@ app.post('/api/messages/:id/highlight', async (c) => {
   try {
     await verify(token, jwtSecret, 'HS256');
     const id = c.req.param('id');
-    const { classification, is_featured, is_pinned, guest_category, ai_highlight_reason } = await c.req.json();
+    const { classification, is_featured, is_pinned, guest_category, ai_highlight_reason, wish_category } = await c.req.json();
 
     const updateData: any = {};
     if (classification !== undefined) updateData.classification = classification;
@@ -1726,18 +1754,33 @@ app.post('/api/messages/:id/highlight', async (c) => {
     if (is_pinned !== undefined) updateData.is_pinned = is_pinned;
     if (guest_category !== undefined) updateData.guest_category = guest_category;
     if (ai_highlight_reason !== undefined) updateData.ai_highlight_reason = ai_highlight_reason;
+    if (wish_category !== undefined && ['normal', 'funny', 'heartfelt', 'family'].includes(wish_category)) {
+      updateData.wish_category = wish_category;
+    }
 
     const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
     const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !serviceRoleKey) return c.json({ error: 'Database config missing' }, 500);
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('messages')
       .update(updateData)
       .eq('id', id)
       .select()
       .single();
+
+    if (error && updateData.wish_category !== undefined && /wish_category/i.test(error.message || '')) {
+      delete updateData.wish_category;
+      const retry = await supabase
+        .from('messages')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) throw error;
     return c.json({ success: true, message: data });
@@ -2790,37 +2833,226 @@ app.delete('/api/projects/:id/guest-groups/:groupId', async (c) => {
   }
 });
 
+// Public / Guest Website Data API (Edge Worker parity with server.ts)
+app.get('/api/events/:slug/website-data', async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    const previewToken = c.req.query('token');
+
+    if (slug === 'demo') {
+      return c.json({
+        status: 'published',
+        published: true,
+        isPreview: false,
+        isPasswordProtected: false,
+        project: {
+          id: 'demo',
+          slug: 'demo',
+          name: 'Lucas & Sofia Wedding',
+          groom_name: 'Lucas',
+          bride_name: 'Sofia',
+          wedding_date: '2025-09-20',
+          location: 'San Francisco, CA',
+          website_status: 'published',
+        },
+      });
+    }
+
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+    const supabaseKey =
+      c.env.SUPABASE_SERVICE_ROLE_KEY ||
+      c.env.SUPABASE_SERVICE_KEY ||
+      c.env.SUPABASE_SECRET_KEY ||
+      c.env.VITE_SUPABASE_ANON_KEY ||
+      c.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return c.json({ error: 'Database configuration missing' }, 500);
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { data: project, error } = await supabase
+      .from('projects')
+      .select(
+        'id, agency_id, name, slug, groom_name, bride_name, wedding_date, location, theme_id, image_url, website_status, website_published_at, website_published_config, website_config, website_preview_token, access_password'
+      )
+      .eq('slug', slug)
+      .maybeSingle();
+
+    if (error || !project) {
+      return c.json({ error: 'Wedding celebration not found' }, 404);
+    }
+
+    const isPublished = project.website_status === 'published';
+    const isPasswordProtected = Boolean(
+      project.access_password && String(project.access_password).trim().length > 0
+    );
+
+    const safeProject = {
+      id: project.id,
+      name: project.name,
+      slug: project.slug,
+      groom_name: project.groom_name,
+      bride_name: project.bride_name,
+      wedding_date: project.wedding_date,
+      location: project.location,
+      theme_id: project.theme_id,
+      image_url: project.image_url,
+      website_status: project.website_status,
+      website_published_at: project.website_published_at,
+    };
+
+    if (isPublished) {
+      return c.json({
+        status: 'published',
+        published: true,
+        isPreview: false,
+        isPasswordProtected,
+        config: project.website_published_config || project.website_config,
+        project: safeProject,
+      });
+    }
+
+    let isAuthorizedPreview = false;
+    if (previewToken && project.website_preview_token && previewToken === project.website_preview_token) {
+      isAuthorizedPreview = true;
+    } else {
+      const authHeader = c.req.header('Authorization');
+      const cookieToken = getCookie(c, 'wedding_session');
+      const sessionToken =
+        (authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null) || cookieToken;
+      if (sessionToken) {
+        try {
+          const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+          const decoded = (await verify(sessionToken, jwtSecret, 'HS256')) as any;
+          const { data: agency } = await supabase
+            .from('agencies')
+            .select('id')
+            .eq('user_id', decoded.id || decoded.sub)
+            .maybeSingle();
+          if (agency && agency.id === project.agency_id) {
+            isAuthorizedPreview = true;
+          }
+        } catch {
+          // Ignore invalid session token
+        }
+      }
+    }
+
+    if (isAuthorizedPreview) {
+      return c.json({
+        status: project.website_status || 'draft',
+        published: false,
+        isPreview: true,
+        isPasswordProtected,
+        config: project.website_config,
+        project: safeProject,
+      });
+    }
+
+    return c.json({
+      status: project.website_status || 'draft',
+      published: false,
+      isPreview: false,
+      isPasswordProtected,
+      error:
+        project.website_status === 'unpublished'
+          ? 'This wedding website is currently unpublished.'
+          : 'This wedding website is currently in private draft mode.',
+      project: safeProject,
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message || 'Internal error' }, 500);
+  }
+});
+
+// Public Localized Blog Content APIs
+app.get('/api/blog/posts', (c) => {
+  const requestedLanguage = normalizeBlogLocale(c.req.query('lang') || 'en');
+  const categoryFilter = c.req.query('category') || null;
+  const posts = getAllBlogPosts(requestedLanguage);
+  const filtered =
+    categoryFilter && categoryFilter !== 'all'
+      ? posts.filter((p) => p.categoryId === categoryFilter)
+      : posts;
+  const resolvedLanguage =
+    filtered.length > 0 && filtered.every((p) => p.resolvedLanguage === requestedLanguage)
+      ? requestedLanguage
+      : filtered[0]?.resolvedLanguage || 'en';
+
+  return c.json({
+    requestedLanguage,
+    resolvedLanguage,
+    categories: BLOG_CATEGORIES.map((id) => ({
+      id,
+      label: getBlogCategoryLabel(id, requestedLanguage),
+    })),
+    ui: getBlogUiLabels(requestedLanguage),
+    posts: filtered.map((post) => ({
+      ...post,
+      urlPath: buildBlogPostPath(post.id, post.resolvedLanguage),
+    })),
+  });
+});
+
+app.get('/api/blog/posts/:slug', (c) => {
+  const requestedLanguage = normalizeBlogLocale(c.req.query('lang') || 'en');
+  const post = getBlogPostBySlug(c.req.param('slug'), requestedLanguage);
+  if (!post) {
+    return c.json({ error: 'Blog article not found', requestedLanguage }, 404);
+  }
+
+  const { prev, next } = getAdjacentBlogPosts(post.id, post.resolvedLanguage);
+  const related = getRelatedBlogPosts(post, post.resolvedLanguage);
+
+  return c.json({
+    requestedLanguage,
+    resolvedLanguage: post.resolvedLanguage,
+    isFallback: post.isFallback,
+    ui: getBlogUiLabels(post.resolvedLanguage),
+    post: {
+      ...post,
+      urlPath: buildBlogPostPath(post.id, post.resolvedLanguage),
+    },
+    hreflangLinks: buildBlogPostHreflangLinks(post.id),
+    adjacent: {
+      prev: prev ? { id: prev.id, slug: prev.slug, title: prev.title, urlPath: buildBlogPostPath(prev.id, prev.resolvedLanguage) } : null,
+      next: next ? { id: next.id, slug: next.slug, title: next.title, urlPath: buildBlogPostPath(next.id, next.resolvedLanguage) } : null,
+    },
+    related: related.map((r) => ({
+      id: r.id,
+      slug: r.slug,
+      title: r.title,
+      excerpt: r.excerpt,
+      category: r.category,
+      urlPath: buildBlogPostPath(r.id, r.resolvedLanguage),
+    })),
+  });
+});
+
 // 8. Strict 404 for any unmatched API routes (prevents accidentally serving index.html)
 app.all('/api/*', (c) => {
   return c.json({ error: `API route not found: ${c.req.method} ${c.req.path}` }, 404);
 });
 
-// Technical SEO Endpoints: robots.txt and sitemap.xml
+// Technical SEO Endpoints: robots.txt and dynamic sitemap.xml
 app.get('/robots.txt', async (c) => {
-  if (c.env.ASSETS) {
-    try {
-      const res = await c.env.ASSETS.fetch(c.req.raw);
-      if (res.status === 200) {
-        const headers = new Headers(res.headers);
-        headers.set('Content-Type', 'text/plain; charset=utf-8');
-        headers.set('Cache-Control', 'public, max-age=3600, must-revalidate');
-        return new Response(res.body, { status: 200, headers });
-      }
-    } catch (e) {
-      // Fallback below
-    }
-  }
-
   const robots = `User-agent: *
 Allow: /
-Allow: /templates
-Allow: /pricing
+Allow: /wedding-website-builder
+Allow: /wedding-seating-chart
 Allow: /wedding-planner-software
 Allow: /white-label-wedding-software
 Allow: /digital-wedding-invitations
 Allow: /wedding-rsvp-management
 Allow: /wedding-guest-management
 Allow: /wedding-reception-display
+Allow: /templates
+Allow: /pricing
+Allow: /blog
+Allow: /zh-cn
+Allow: /zh-tw
+Allow: /ms
 
 Disallow: /login
 Disallow: /verify
@@ -2830,8 +3062,11 @@ Disallow: /workspace
 Disallow: /workspace/
 Disallow: /editor
 Disallow: /editor/
+Disallow: /website-studio
+Disallow: /website-studio/
 Disallow: /couple
 Disallow: /couple/
+Disallow: /subscription
 Disallow: /templates/manage
 Disallow: /api/
 
@@ -2844,86 +3079,61 @@ Sitemap: https://eventframe.io/sitemap.xml`;
 });
 
 app.get('/sitemap.xml', async (c) => {
-  if (c.env.ASSETS) {
-    try {
-      const res = await c.env.ASSETS.fetch(c.req.raw);
-      if (res.status === 200) {
-        const headers = new Headers(res.headers);
-        headers.set('Content-Type', 'application/xml; charset=utf-8');
-        headers.set('Cache-Control', 'public, max-age=3600, must-revalidate');
-        return new Response(res.body, { status: 200, headers });
+  let publishedProjects: any[] = [];
+
+  try {
+    const supabaseUrl = c.env?.SUPABASE_URL || c.env?.VITE_SUPABASE_URL;
+    const supabaseKey =
+      c.env?.SUPABASE_SERVICE_ROLE_KEY ||
+      c.env?.SUPABASE_SERVICE_KEY ||
+      c.env?.SUPABASE_SECRET_KEY ||
+      c.env?.VITE_SUPABASE_ANON_KEY ||
+      c.env?.SUPABASE_ANON_KEY;
+
+    if (supabaseUrl && supabaseKey) {
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const { data, error } = await supabase
+        .from('projects')
+        .select(
+          'slug, updated_at, website_published_at, website_published_config, website_config, website_status, access_password'
+        )
+        .eq('website_status', 'published');
+
+      if (!error && Array.isArray(data)) {
+        publishedProjects = data;
       }
-    } catch (e) {
-      // Fallback below
     }
+  } catch (err) {
+    console.error('Worker dynamic sitemap Supabase query error:', err);
   }
 
-  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://eventframe.io/</loc>
-    <lastmod>2026-11-03</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>https://eventframe.io/wedding-planner-software</loc>
-    <lastmod>2026-11-03</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://eventframe.io/white-label-wedding-software</loc>
-    <lastmod>2026-11-03</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://eventframe.io/digital-wedding-invitations</loc>
-    <lastmod>2026-11-03</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://eventframe.io/wedding-rsvp-management</loc>
-    <lastmod>2026-11-03</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://eventframe.io/wedding-guest-management</loc>
-    <lastmod>2026-11-03</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://eventframe.io/wedding-reception-display</loc>
-    <lastmod>2026-11-03</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://eventframe.io/templates</loc>
-    <lastmod>2026-11-03</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://eventframe.io/pricing</loc>
-    <lastmod>2026-11-03</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-</urlset>`;
-
-  return c.text(sitemap, 200, {
+  const xml = buildSitemapXml({ publishedProjects });
+  return c.text(xml, 200, {
     'Content-Type': 'application/xml; charset=utf-8',
-    'Cache-Control': 'public, max-age=3600, must-revalidate',
+    'Cache-Control': 'public, max-age=300, must-revalidate',
   });
 });
 
 // 9. Static Assets & Single-Page Application (SPA) Routing Fallback
 app.all('*', async (c) => {
+  // Normalize legacy `?lang=zh-CN|zh-TW|ms` query links on marketing routes to clean localized paths
+  if (c.req.method === 'GET') {
+    const url = new URL(c.req.url);
+    const normalizedPath = normalizePathname(url.pathname);
+    const extracted = extractLocaleFromPathname(normalizedPath);
+    const queryLang = normalizeLangParam(url.searchParams.get('lang'));
+
+    if (!extracted.hasLocalePrefix && queryLang && isLocalizedMarketingBasePath(extracted.basePath)) {
+      const targetPath = isBlogArticlePath(extracted.basePath)
+        ? buildBlogPostPath(extracted.basePath.slice('/blog/'.length), queryLang)
+        : buildLocalizedRoutePath(extracted.basePath, queryLang);
+      url.searchParams.delete('lang');
+      const nextSearch = url.searchParams.toString();
+      const destination = `${url.origin}${targetPath}${nextSearch ? `?${nextSearch}` : ''}`;
+      return c.redirect(destination, 301);
+    }
+  }
+
   // If Cloudflare Workers Static Assets binding is present
   if (c.env.ASSETS) {
     const response = await c.env.ASSETS.fetch(c.req.raw);
@@ -2953,6 +3163,12 @@ app.all('*', async (c) => {
       const newHeaders = new Headers(response.headers);
       newHeaders.set('Cache-Control', 'public, max-age=0, must-revalidate');
       newHeaders.set('Pragma', 'no-cache');
+
+      const normalizedReqPath = normalizePathname(c.req.path);
+      if (PRIVATE_ROUTE_PATTERNS.some((pattern) => pattern.test(normalizedReqPath))) {
+        newHeaders.set('X-Robots-Tag', 'noindex, nofollow');
+      }
+
       return new Response(body, {
         status: response.status,
         statusText: response.statusText,
