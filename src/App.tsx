@@ -41,6 +41,19 @@ const WebsiteStudio = lazy(() => import('./pages/WebsiteStudio'));
 const WeddingWebsite = lazy(() => import('./pages/WeddingWebsite'));
 const Subscription = lazy(() => import('./pages/Subscription'));
 
+// Lazy-loaded Super Admin (/developer) console
+import DeveloperRouteGuard from './components/developer/DeveloperRouteGuard';
+import DeveloperLayout from './components/developer/DeveloperLayout';
+const DeveloperOverview = lazy(() => import('./pages/developer/DeveloperOverview'));
+const DeveloperOrganizations = lazy(() => import('./pages/developer/DeveloperOrganizations'));
+const DeveloperOrganizationDetail = lazy(() => import('./pages/developer/DeveloperOrganizationDetail'));
+const DeveloperUsers = lazy(() => import('./pages/developer/DeveloperUsers'));
+const DeveloperUserDetail = lazy(() => import('./pages/developer/DeveloperUserDetail'));
+const DeveloperEvents = lazy(() => import('./pages/developer/DeveloperEvents'));
+const DeveloperPayments = lazy(() => import('./pages/developer/DeveloperPayments'));
+const DeveloperActivityLogs = lazy(() => import('./pages/developer/DeveloperActivityLogs'));
+const DeveloperSettings = lazy(() => import('./pages/developer/DeveloperSettings'));
+
 const RouteLoadingFallback = () => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-[#F7F7F5]">
     <div className="w-6 h-6 border-2 border-[#252525] border-t-transparent rounded-full animate-spin mb-3" />
@@ -168,6 +181,139 @@ export function AppRoutes() {
         <Route path="/website-studio/:projectId" element={<AuthGuard><WebsiteStudio /></AuthGuard>} />
         <Route path="/website-studio" element={<AuthGuard><WebsiteStudio /></AuthGuard>} />
         <Route path="/subscription" element={<Subscription />} />
+
+        {/* Super Admin Console (/developer) - strictly protected server-side & client-side */}
+        <Route
+          path="/developer"
+          element={
+            <DeveloperRouteGuard>
+              {(admin) => (
+                <DeveloperLayout admin={admin} title="Platform Overview">
+                  <DeveloperOverview />
+                </DeveloperLayout>
+              )}
+            </DeveloperRouteGuard>
+          }
+        />
+        <Route
+          path="/developer/organizations"
+          element={
+            <DeveloperRouteGuard>
+              {(admin) => (
+                <DeveloperLayout
+                  admin={admin}
+                  title="Organizations"
+                  breadcrumbs={[{ label: 'Organizations' }]}
+                >
+                  <DeveloperOrganizations />
+                </DeveloperLayout>
+              )}
+            </DeveloperRouteGuard>
+          }
+        />
+        <Route
+          path="/developer/organizations/:id"
+          element={
+            <DeveloperRouteGuard>
+              {(admin) => (
+                <DeveloperLayout
+                  admin={admin}
+                  title="Organization Detail"
+                  breadcrumbs={[
+                    { label: 'Organizations', to: '/developer/organizations' },
+                    { label: 'Detail' },
+                  ]}
+                >
+                  <DeveloperOrganizationDetail />
+                </DeveloperLayout>
+              )}
+            </DeveloperRouteGuard>
+          }
+        />
+        <Route
+          path="/developer/users"
+          element={
+            <DeveloperRouteGuard>
+              {(admin) => (
+                <DeveloperLayout admin={admin} title="Users" breadcrumbs={[{ label: 'Users' }]}>
+                  <DeveloperUsers />
+                </DeveloperLayout>
+              )}
+            </DeveloperRouteGuard>
+          }
+        />
+        <Route
+          path="/developer/users/:id"
+          element={
+            <DeveloperRouteGuard>
+              {(admin) => (
+                <DeveloperLayout
+                  admin={admin}
+                  title="User Detail"
+                  breadcrumbs={[{ label: 'Users', to: '/developer/users' }, { label: 'Detail' }]}
+                >
+                  <DeveloperUserDetail />
+                </DeveloperLayout>
+              )}
+            </DeveloperRouteGuard>
+          }
+        />
+        <Route
+          path="/developer/events"
+          element={
+            <DeveloperRouteGuard>
+              {(admin) => (
+                <DeveloperLayout admin={admin} title="Events" breadcrumbs={[{ label: 'Events' }]}>
+                  <DeveloperEvents />
+                </DeveloperLayout>
+              )}
+            </DeveloperRouteGuard>
+          }
+        />
+        <Route
+          path="/developer/payments"
+          element={
+            <DeveloperRouteGuard>
+              {(admin) => (
+                <DeveloperLayout admin={admin} title="Payments" breadcrumbs={[{ label: 'Payments' }]}>
+                  <DeveloperPayments />
+                </DeveloperLayout>
+              )}
+            </DeveloperRouteGuard>
+          }
+        />
+        <Route
+          path="/developer/activity-logs"
+          element={
+            <DeveloperRouteGuard>
+              {(admin) => (
+                <DeveloperLayout
+                  admin={admin}
+                  title="Activity Logs"
+                  breadcrumbs={[{ label: 'Activity Logs' }]}
+                >
+                  <DeveloperActivityLogs />
+                </DeveloperLayout>
+              )}
+            </DeveloperRouteGuard>
+          }
+        />
+        <Route
+          path="/developer/settings"
+          element={
+            <DeveloperRouteGuard>
+              {(admin) => (
+                <DeveloperLayout
+                  admin={admin}
+                  title="Platform Settings"
+                  breadcrumbs={[{ label: 'Platform Settings' }]}
+                >
+                  <DeveloperSettings />
+                </DeveloperLayout>
+              )}
+            </DeveloperRouteGuard>
+          }
+        />
 
         {/* Public English Marketing & Solution Routes */}
         <Route path="/templates" element={<TemplateSelector />} />

@@ -20,12 +20,18 @@ export default function Login() {
   const [searchParams] = useSearchParams();
   const authError = searchParams.get('error');
 
+  const redirectParam = searchParams.get('redirect');
+  const safeRedirect =
+    redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
+      ? redirectParam
+      : '/workspace';
+
   useEffect(() => {
     const token = localStorage.getItem('wedding_session_token');
     if (token && !loading && !isGlobalLoading) {
-      navigate('/workspace');
+      navigate(safeRedirect);
     }
-  }, [navigate, loading, isGlobalLoading]);
+  }, [navigate, loading, isGlobalLoading, safeRedirect]);
 
   useEffect(() => {
     if (authError) {

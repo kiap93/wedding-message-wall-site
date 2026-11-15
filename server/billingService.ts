@@ -1,5 +1,6 @@
 import { EVENT_PRICING } from '../src/config/pricing';
 import { add12CalendarMonths, getPackageById } from '../src/lib/packages';
+import { recordPlatformActivity } from './developerAdminService';
 
 export interface ActivateEventResult {
   success: boolean;
@@ -209,6 +210,21 @@ export async function activateEventPurchase(
       expires_at: expiresAtIso,
       created_at: now.toISOString()
     }]);
+
+    await recordPlatformActivity(supabase, {
+      actorId: customerId,
+      action: 'PAYMENT_COMPLETED',
+      organizationId: agencyId || event.agency_id || null,
+      targetEventId: eventId,
+      referenceId: transactionId || effectiveOrderId,
+      summary: `Payment completed ($${(effectiveAmount / 100).toFixed(2)} ${EVENT_PRICING.currency}) for event "${event.name || eventId}"`,
+      metadata: {
+        amountCents: effectiveAmount,
+        currency: EVENT_PRICING.currency,
+        provider,
+        isRenewal: isAlreadyActive
+      }
+    });
   } catch (err: any) {
     console.warn('Note: Order/payment audit table insertion skipped or pending schema:', err?.message || err);
   }

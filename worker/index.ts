@@ -9,6 +9,17 @@ import { EVENT_PACKAGES, getPackageById, isEventActive, getDaysRemaining } from 
 import { EVENT_PRICING, formatPrice } from '../src/config/pricing';
 import { activateEventPurchase } from '../server/billingService';
 import { configureSupabase } from '../server/supabaseAdmin';
+import {
+  registerWorkerDeveloperRoutes,
+  verifyWorkerSessionWithDb,
+  getWorkerSupabase,
+} from '../server/registerWorkerDeveloperRoutes';
+import {
+  syncUserOnLogin,
+  recordPlatformActivity,
+  findDbUserForIdentity,
+  resolveAuthenticatedSessionUser,
+} from '../server/developerAdminService';
 import { buildSitemapXml } from '../src/seo/sitemap';
 import {
   buildLocalizedRoutePath,
@@ -87,6 +98,7 @@ type Bindings = {
   R2_ACCESS_KEY_ID?: string;
   R2_SECRET_ACCESS_KEY?: string;
   R2_BUCKET_NAME?: string;
+  SUPER_ADMIN_EMAILS?: string;
   R2_PUBLIC_URL?: string;
 };
 
@@ -411,7 +423,25 @@ app.get('/api/auth/callback', async (c) => {
       picture: userPayload.picture,
     };
 
-    console.log('Signing User JWT:', JSON.stringify(user));
+    const supabaseForSync = getWorkerSupabase(c);
+    if (supabaseForSync && user.email) {
+      try {
+        const syncResult = await syncUserOnLogin(supabaseForSync, {
+          externalUserId: user.id,
+          email: user.email,
+          name: user.name,
+          picture: user.picture,
+          provider: 'google',
+        });
+        if (syncResult.allowed === false) {
+          return c.redirect(
+            `${targetOrigin}/login?error=${encodeURIComponent(syncResult.reason || 'Account suspended. Please contact support.')}`
+          );
+        }
+      } catch (syncErr) {
+        console.warn('[Worker Auth Callback] Non-fatal user sync note:', syncErr);
+      }
+    }
 
     // Sign our session JWT
     // Use an object that definitely has keys to avoid empty payload issues
@@ -484,43 +514,23 @@ app.get('/api/auth/callback', async (c) => {
 
 // 3. Get Current User
 app.get('/api/auth/me', async (c) => {
-  const hostname = new URL(c.req.url).hostname;
-  const isSharedDomain = hostname.endsWith('eventframe.io');
-  
-  // Check both Authorization Header and Cookie
-  const authHeader = c.req.header('Authorization');
-  let token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-  
-  const cookieToken = getCookie(c, 'wedding_session');
-  if (!token) {
-    token = cookieToken;
-    
-    // Safety check for legacy or invalid tokens
-    if (token === 'null' || token === 'undefined') token = null;
-  }
-  
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-
-  // CRITICAL for cross-domain logout:
-  // If we are on a shared domain pool (eventframe.io), we require the cookie to be present 
-  // ONLY if the user is supposed to be using cookies. 
-  // If they are explicitly sending a token (from localStorage), we trust the token.
-  // BUT if the cookie DOES exist and contradicts the token, we should be careful.
-  // Actually, prioritizing the explicit Header is generally safer for "switched account" scenarios.
-
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
-
   try {
-    const payload = await verify(token, jwtSecret, 'HS256');
-    return c.json({ user: payload });
-  } catch (e: any) {
-    const isJwtError = e.name === 'JwtTokenInvalid' || e.name === 'JwtTokenExpired' || e.name === 'JwtTokenIssuedAt' || e.message?.toLowerCase().includes('jwt');
-    if (isJwtError) {
-      console.error('Worker auth/me verification failed:', e.message);
-      return c.json({ error: 'Invalid session', details: e.message }, 401);
+    const check = await verifyWorkerSessionWithDb(c);
+    if (!check.ok) {
+      const errRes = check as { ok: false; statusCode: number; error: string; code: string; suspendedReason?: string | null };
+      return c.json(
+        {
+          error: errRes.error,
+          code: errRes.code,
+          ...(errRes.suspendedReason ? { suspendedReason: errRes.suspendedReason } : {}),
+        },
+        errRes.statusCode as any
+      );
     }
+    return c.json({ user: check.user });
+  } catch (e: any) {
     console.error('Worker auth/me internal error:', e.message);
-    return c.json({ error: 'Internal server error', details: e.message }, 500);
+    return c.json({ error: 'Invalid session', details: e.message }, 401);
   }
 });
 
@@ -631,6 +641,9 @@ app.post('/api/auth/email', async (c) => {
 
     if (mode === 'signup') {
       if (existingUser) {
+        if (String(existingUser.status || 'active').toLowerCase() === 'suspended') {
+          return c.json({ error: 'Account suspended. Please contact support.' }, 403);
+        }
         if (existingUser.is_verified) {
           return c.json({ error: 'User already exists and is verified. Please log in.' }, 400);
         }
@@ -638,9 +651,10 @@ app.post('/api/auth/email', async (c) => {
       } else {
         if (!password) return c.json({ error: 'Password is required' }, 400);
         const passwordHash = await hashPassword(password);
+        const nowIso = new Date().toISOString();
         
-        // Save to Supabase
-        const insertRes = await fetch(`${supabaseUrl}/rest/v1/users_auth`, {
+        // Save to Supabase (strictly assigning role: 'user', never trusting client role)
+        let insertRes = await fetch(`${supabaseUrl}/rest/v1/users_auth`, {
           method: 'POST',
           headers: {
             'apikey': serviceRoleKey,
@@ -652,24 +666,54 @@ app.post('/api/auth/email', async (c) => {
             email,
             password_hash: passwordHash,
             is_verified: false,
-            created_at: new Date().toISOString()
+            role: 'user',
+            status: 'active',
+            auth_provider: 'email',
+            created_at: nowIso
           })
         });
 
+        if (!insertRes.ok) {
+          insertRes = await fetch(`${supabaseUrl}/rest/v1/users_auth`, {
+            method: 'POST',
+            headers: {
+              'apikey': serviceRoleKey,
+              'Authorization': `Bearer ${serviceRoleKey}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify({
+              email,
+              password_hash: passwordHash,
+              is_verified: false,
+              created_at: nowIso
+            })
+          });
+        }
+
         if (!insertRes.ok) throw new Error('DB Save failed');
+
+        const workerSb = getWorkerSupabase(c);
+        if (workerSb) {
+          await recordPlatformActivity(workerSb, {
+            actorEmail: email,
+            actorRole: 'user',
+            action: 'USER_REGISTERED',
+            summary: `New email account registered: ${email}`,
+            metadata: { provider: 'email' },
+          });
+        }
       }
     } else {
       // Login mode
       if (!existingUser) return c.json({ error: 'Account not found' }, 404);
+      if (String(existingUser.status || 'active').toLowerCase() === 'suspended') {
+        return c.json({ error: 'Account suspended. Please contact support.' }, 403);
+      }
       if (!password) return c.json({ error: 'Password is required' }, 400);
       
       const isValid = await verifyPassword(password, existingUser.password_hash);
       if (!isValid) return c.json({ error: 'Invalid password' }, 401);
-      
-      if (!existingUser.is_verified) {
-        // Allow login but warn? Or strictly block? Let's strictly block until verified.
-        // But for easier testing, we'll allow but trigger a re-send.
-      }
     }
 
     // Generate Magic Link for Verification or Direct Login (Unified Security)
@@ -765,27 +809,49 @@ app.post('/api/auth/verify', async (c) => {
     }
 
     const email = payload.email;
+    const workerSb = createClient(supabaseUrl, serviceRoleKey);
+    const existingDbUser = await findDbUserForIdentity(workerSb, { email });
+    if (existingDbUser && String(existingDbUser.status || 'active').toLowerCase() === 'suspended') {
+      return c.json({ error: 'Account suspended. Please contact support.' }, 403);
+    }
 
-    // Update is_verified in Supabase
-    await fetch(`${supabaseUrl}/rest/v1/users_auth?email=eq.${email}`, {
+    // Update is_verified and last_login_at in Supabase
+    const patchRes = await fetch(`${supabaseUrl}/rest/v1/users_auth?email=eq.${email}`, {
       method: 'PATCH',
       headers: {
         'apikey': serviceRoleKey,
         'Authorization': `Bearer ${serviceRoleKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ is_verified: true })
+      body: JSON.stringify({ is_verified: true, last_login_at: new Date().toISOString() })
     });
+    if (!patchRes.ok) {
+      await fetch(`${supabaseUrl}/rest/v1/users_auth?email=eq.${email}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': serviceRoleKey,
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ is_verified: true })
+      });
+    }
 
-    const user = {
+    const baseUser = {
       id: `email-${btoa(email).slice(0, 12)}`,
       email: email,
-      name: email.split('@')[0],
+      name: existingDbUser?.full_name || email.split('@')[0],
       picture: null,
     };
+    const sessionResolution = await resolveAuthenticatedSessionUser(
+      workerSb,
+      baseUser,
+      c.env.SUPER_ADMIN_EMAILS
+    );
+    const user = sessionResolution.ok ? sessionResolution.user : baseUser;
 
     const sessionToken = await sign({ 
-      ...user, 
+      ...baseUser, 
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60)
     }, jwtSecret, 'HS256');
@@ -1328,11 +1394,16 @@ app.post('/api/projects', async (c) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const activeCheck = await resolveAuthenticatedSessionUser(supabase, payload, c.env.SUPER_ADMIN_EMAILS);
+    if (!activeCheck.ok) {
+      const errRes = activeCheck as { ok: false; statusCode: number; error: string };
+      return c.json({ error: errRes.error }, errRes.statusCode as any);
+    }
 
     // Verify agency
     const { data: agency } = await supabase
       .from('agencies')
-      .select('id')
+      .select('id, name')
       .eq('user_id', payload.id || payload.sub)
       .single();
 
@@ -1362,6 +1433,16 @@ app.post('/api/projects', async (c) => {
       console.error('Worker project creation error:', error);
       return c.json({ error: error.message }, 500);
     }
+
+    await recordPlatformActivity(supabase, {
+      actorId: payload.id || payload.sub,
+      actorEmail: payload.email || null,
+      actorRole: activeCheck.user.role,
+      action: 'EVENT_CREATED',
+      organizationId: agency.id,
+      targetEventId: data?.id ? String(data.id) : null,
+      summary: `Event "${data?.name || newProject.name || 'Untitled'}" created under ${agency.name}`,
+    });
 
     return c.json({ success: true, data }, 201);
   } catch (e: any) {
@@ -1576,6 +1657,11 @@ app.post('/api/onboard', async (c) => {
     const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
     const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const activeCheck = await resolveAuthenticatedSessionUser(supabase, payload, c.env.SUPER_ADMIN_EMAILS);
+    if (!activeCheck.ok) {
+      const errRes = activeCheck as { ok: false; statusCode: number; error: string };
+      return c.json({ error: errRes.error }, errRes.statusCode as any);
+    }
 
     // 1. Check if slug exists
     const { data: existing } = await supabase
@@ -1589,19 +1675,47 @@ app.post('/api/onboard', async (c) => {
     }
 
     // 2. Create agency
-    const { data: agency, error: agencyError } = await supabase
+    const orgName = role === 'couple' ? `${groomName} & ${brideName}` : name;
+    let { data: agency, error: agencyError } = await supabase
       .from('agencies')
       .insert([{
-        name: role === 'couple' ? `${groomName} & ${brideName}` : name,
+        name: orgName,
         slug,
         user_id: userId,
         user_role: role,
+        owner_email: payload.email || null,
         created_at: new Date().toISOString()
       }])
       .select()
       .single();
+
+    if (agencyError && /owner_email/i.test(agencyError.message || '')) {
+      const fallback = await supabase
+        .from('agencies')
+        .insert([{
+          name: orgName,
+          slug,
+          user_id: userId,
+          user_role: role,
+          created_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+      agency = fallback.data;
+      agencyError = fallback.error;
+    }
     
     if (agencyError) throw agencyError;
+
+    await recordPlatformActivity(supabase, {
+      actorId: userId,
+      actorEmail: payload.email || null,
+      actorRole: role === 'couple' ? 'user' : 'agency_owner',
+      action: 'ORGANIZATION_CREATED',
+      organizationId: agency?.id ? String(agency.id) : null,
+      summary: `Organization "${orgName}" (${slug}) created`,
+      metadata: { slug, userRole: role },
+    });
 
     let createdProjectId = null;
 
@@ -1627,6 +1741,14 @@ app.post('/api/onboard', async (c) => {
       if (projectError) throw projectError;
       if (project) {
         createdProjectId = project.id;
+        await recordPlatformActivity(supabase, {
+          actorId: userId,
+          actorEmail: payload.email || null,
+          action: 'EVENT_CREATED',
+          organizationId: agency.id,
+          targetEventId: String(project.id),
+          summary: `Event "${project.name}" created during couple onboarding`,
+        });
       }
     }
 
@@ -2188,6 +2310,35 @@ app.post('/api/webhook', async (c) => {
         .from('agencies')
         .update({ subscription_status: 'canceled' })
         .eq('subscription_id', subscription.id);
+      break;
+    }
+    case 'charge.refunded': {
+      const charge = event.data.object as Stripe.Charge;
+      const paymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
+      try {
+        const eventId = charge.metadata?.eventId;
+        if (paymentIntentId) {
+          await supabase
+            .from('event_payments')
+            .update({ payment_status: 'refunded' })
+            .eq('provider_transaction_id', paymentIntentId);
+        }
+        if (eventId) {
+          await supabase
+            .from('projects')
+            .update({ payment_status: 'refunded', status: 'cancelled', updated_at: new Date().toISOString() })
+            .eq('id', eventId);
+        }
+        await recordPlatformActivity(supabase, {
+          action: 'PAYMENT_REFUNDED',
+          targetEventId: eventId || null,
+          referenceId: paymentIntentId || charge.id,
+          summary: `Payment refunded ($${((charge.amount_refunded || charge.amount || 0) / 100).toFixed(2)})`,
+          metadata: { amountRefundedCents: charge.amount_refunded || charge.amount || 0 },
+        });
+      } catch (refundErr: any) {
+        console.warn('[Worker Webhook] Refund note:', refundErr?.message || refundErr);
+      }
       break;
     }
   }
@@ -3030,6 +3181,9 @@ app.get('/api/blog/posts/:slug', (c) => {
   });
 });
 
+// Super Admin /api/developer/* endpoints (strictly server-side protected)
+registerWorkerDeveloperRoutes(app);
+
 // 8. Strict 404 for any unmatched API routes (prevents accidentally serving index.html)
 app.all('/api/*', (c) => {
   return c.json({ error: `API route not found: ${c.req.method} ${c.req.path}` }, 404);
@@ -3068,6 +3222,8 @@ Disallow: /couple
 Disallow: /couple/
 Disallow: /subscription
 Disallow: /templates/manage
+Disallow: /developer
+Disallow: /developer/
 Disallow: /api/
 
 Sitemap: https://eventframe.io/sitemap.xml`;

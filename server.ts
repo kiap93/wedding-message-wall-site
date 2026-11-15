@@ -75,6 +75,13 @@ import {
   registerSSEClient,
   getDemoRoomStats
 } from './server/demoMessageService';
+import { createDeveloperRouter, verifySessionWithDb } from './server/createDeveloperRouter';
+import {
+  syncUserOnLogin,
+  recordPlatformActivity,
+  findDbUserForIdentity,
+  resolveAuthenticatedSessionUser,
+} from './server/developerAdminService';
 
 dotenv.config();
 
@@ -207,6 +214,38 @@ async function startServer() {
           .from('agencies')
           .update({ subscription_status: 'canceled' })
           .eq('subscription_id', subscription.id);
+        break;
+      }
+      case 'charge.refunded': {
+        const charge = event.data.object as Stripe.Charge;
+        const paymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
+        try {
+          const supabase = getSupabaseAdmin();
+          if (paymentIntentId || charge.metadata?.eventId) {
+            const eventId = charge.metadata?.eventId;
+            if (paymentIntentId) {
+              await supabase
+                .from('event_payments')
+                .update({ payment_status: 'refunded' })
+                .eq('provider_transaction_id', paymentIntentId);
+            }
+            if (eventId) {
+              await supabase
+                .from('projects')
+                .update({ payment_status: 'refunded', status: 'cancelled', updated_at: new Date().toISOString() })
+                .eq('id', eventId);
+            }
+            await recordPlatformActivity(supabase, {
+              action: 'PAYMENT_REFUNDED',
+              targetEventId: eventId || null,
+              referenceId: paymentIntentId || charge.id,
+              summary: `Payment refunded ($${((charge.amount_refunded || charge.amount || 0) / 100).toFixed(2)})`,
+              metadata: { amountRefundedCents: charge.amount_refunded || charge.amount || 0 },
+            });
+          }
+        } catch (refundErr: any) {
+          console.warn('[Stripe Webhook] Refund processing note:', refundErr?.message || refundErr);
+        }
         break;
       }
     }
@@ -431,6 +470,24 @@ async function startServer() {
         picture: payload.picture,
       };
 
+      // Track user in users_auth and enforce account suspension server-side
+      try {
+        const syncResult = await syncUserOnLogin(getSupabaseAdmin(), {
+          externalUserId: payload.sub,
+          email: payload.email || '',
+          name: user.name,
+          picture: payload.picture,
+          provider: 'google',
+        });
+        if (syncResult.allowed === false) {
+          return res.redirect(
+            `${targetOrigin}/login?error=${encodeURIComponent(syncResult.reason || 'Account suspended. Please contact support.')}`
+          );
+        }
+      } catch (syncErr) {
+        console.warn('[Auth Callback] Non-fatal user sync note:', syncErr);
+      }
+
       const token = jwt.sign(user, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
 
       const cookieOptions: any = {
@@ -511,27 +568,29 @@ async function startServer() {
     }
   });
 
-  apiRouter.get('/auth/me', (req, res) => {
+  apiRouter.get('/auth/me', async (req, res) => {
     const rid = Math.random().toString(36).substring(7);
     const start = Date.now();
-    console.log(`[AUTH-ME] [${rid}] Start`);
-    
     try {
-      const authHeader = req.headers.authorization;
-      const cookies = req.cookies || {};
-      const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || cookies.wedding_session;
-      
-      if (!token) {
-        console.log(`[AUTH-ME] [${rid}] No token found after ${Date.now() - start}ms`);
-        return res.status(401).json({ error: 'Not authenticated' });
+      const check = await verifySessionWithDb(req, {
+        getSupabase: getSupabaseAdmin,
+        getJwtSecret: () => JWT_SECRET,
+        getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+      });
+
+      if (!check.ok) {
+        const errRes = check as { ok: false; statusCode: number; error: string; code: string; suspendedReason?: string | null };
+        return res.status(errRes.statusCode).json({
+          error: errRes.error,
+          code: errRes.code,
+          ...(errRes.suspendedReason ? { suspendedReason: errRes.suspendedReason } : {}),
+        });
       }
 
-      console.log(`[AUTH-ME] [${rid}] Verifying token...`);
-      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
-      console.log(`[AUTH-ME] [${rid}] Success for: ${(decoded as any).email} in ${Date.now() - start}ms`);
-      res.json({ user: decoded });
+      console.log(`[AUTH-ME] [${rid}] Verified ${check.user.email} (${check.user.role}) in ${Date.now() - start}ms`);
+      res.json({ user: check.user });
     } catch (error: any) {
-      console.error(`[AUTH-ME] [${rid}] JWT Error: ${error.message} after ${Date.now() - start}ms`);
+      console.error(`[AUTH-ME] [${rid}] Error: ${error.message} after ${Date.now() - start}ms`);
       res.status(401).json({ error: 'Invalid session', details: error.message });
     }
   });
@@ -621,6 +680,9 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
 
       if (mode === 'signup') {
         if (existingUser) {
+          if (String(existingUser.status || 'active').toLowerCase() === 'suspended') {
+            return res.status(403).json({ error: 'Account suspended. Please contact support.' });
+          }
           if (existingUser.is_verified) {
             return res.status(400).json({ error: 'User already exists and is verified. Please log in.' });
           }
@@ -629,22 +691,49 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
           if (!password) return res.status(400).json({ error: 'Password is required' });
 
           const passwordHash = hashPasswordNode(password);
+          const nowIso = new Date().toISOString();
           
-          // Save to Supabase
-          const { error: insertError } = await supabase
+          // Save to Supabase (strictly assigning role: 'user', never trusting client role)
+          let { error: insertError } = await supabase
             .from('users_auth')
             .insert([{ 
               email, 
               password_hash: passwordHash, 
               is_verified: false,
-              created_at: new Date().toISOString()
+              role: 'user',
+              status: 'active',
+              auth_provider: 'email',
+              created_at: nowIso
             }]);
 
+          if (insertError && /column/i.test(insertError.message || '')) {
+            const fallback = await supabase
+              .from('users_auth')
+              .insert([{
+                email,
+                password_hash: passwordHash,
+                is_verified: false,
+                created_at: nowIso
+              }]);
+            insertError = fallback.error;
+          }
+
           if (insertError) throw insertError;
+
+          await recordPlatformActivity(supabase, {
+            actorEmail: email,
+            actorRole: 'user',
+            action: 'USER_REGISTERED',
+            summary: `New email account registered: ${email}`,
+            metadata: { provider: 'email' },
+          });
         }
       } else {
         // Login mode
         if (!existingUser) return res.status(404).json({ error: 'Account not found' });
+        if (String(existingUser.status || 'active').toLowerCase() === 'suspended') {
+          return res.status(403).json({ error: 'Account suspended. Please contact support.' });
+        }
         if (!password) return res.status(400).json({ error: 'Password is required' });
         
         const isValid = verifyPasswordNode(password, existingUser.password_hash);
@@ -772,20 +861,34 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
 
       const email = decoded.email;
 
-      // Update is_verified in Supabase
-      await supabase
-        .from('users_auth')
-        .update({ is_verified: true })
-        .eq('email', email);
+      const existingDbUser = await findDbUserForIdentity(supabase, { email });
+      if (existingDbUser && String(existingDbUser.status || 'active').toLowerCase() === 'suspended') {
+        return res.status(403).json({ error: 'Account suspended. Please contact support.' });
+      }
 
-      const user = {
+      // Update is_verified and last_login_at in Supabase
+      const { error: verifyPatchErr } = await supabase
+        .from('users_auth')
+        .update({ is_verified: true, last_login_at: new Date().toISOString() })
+        .eq('email', email);
+      if (verifyPatchErr && /column/i.test(verifyPatchErr.message || '')) {
+        await supabase.from('users_auth').update({ is_verified: true }).eq('email', email);
+      }
+
+      const baseUser = {
         id: `email-${Buffer.from(email).toString('base64').slice(0, 12)}`,
         email: email,
-        name: email.split('@')[0],
+        name: existingDbUser?.full_name || email.split('@')[0],
         picture: null,
       };
+      const sessionResolution = await resolveAuthenticatedSessionUser(
+        supabase,
+        baseUser,
+        process.env.SUPER_ADMIN_EMAILS
+      );
+      const user = sessionResolution.ok ? sessionResolution.user : baseUser;
 
-      const sessionToken = jwt.sign(user, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
+      const sessionToken = jwt.sign(baseUser, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
 
       const cookieOptions: any = {
         httpOnly: true,
@@ -1006,12 +1109,17 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      const activeCheck = await resolveAuthenticatedSessionUser(getSupabaseAdmin(), decoded, process.env.SUPER_ADMIN_EMAILS);
+      if (!activeCheck.ok) {
+        const errRes = activeCheck as { ok: false; statusCode: number; error: string };
+        return res.status(errRes.statusCode).json({ error: errRes.error });
+      }
       const projectData = req.body;
 
       // Verify the agency belongs to the user
       const { data: agency } = await getSupabaseAdmin()
         .from('agencies')
-        .select('id')
+        .select('id, name')
         .eq('user_id', decoded.id || decoded.sub)
         .single();
       
@@ -1041,6 +1149,16 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
         console.error('Project creation error:', insertError);
         return res.status(500).json({ error: insertError.message });
       }
+
+      await recordPlatformActivity(getSupabaseAdmin(), {
+        actorId: decoded.id || decoded.sub,
+        actorEmail: decoded.email || null,
+        actorRole: activeCheck.user.role,
+        action: 'EVENT_CREATED',
+        organizationId: agency.id,
+        targetEventId: data?.id ? String(data.id) : null,
+        summary: `Event "${data?.name || newProject.name || 'Untitled'}" created under ${agency.name}`,
+      });
 
       res.status(201).json({ success: true, data });
     } catch (error: any) {
@@ -1174,6 +1292,11 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      const activeCheck = await resolveAuthenticatedSessionUser(getSupabaseAdmin(), decoded, process.env.SUPER_ADMIN_EMAILS);
+      if (!activeCheck.ok) {
+        const errRes = activeCheck as { ok: false; statusCode: number; error: string };
+        return res.status(errRes.statusCode).json({ error: errRes.error });
+      }
       const { role, name, groomName, brideName, slug } = req.body;
       const userId = decoded.id || decoded.sub;
 
@@ -1191,19 +1314,47 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
       }
 
       // 2. Create agency
-      const { data: agency, error: agencyError } = await supabase
+      const orgName = role === 'couple' ? `${groomName} & ${brideName}` : name;
+      let { data: agency, error: agencyError } = await supabase
         .from('agencies')
         .insert([{
-          name: role === 'couple' ? `${groomName} & ${brideName}` : name,
+          name: orgName,
           slug,
           user_id: userId,
           user_role: role,
+          owner_email: decoded.email || null,
           created_at: new Date().toISOString()
         }])
         .select()
         .single();
+
+      if (agencyError && /owner_email/i.test(agencyError.message || '')) {
+        const fallback = await supabase
+          .from('agencies')
+          .insert([{
+            name: orgName,
+            slug,
+            user_id: userId,
+            user_role: role,
+            created_at: new Date().toISOString()
+          }])
+          .select()
+          .single();
+        agency = fallback.data;
+        agencyError = fallback.error;
+      }
       
       if (agencyError) throw agencyError;
+
+      await recordPlatformActivity(supabase, {
+        actorId: userId,
+        actorEmail: decoded.email || null,
+        actorRole: role === 'couple' ? 'user' : 'agency_owner',
+        action: 'ORGANIZATION_CREATED',
+        organizationId: agency?.id ? String(agency.id) : null,
+        summary: `Organization "${orgName}" (${slug}) created`,
+        metadata: { slug, userRole: role },
+      });
 
       let createdProjectId = null;
 
@@ -1229,6 +1380,14 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
         if (projectError) throw projectError;
         if (project) {
           createdProjectId = project.id;
+          await recordPlatformActivity(supabase, {
+            actorId: userId,
+            actorEmail: decoded.email || null,
+            action: 'EVENT_CREATED',
+            organizationId: agency.id,
+            targetEventId: String(project.id),
+            summary: `Event "${project.name}" created during couple onboarding`,
+          });
         }
       }
 
@@ -1700,7 +1859,8 @@ Return ONLY a valid JSON array of objects with the following schema:
   const RESERVED_SLUGS = [
     'login', 'verify', 'reset-password', 'onboarding', 'workspace', 'editor',
     'website-studio', 'templates', 'pricing', 'subscription', 'api', 'couple',
-    'display', 'guest', 'rsvp', 'invitation', 'e', 'g', 'r', 'event', 'agency'
+    'display', 'guest', 'rsvp', 'invitation', 'e', 'g', 'r', 'event', 'agency',
+    'developer'
   ];
 
   // Helper to authenticate project owner
@@ -3055,6 +3215,16 @@ Return ONLY a valid JSON array of objects with the following schema:
       })),
     });
   });
+
+  // Mount Super Admin /api/developer/* router (server-side protected)
+  apiRouter.use(
+    '/developer',
+    createDeveloperRouter({
+      getSupabase: getSupabaseAdmin,
+      getJwtSecret: () => JWT_SECRET,
+      getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+    })
+  );
 
   // Mount API router
   app.use('/api', apiRouter);

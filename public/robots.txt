@@ -30,6 +30,8 @@ Disallow: /couple
 Disallow: /couple/
 Disallow: /subscription
 Disallow: /templates/manage
+Disallow: /developer
+Disallow: /developer/
 Disallow: /api/
 
 # Sitemap location

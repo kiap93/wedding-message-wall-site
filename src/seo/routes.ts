@@ -253,6 +253,7 @@ export const PRIVATE_ROUTE_PATTERNS = [
   /^\/templates\/manage/,
   /^\/couple(\/.*)?$/,
   /^\/subscription(\/.*)?$/,
+  /^\/developer(\/.*)?$/,
   /^\/api(\/.*)?$/,
 ];
 

@@ -115,6 +115,12 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
             localStorage.removeItem('wedding_session_token');
             setUser(null);
           }
+        } else if (res.status === 403) {
+          const errData = await res.json().catch(() => ({} as any));
+          if (errData?.code === 'ACCOUNT_SUSPENDED') {
+            localStorage.removeItem('wedding_session_token');
+            setUser(null);
+          }
         }
       } catch (err: any) {
         if (err.name === 'AbortError') {
