@@ -21,6 +21,8 @@ export interface BillingAuthUser {
   id: string;
   sub?: string;
   dbUserId?: string | null;
+  supabaseUserId?: string | null;
+  externalUserId?: string | null;
   email: string;
   name?: string;
   role?: string;
@@ -123,7 +125,15 @@ export async function resolveUserOrganizations(supabase: any, authUser: BillingA
   }
 
   const candidateIds = new Set(
-    [authUser.id, authUser.sub, authUser.dbUserId].filter(Boolean).map((v) => String(v))
+    [
+      authUser.id,
+      authUser.sub,
+      authUser.dbUserId,
+      authUser.supabaseUserId,
+      authUser.externalUserId,
+    ]
+      .filter(Boolean)
+      .map((v) => String(v))
   );
   const emailLower = (authUser.email || '').trim().toLowerCase();
 

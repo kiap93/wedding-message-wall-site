@@ -89,7 +89,16 @@ import {
   recordPlatformActivity,
   findDbUserForIdentity,
   resolveAuthenticatedSessionUser,
+  isDeveloper,
 } from './server/developerAdminService';
+import {
+  syncGoogleOAuthUser,
+  verifyTokenAndSyncUser,
+  registerEmailPasswordUser,
+  authenticateEmailPasswordUser,
+  verifyEmailAccountTokenUser,
+  resetUserPasswordWithHash,
+} from './server/userSyncService';
 import { resolveUserOrganizations } from './server/billingService';
 import {
   findAgencyBySlugOrHost,
@@ -178,6 +187,25 @@ function getSupabaseAdmin() {
     _supabaseAdmin = createClient(url, key);
   }
   return _supabaseAdmin;
+}
+
+let _supabaseServiceAdmin: any = null;
+function getSupabaseServiceAdmin() {
+  if (!_supabaseServiceAdmin) {
+    const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const serviceKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SECRET_KEY ||
+      process.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+    if (!url) {
+      throw new Error('Backend Supabase URL is missing in server environment.');
+    }
+    if (!serviceKey) {
+      throw new Error('SUPABASE_SERVICE_ROLE_KEY is required on the backend for user synchronization.');
+    }
+    _supabaseServiceAdmin = createClient(url, serviceKey);
+  }
+  return _supabaseServiceAdmin;
 }
 
 function isRequestHttps(req: express.Request): boolean {
@@ -642,44 +670,78 @@ async function startServer() {
         code: code as string,
         redirect_uri: currentRedirectUri
       });
+      if (!tokens?.id_token) {
+        return res.redirect(`${targetOrigin}/login?error=auth_failed`);
+      }
+
       const ticket = await oauth2Client.verifyIdToken({
-        idToken: tokens.id_token!,
+        idToken: tokens.id_token,
         audience: GOOGLE_CLIENT_ID,
       });
       const payload = ticket.getPayload();
 
-      if (!payload) throw new Error('No payload');
+      if (!payload || !payload.sub || !payload.email) {
+        return res.redirect(`${targetOrigin}/login?error=missing_profile`);
+      }
 
-      const user = {
-        id: payload.sub,
-        email: payload.email,
-        name: payload.name || payload.email?.split('@')[0] || 'Anonymous User',
-        picture: payload.picture,
-      };
+      if (payload.email_verified === false) {
+        return res.redirect(`${targetOrigin}/login?error=email_not_verified`);
+      }
 
-      // Track user in users_auth and enforce account suspension server-side
-      try {
-        const syncResult = await syncUserOnLogin(getSupabaseAdmin(), {
-          externalUserId: payload.sub,
-          email: payload.email || '',
-          name: user.name,
-          picture: payload.picture,
-          provider: 'google',
-        });
-        if (syncResult.allowed === false) {
+      const normalizedEmail = payload.email.trim().toLowerCase();
+      const displayName = payload.name || normalizedEmail.split('@')[0] || 'EventFrame User';
+
+      // Synchronize Google user to Supabase Auth (`auth.users`) & `public.users_auth`
+      // Never swallow sync failures or issue a session without a synchronized DB user.
+      const supabaseService = getSupabaseServiceAdmin();
+      const syncResult = await syncGoogleOAuthUser(supabaseService, {
+        sub: payload.sub,
+        email: normalizedEmail,
+        emailVerified: true,
+        fullName: displayName,
+        avatarUrl: payload.picture || null,
+      });
+
+      if (syncResult.ok === false) {
+        console.error('[Auth Callback] Google user sync failed:', syncResult.code, syncResult.error);
+        if (syncResult.statusCode === 403) {
           return res.redirect(
-            `${targetOrigin}/login?error=${encodeURIComponent(syncResult.reason || 'Account suspended. Please contact support.')}`
+            `${targetOrigin}/login?error=${encodeURIComponent(syncResult.error || 'Account suspended. Please contact support.')}`
           );
         }
-      } catch (syncErr) {
-        console.warn('[Auth Callback] Non-fatal user sync note:', syncErr);
+        return res.redirect(`${targetOrigin}/login?error=user_sync_failed`);
       }
+
+      const user = {
+        id: syncResult.canonicalUserId,
+        sub: payload.sub,
+        ...(syncResult.supabaseUserId ? { supabaseUserId: syncResult.supabaseUserId } : {}),
+        providerUserId: payload.sub,
+        authProvider: 'google',
+        email: syncResult.user?.email || normalizedEmail,
+        name: syncResult.user?.full_name || displayName,
+        picture: syncResult.user?.avatar_url || payload.picture || null,
+      };
 
       const token = jwt.sign(user, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
       issueSessionCookies(req, res, token);
 
+      let userIsDeveloper = syncResult.user?.is_developer === true;
+      try {
+        userIsDeveloper = await isDeveloper(supabaseService, {
+          id: syncResult.canonicalUserId,
+          sub: payload.sub,
+          email: user.email,
+        });
+      } catch {
+        userIsDeveloper = syncResult.user?.is_developer === true;
+      }
+
+      const landingPath = userIsDeveloper ? 'developer' : 'workspace';
       // Use JS replace to ensure history cleanup and popup support
-      const redirectUrl = targetOrigin.endsWith('/') ? `${targetOrigin}workspace?token=${token}` : `${targetOrigin}/workspace?token=${token}`;
+      const redirectUrl = targetOrigin.endsWith('/')
+        ? `${targetOrigin}${landingPath}?token=${token}`
+        : `${targetOrigin}/${landingPath}?token=${token}`;
 
       res.send(`
         <!DOCTYPE html>
@@ -738,7 +800,7 @@ async function startServer() {
       `);
     } catch (error) {
       console.error('OAuth callback error:', error);
-      res.redirect('/login?error=auth_failed');
+      res.redirect(`${targetOrigin}/login?error=auth_failed`);
     }
   });
 
@@ -746,11 +808,15 @@ async function startServer() {
     const rid = Math.random().toString(36).substring(7);
     const start = Date.now();
     try {
-      const check = await verifySessionWithDb(req, {
-        getSupabase: getSupabaseAdmin,
-        getJwtSecret: () => JWT_SECRET,
-        getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
-      });
+      const check = await verifySessionWithDb(
+        req,
+        {
+          getSupabase: getSupabaseServiceAdmin,
+          getJwtSecret: () => JWT_SECRET,
+          getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+        },
+        { ensureUserRecord: true }
+      );
 
       if (!check.ok) {
         const errRes = check as { ok: false; statusCode: number; error: string; code: string; suspendedReason?: string | null };
@@ -765,6 +831,8 @@ async function startServer() {
         {
           id: check.user.id,
           sub: check.user.sub,
+          ...(check.user.supabaseUserId ? { supabaseUserId: check.user.supabaseUserId } : {}),
+          ...(check.user.providerUserId ? { providerUserId: check.user.providerUserId } : {}),
           email: check.user.email,
           name: check.user.name,
           picture: check.user.picture,
@@ -781,13 +849,90 @@ async function startServer() {
     }
   });
 
+  apiRouter.post('/auth/sync', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      const bearer = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+      const cookieToken = req.cookies?.wedding_session;
+      const token = bearer || (cookieToken && cookieToken !== 'null' && cookieToken !== 'undefined' ? cookieToken : null);
+
+      if (!token) {
+        return res.status(401).json(buildErrorResponse('UNAUTHENTICATED', 'Authentication token is required.'));
+      }
+
+      const supabaseService = getSupabaseServiceAdmin();
+      const syncRes = await verifyTokenAndSyncUser(supabaseService, token, {
+        verifyInternalJwt: (t) => jwt.verify(t, JWT_SECRET, { algorithms: ['HS256'] }),
+      });
+
+      if (syncRes.ok === false) {
+        return res.status(syncRes.statusCode).json(buildErrorResponse(syncRes.code, syncRes.error));
+      }
+
+      const sessionRes = await resolveAuthenticatedSessionUser(supabaseService, {
+        id: syncRes.canonicalUserId,
+        sub: syncRes.user?.provider_user_id || syncRes.canonicalUserId,
+        supabaseUserId: syncRes.supabaseUserId,
+        providerUserId: syncRes.user?.provider_user_id || null,
+        email: syncRes.user?.email,
+        name: syncRes.user?.full_name,
+        picture: syncRes.user?.avatar_url,
+      });
+
+      if (sessionRes.ok === false) {
+        return res.status(sessionRes.statusCode).json(buildErrorResponse(sessionRes.code, sessionRes.error));
+      }
+
+      const sessionToken = jwt.sign(
+        {
+          id: sessionRes.user.id,
+          sub: sessionRes.user.sub,
+          ...(sessionRes.user.supabaseUserId ? { supabaseUserId: sessionRes.user.supabaseUserId } : {}),
+          ...(sessionRes.user.providerUserId ? { providerUserId: sessionRes.user.providerUserId } : {}),
+          email: sessionRes.user.email,
+          name: sessionRes.user.name,
+          picture: sessionRes.user.picture,
+        },
+        JWT_SECRET,
+        { algorithm: 'HS256', expiresIn: '7d' }
+      );
+      const csrfToken = issueSessionCookies(req, res, sessionToken);
+
+      return res.json(
+        buildSuccessResponse(
+          {
+            user: sessionRes.user,
+            token: sessionToken,
+            csrfToken,
+            isNewUser: syncRes.isNewUser,
+            linkedIdentity: syncRes.linkedIdentity,
+          },
+          {
+            user: sessionRes.user,
+            token: sessionToken,
+            csrfToken,
+            isNewUser: syncRes.isNewUser,
+            linkedIdentity: syncRes.linkedIdentity,
+          }
+        )
+      );
+    } catch (err: any) {
+      console.error('[AUTH-SYNC] Synchronization error:', err?.message || err);
+      return res.status(500).json(buildErrorResponse('USER_SYNC_FAILED', err?.message || 'User synchronization failed.'));
+    }
+  });
+
   apiRouter.post('/auth/refresh', async (req, res) => {
     try {
-      const check = await verifySessionWithDb(req, {
-        getSupabase: getSupabaseAdmin,
-        getJwtSecret: () => JWT_SECRET,
-        getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
-      });
+      const check = await verifySessionWithDb(
+        req,
+        {
+          getSupabase: getSupabaseServiceAdmin,
+          getJwtSecret: () => JWT_SECRET,
+          getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+        },
+        { ensureUserRecord: true }
+      );
 
       if (!check.ok) {
         const errRes = check as { ok: false; statusCode: number; error: string; code: string };
@@ -798,6 +943,8 @@ async function startServer() {
         {
           id: check.user.id,
           sub: check.user.sub,
+          ...(check.user.supabaseUserId ? { supabaseUserId: check.user.supabaseUserId } : {}),
+          ...(check.user.providerUserId ? { providerUserId: check.user.providerUserId } : {}),
           email: check.user.email,
           name: check.user.name,
           picture: check.user.picture,
@@ -825,8 +972,12 @@ function hashPasswordNode(password: string) {
   return `${salt.toString('hex')}:${hash.toString('hex')}`;
 }
 
-function verifyPasswordNode(password: string, storedHash: string) {
+function verifyPasswordNode(password: string, storedHash: string | null | undefined) {
+  if (!storedHash || typeof storedHash !== 'string' || !storedHash.includes(':')) {
+    return false;
+  }
   const [saltHex, originalHashHex] = storedHash.split(':');
+  if (!saltHex || !originalHashHex) return false;
   const salt = Buffer.from(saltHex, 'hex');
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
   return hash.toString('hex') === originalHashHex;
@@ -881,86 +1032,39 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
 }
 
   apiRouter.post('/auth/email', async (req, res) => {
-    const { email, password, mode } = req.body;
+    const rawEmail = req.body?.email;
+    const password = req.body?.password;
+    const mode = req.body?.mode;
+    const fullName = req.body?.fullName || req.body?.name;
+    const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
     if (!email) return res.status(400).json({ error: 'Email is required' });
 
-    if (email.toLowerCase().endsWith('@gmail.com')) {
+    if (email.endsWith('@gmail.com')) {
       return res.status(400).json({ error: 'For Gmail accounts, please use Continue with Google.' });
     }
 
     try {
-      const supabase = getSupabaseAdmin();
+      const supabase = getSupabaseServiceAdmin();
       console.log(`Email auth action: ${mode} for ${email}`);
-      
-      // 1. Check if user exists in Supabase
-      const { data: users, error: fetchError } = await supabase
-        .from('users_auth')
-        .select('*')
-        .eq('email', email);
-
-      if (fetchError) throw fetchError;
-      const existingUser = users && users.length > 0 ? users[0] : null;
 
       if (mode === 'signup') {
-        if (existingUser) {
-          if (String(existingUser.status || 'active').toLowerCase() === 'suspended') {
-            return res.status(403).json({ error: 'Account suspended. Please contact support.' });
-          }
-          if (existingUser.is_verified) {
-            return res.status(400).json({ error: 'User already exists and is verified. Please log in.' });
-          }
-          // Fall through to send link for unverified user
-        } else {
-          if (!password) return res.status(400).json({ error: 'Password is required' });
-
-          const passwordHash = hashPasswordNode(password);
-          const nowIso = new Date().toISOString();
-          
-          // Save to Supabase (strictly assigning role: 'user', never trusting client role)
-          let { error: insertError } = await supabase
-            .from('users_auth')
-            .insert([{ 
-              email, 
-              password_hash: passwordHash, 
-              is_verified: false,
-              role: 'user',
-              status: 'active',
-              auth_provider: 'email',
-              created_at: nowIso
-            }]);
-
-          if (insertError && /column/i.test(insertError.message || '')) {
-            const fallback = await supabase
-              .from('users_auth')
-              .insert([{
-                email,
-                password_hash: passwordHash,
-                is_verified: false,
-                created_at: nowIso
-              }]);
-            insertError = fallback.error;
-          }
-
-          if (insertError) throw insertError;
-
-          await recordPlatformActivity(supabase, {
-            actorEmail: email,
-            actorRole: 'user',
-            action: 'USER_REGISTERED',
-            summary: `New email account registered: ${email}`,
-            metadata: { provider: 'email' },
-          });
+        const regRes = await registerEmailPasswordUser(
+          supabase,
+          { email, password, fullName },
+          { hashPassword: hashPasswordNode }
+        );
+        if (regRes.ok === false) {
+          return res.status(regRes.statusCode).json({ error: regRes.error, code: regRes.code });
         }
       } else {
-        // Login mode
-        if (!existingUser) return res.status(404).json({ error: 'Account not found' });
-        if (String(existingUser.status || 'active').toLowerCase() === 'suspended') {
-          return res.status(403).json({ error: 'Account suspended. Please contact support.' });
+        const authRes = await authenticateEmailPasswordUser(
+          supabase,
+          { email, password },
+          { verifyPassword: verifyPasswordNode }
+        );
+        if (authRes.ok === false) {
+          return res.status(authRes.statusCode).json({ error: authRes.error, code: authRes.code });
         }
-        if (!password) return res.status(400).json({ error: 'Password is required' });
-        
-        const isValid = verifyPasswordNode(password, existingUser.password_hash);
-        if (!isValid) return res.status(401).json({ error: 'Invalid password' });
       }
 
       // Generate verification/login token
@@ -1075,46 +1179,50 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
     if (!token) return res.status(400).json({ error: 'Token is required' });
 
     try {
-      const supabase = getSupabaseAdmin();
+      const supabase = getSupabaseServiceAdmin();
       const decoded = jwt.verify(token as string, JWT_SECRET, { algorithms: ['HS256'] }) as any;
       
       if (decoded.type !== 'verify_account' && decoded.type !== 'magic_link') {
         return res.status(400).json({ error: 'Invalid token type' });
       }
 
-      const email = decoded.email;
-
-      const existingDbUser = await findDbUserForIdentity(supabase, { email });
-      if (existingDbUser && String(existingDbUser.status || 'active').toLowerCase() === 'suspended') {
-        return res.status(403).json({ error: 'Account suspended. Please contact support.' });
-      }
-
-      // Update is_verified and last_login_at in Supabase
-      const { error: verifyPatchErr } = await supabase
-        .from('users_auth')
-        .update({ is_verified: true, last_login_at: new Date().toISOString() })
-        .eq('email', email);
-      if (verifyPatchErr && /column/i.test(verifyPatchErr.message || '')) {
-        await supabase.from('users_auth').update({ is_verified: true }).eq('email', email);
+      const verifyRes = await verifyEmailAccountTokenUser(supabase, decoded.email);
+      if (verifyRes.ok === false) {
+        return res.status(verifyRes.statusCode).json({ error: verifyRes.error, code: verifyRes.code });
       }
 
       const baseUser = {
-        id: `email-${Buffer.from(email).toString('base64').slice(0, 12)}`,
-        email: email,
-        name: existingDbUser?.full_name || email.split('@')[0],
-        picture: null,
+        id: verifyRes.canonicalUserId,
+        sub: verifyRes.user?.provider_user_id || verifyRes.canonicalUserId,
+        ...(verifyRes.supabaseUserId ? { supabaseUserId: verifyRes.supabaseUserId } : {}),
+        email: verifyRes.user?.email || String(decoded.email).trim().toLowerCase(),
+        name: verifyRes.user?.full_name || String(decoded.email).split('@')[0],
+        picture: verifyRes.user?.avatar_url || null,
       };
       const sessionResolution = await resolveAuthenticatedSessionUser(
         supabase,
         baseUser,
         process.env.SUPER_ADMIN_EMAILS
       );
-      const user = sessionResolution.ok ? sessionResolution.user : baseUser;
+      if (sessionResolution.ok === false) {
+        return res.status(sessionResolution.statusCode).json({ error: sessionResolution.error, code: sessionResolution.code });
+      }
 
-      const sessionToken = jwt.sign(baseUser, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
+      const sessionToken = jwt.sign(
+        {
+          id: sessionResolution.user.id,
+          sub: sessionResolution.user.sub,
+          ...(sessionResolution.user.supabaseUserId ? { supabaseUserId: sessionResolution.user.supabaseUserId } : {}),
+          email: sessionResolution.user.email,
+          name: sessionResolution.user.name,
+          picture: sessionResolution.user.picture,
+        },
+        JWT_SECRET,
+        { algorithm: 'HS256', expiresIn: '7d' }
+      );
       const csrfToken = issueSessionCookies(req, res, sessionToken);
 
-      res.json(buildSuccessResponse({ user, token: sessionToken, csrfToken }, { user, token: sessionToken, csrfToken }));
+      res.json(buildSuccessResponse({ user: sessionResolution.user, token: sessionToken, csrfToken }, { user: sessionResolution.user, token: sessionToken, csrfToken }));
     } catch (error: any) {
       console.error('Token verification failed:', error.message);
       res.status(401).json({ error: 'Invalid or expired link' });
@@ -1213,16 +1321,15 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
         return res.status(400).json({ error: 'Invalid token type' });
       }
 
-      const email = decoded.email;
-      const supabase = getSupabaseAdmin();
-      const passwordHash = hashPasswordNode(password);
-
-      const { error: updateError } = await supabase
-        .from('users_auth')
-        .update({ password_hash: passwordHash })
-        .eq('email', email);
-
-      if (updateError) throw updateError;
+      const supabase = getSupabaseServiceAdmin();
+      const resetRes = await resetUserPasswordWithHash(
+        supabase,
+        { email: decoded.email, password },
+        { hashPassword: hashPasswordNode }
+      );
+      if (resetRes.ok === false) {
+        return res.status(resetRes.statusCode).json({ error: resetRes.error, code: resetRes.code });
+      }
 
       res.json({ success: true, message: 'Password updated successfully' });
     } catch (error: any) {
@@ -1639,6 +1746,18 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
   // --- Template Routes (Staff Only for Mutations) ---
   // --- Template Routes ---
   apiRouter.post('/ai/generate-template', async (req, res) => {
+    const authCheck = await verifySessionWithDb(req, {
+      getSupabase: getSupabaseAdmin,
+      getJwtSecret: () => JWT_SECRET,
+    });
+    if (!authCheck.ok) {
+      const errCheck = authCheck as { ok: false; statusCode: number; error: string; code: string };
+      return res.status(errCheck.statusCode).json({ error: errCheck.error, code: errCheck.code });
+    }
+    if (authCheck.user.is_developer !== true) {
+      return res.status(403).json({ error: 'Developer access required', code: 'FORBIDDEN_DEVELOPER_ONLY' });
+    }
+
     const { prompt, existingContext } = req.body;
     if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
     
@@ -1726,18 +1845,19 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
   });
 
   apiRouter.post('/templates', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const authCheck = await verifySessionWithDb(req, {
+      getSupabase: getSupabaseAdmin,
+      getJwtSecret: () => JWT_SECRET,
+    });
+    if (!authCheck.ok) {
+      const errCheck = authCheck as { ok: false; statusCode: number; error: string; code: string };
+      return res.status(errCheck.statusCode).json({ error: errCheck.error, code: errCheck.code });
+    }
+    if (authCheck.user.is_developer !== true) {
+      return res.status(403).json({ error: 'Developer access required', code: 'FORBIDDEN_DEVELOPER_ONLY' });
+    }
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-      
-      // Staff check
-      const isStaff = decoded.email === 'buildsiteasia@gmail.com' || decoded.email?.endsWith('@eventframe.io');
-      if (!isStaff) return res.status(403).json({ error: 'Staff access required' });
-
       const templateData = req.body;
       const { data, error } = await getSupabaseAdmin()
         .from('templates')
@@ -1752,27 +1872,29 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
 
       res.status(201).json({ success: true, data });
     } catch (error: any) {
-      res.status(401).json({ error: 'Invalid session', details: error.message });
+      res.status(500).json({ error: 'Failed to create template', details: error.message });
     }
   });
 
   apiRouter.patch('/templates/:id', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const authCheck = await verifySessionWithDb(req, {
+      getSupabase: getSupabaseAdmin,
+      getJwtSecret: () => JWT_SECRET,
+    });
+    if (!authCheck.ok) {
+      const errCheck = authCheck as { ok: false; statusCode: number; error: string; code: string };
+      return res.status(errCheck.statusCode).json({ error: errCheck.error, code: errCheck.code });
+    }
+    if (authCheck.user.is_developer !== true) {
+      return res.status(403).json({ error: 'Developer access required', code: 'FORBIDDEN_DEVELOPER_ONLY' });
+    }
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-      
-      const isStaff = decoded.email === 'buildsiteasia@gmail.com' || decoded.email?.endsWith('@eventframe.io');
-      if (!isStaff) return res.status(403).json({ error: 'Staff access required' });
-
       const { id } = req.params;
       const templateData = req.body;
       const { id: _, ...updateData } = templateData;
 
-      console.log(`[TEMPLATES] PATCH ${id} by ${decoded.email}`);
+      console.log(`[TEMPLATES] PATCH ${id} by ${authCheck.user.email}`);
 
       const { data, error } = await getSupabaseAdmin()
         .from('templates')
@@ -1788,26 +1910,28 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
 
       res.json({ success: true, data });
     } catch (error: any) {
-      res.status(401).json({ error: 'Invalid session', details: error.message });
+      res.status(500).json({ error: 'Failed to update template', details: error.message });
     }
   });
 
   apiRouter.put('/templates/:id', async (req, res) => {
-    // Also support PUT via redirection to PATCH logic or just duplicate for safety
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const authCheck = await verifySessionWithDb(req, {
+      getSupabase: getSupabaseAdmin,
+      getJwtSecret: () => JWT_SECRET,
+    });
+    if (!authCheck.ok) {
+      const errCheck = authCheck as { ok: false; statusCode: number; error: string; code: string };
+      return res.status(errCheck.statusCode).json({ error: errCheck.error, code: errCheck.code });
+    }
+    if (authCheck.user.is_developer !== true) {
+      return res.status(403).json({ error: 'Developer access required', code: 'FORBIDDEN_DEVELOPER_ONLY' });
+    }
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-      const isStaff = decoded.email === 'buildsiteasia@gmail.com' || decoded.email?.endsWith('@eventframe.io');
-      if (!isStaff) return res.status(403).json({ error: 'Staff access required' });
-
       const { id } = req.params;
       const { id: _, ...updateData } = req.body;
 
-      console.log(`[TEMPLATES] PUT ${id} by ${decoded.email}`);
+      console.log(`[TEMPLATES] PUT ${id} by ${authCheck.user.email}`);
 
       const { data, error } = await getSupabaseAdmin()
         .from('templates')
@@ -1819,22 +1943,24 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
       if (error) return res.status(500).json({ error: error.message });
       res.json({ success: true, data });
     } catch (error: any) {
-      res.status(401).json({ error: 'Invalid session', details: error.message });
+      res.status(500).json({ error: 'Failed to update template', details: error.message });
     }
   });
 
   apiRouter.delete('/templates/:id', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const authCheck = await verifySessionWithDb(req, {
+      getSupabase: getSupabaseAdmin,
+      getJwtSecret: () => JWT_SECRET,
+    });
+    if (!authCheck.ok) {
+      const errCheck = authCheck as { ok: false; statusCode: number; error: string; code: string };
+      return res.status(errCheck.statusCode).json({ error: errCheck.error, code: errCheck.code });
+    }
+    if (authCheck.user.is_developer !== true) {
+      return res.status(403).json({ error: 'Developer access required', code: 'FORBIDDEN_DEVELOPER_ONLY' });
+    }
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-      
-      const isStaff = decoded.email === 'buildsiteasia@gmail.com' || decoded.email?.endsWith('@eventframe.io');
-      if (!isStaff) return res.status(403).json({ error: 'Staff access required' });
-
       const { id } = req.params;
       const { error } = await getSupabaseAdmin()
         .from('templates')
@@ -1848,7 +1974,7 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
 
       res.json({ success: true });
     } catch (error: any) {
-      res.status(401).json({ error: 'Invalid session', details: error.message });
+      res.status(500).json({ error: 'Failed to delete template', details: error.message });
     }
   });
 

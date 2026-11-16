@@ -16,27 +16,43 @@ export default function Login() {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { isLoading: isGlobalLoading } = useUser();
+  const { user, isLoading: isGlobalLoading, isSessionVerified } = useUser();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const authError = searchParams.get('error');
 
   const redirectParam = searchParams.get('redirect');
-  const safeRedirect =
+  const safeRedirectParam =
     redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
       ? redirectParam
-      : '/workspace';
+      : null;
 
   useEffect(() => {
-    const token = localStorage.getItem('wedding_session_token');
-    if (token && !loading && !isGlobalLoading) {
-      navigate(safeRedirect);
+    if (!loading && !isGlobalLoading && isSessionVerified && user) {
+      const userIsDeveloper = user.is_developer === true || user.isDeveloper === true;
+      if (safeRedirectParam) {
+        if (safeRedirectParam.startsWith('/developer') && !userIsDeveloper) {
+          navigate('/workspace', { replace: true });
+          return;
+        }
+        navigate(safeRedirectParam, { replace: true });
+        return;
+      }
+      navigate(userIsDeveloper ? '/developer' : '/workspace', { replace: true });
     }
-  }, [navigate, loading, isGlobalLoading, safeRedirect]);
+  }, [navigate, loading, isGlobalLoading, isSessionVerified, user, safeRedirectParam]);
 
   useEffect(() => {
     if (authError) {
-      setError(decodeURIComponent(authError));
+      const decoded = decodeURIComponent(authError);
+      const errorMap: Record<string, string> = {
+        no_code: 'Google sign-in was cancelled or did not return an authorization code.',
+        auth_failed: 'Google authentication failed. Please try signing in again.',
+        missing_profile: 'Google did not provide a valid email address and account ID.',
+        email_not_verified: 'Please verify your email address with Google before signing in.',
+        user_sync_failed: 'Your Google sign-in succeeded, but we could not synchronize your account profile. Please try again or contact support.',
+      };
+      setError(errorMap[decoded] || decoded);
     }
   }, [authError]);
 

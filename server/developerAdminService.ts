@@ -1,3 +1,9 @@
+import {
+  isValidUuid,
+  syncAuthenticatedUserRecord,
+  type SyncUserResult,
+} from './userSyncService';
+
 export type PlatformUserRole = 'user' | 'agency_owner' | 'agency_member' | 'super_admin';
 export type AccountStatus = 'active' | 'suspended';
 
@@ -11,6 +17,7 @@ export interface SanitizedUserRecord {
   role: PlatformUserRole;
   status: AccountStatus;
   isVerified: boolean;
+  isDeveloper: boolean;
   organizationCount: number;
   organizationIds: string[];
   organizationNames: string[];
@@ -302,6 +309,22 @@ export async function findDbUserForIdentity(
     }
 
     for (const cid of candidateIds) {
+      if (isValidUuid(cid)) {
+        const { data: bySbId, error: sbErr } = await supabase
+          .from('users_auth')
+          .select('*')
+          .eq('supabase_user_id', cid)
+          .maybeSingle();
+        if (!sbErr && bySbId) return stripSensitiveUserFields(bySbId);
+      }
+
+      const { data: byProv, error: provErr } = await supabase
+        .from('users_auth')
+        .select('*')
+        .eq('provider_user_id', cid)
+        .maybeSingle();
+      if (!provErr && byProv) return stripSensitiveUserFields(byProv);
+
       const { data: byExt } = await supabase
         .from('users_auth')
         .select('*')
@@ -326,10 +349,42 @@ export async function findDbUserForIdentity(
 // Authoritative Server-Side Auth, Role Verification & Account Suspension
 // ============================================================================
 
+export function resolveDbUserIsDeveloper(dbUser: any): boolean {
+  if (!dbUser || typeof dbUser !== 'object') return false;
+  if (dbUser.deleted_at) return false;
+  if (typeof dbUser.is_developer === 'boolean') {
+    return dbUser.is_developer === true;
+  }
+  // Pre-migration fallback ONLY when `is_developer` column is absent in a legacy fixture
+  if (dbUser.is_developer === undefined) {
+    return String(dbUser.role || '').toLowerCase() === 'super_admin';
+  }
+  return false;
+}
+
+export async function isDeveloper(
+  supabase: any,
+  identityOrUserId: string | { id?: string | null; sub?: string | null; email?: string | null } | null | undefined
+): Promise<boolean> {
+  if (!supabase || !identityOrUserId) return false;
+  const identity =
+    typeof identityOrUserId === 'string'
+      ? identityOrUserId.includes('@')
+        ? { email: identityOrUserId }
+        : { id: identityOrUserId, sub: identityOrUserId }
+      : identityOrUserId;
+
+  const dbUser = await findDbUserForIdentity(supabase, identity);
+  if (!dbUser) return false;
+  if (String(dbUser.status || 'active').toLowerCase() === 'suspended') return false;
+  return resolveDbUserIsDeveloper(dbUser);
+}
+
 export async function resolveAuthenticatedSessionUser(
   supabase: any,
   decodedToken: any,
-  superAdminEmailsRaw?: string | null
+  _superAdminEmailsRaw?: string | null,
+  options?: { ensureUserRecord?: boolean }
 ): Promise<
   | { ok: true; user: any }
   | { ok: false; statusCode: number; error: string; code: string; suspendedReason?: string | null }
@@ -339,14 +394,51 @@ export async function resolveAuthenticatedSessionUser(
   }
 
   const email = normalizeEmail(decodedToken.email);
-  const userId = String(decodedToken.id || decodedToken.sub || (email ? deriveEmailUserId(email) : ''));
-  const allowlist = parseSuperAdminEmails(superAdminEmailsRaw);
+  const rawTokenId = String(decodedToken.id || decodedToken.sub || '');
+  const userId = String(rawTokenId || (email ? deriveEmailUserId(email) : ''));
 
-  const dbUser = await findDbUserForIdentity(supabase, {
-    id: decodedToken.id,
+  let dbUser = await findDbUserForIdentity(supabase, {
+    id: decodedToken.supabaseUserId || decodedToken.id,
     sub: decodedToken.sub,
     email: decodedToken.email,
   });
+
+  if (!dbUser && options?.ensureUserRecord && supabase && email) {
+    const providerHint = String(decodedToken.authProvider || '').toLowerCase();
+    const providerUserId =
+      typeof decodedToken.providerUserId === 'string' && decodedToken.providerUserId.trim()
+        ? decodedToken.providerUserId.trim()
+        : typeof decodedToken.sub === 'string' && !isValidUuid(decodedToken.sub) && !decodedToken.sub.startsWith('email-')
+          ? decodedToken.sub
+          : null;
+    const inferredProvider: 'google' | 'email' | 'supabase' =
+      providerHint === 'google' || providerUserId ? 'google' : 'email';
+
+    const syncAttempt = await syncAuthenticatedUserRecord(supabase, {
+      supabaseUserId: isValidUuid(decodedToken.supabaseUserId)
+        ? decodedToken.supabaseUserId
+        : isValidUuid(rawTokenId)
+          ? rawTokenId
+          : null,
+      email,
+      fullName: typeof decodedToken.name === 'string' ? decodedToken.name : null,
+      avatarUrl: typeof decodedToken.picture === 'string' ? decodedToken.picture : null,
+      authProvider: inferredProvider,
+      providerUserId,
+      emailVerified: true,
+    });
+
+    if (syncAttempt.ok === false) {
+      return {
+        ok: false,
+        statusCode: syncAttempt.statusCode,
+        error: syncAttempt.error,
+        code: syncAttempt.code,
+      };
+    }
+
+    dbUser = syncAttempt.user;
+  }
 
   // Strict server-side suspension enforcement
   if (dbUser && String(dbUser.status || 'active').toLowerCase() === 'suspended') {
@@ -359,13 +451,15 @@ export async function resolveAuthenticatedSessionUser(
     };
   }
 
+  const userIsDeveloper = resolveDbUserIsDeveloper(dbUser);
+
   let resolvedRole: PlatformUserRole = 'user';
   const dbRole = String(dbUser?.role || '').toLowerCase();
 
-  if (dbRole === 'super_admin' || (email && allowlist.has(email))) {
-    resolvedRole = 'super_admin';
-  } else if (dbRole === 'agency_owner' || dbRole === 'agency_member') {
+  if (dbRole === 'agency_owner' || dbRole === 'agency_member') {
     resolvedRole = dbRole as PlatformUserRole;
+  } else if (dbRole === 'super_admin' && userIsDeveloper) {
+    resolvedRole = 'super_admin';
   } else if (supabase && (userId || email)) {
     try {
       const { data: ownedAgency } = await supabase
@@ -397,6 +491,8 @@ export async function resolveAuthenticatedSessionUser(
     decodedToken.name ||
     (email ? email.split('@')[0] : 'EventFrame User');
 
+  const resolvedAvatar = dbUser?.avatar_url || decodedToken.picture || null;
+
   return {
     ok: true,
     user: {
@@ -406,23 +502,30 @@ export async function resolveAuthenticatedSessionUser(
       email: dbUser?.email || decodedToken.email || '',
       name: resolvedName,
       full_name: resolvedName,
-      picture: dbUser?.avatar_url || decodedToken.picture || null,
+      picture: resolvedAvatar,
+      avatarUrl: resolvedAvatar,
       role: resolvedRole,
+      is_developer: userIsDeveloper,
+      isDeveloper: userIsDeveloper,
       status: 'active' as AccountStatus,
       dbUserId: dbUser?.id ? String(dbUser.id) : null,
+      supabaseUserId: dbUser?.supabase_user_id ? String(dbUser.supabase_user_id) : null,
+      externalUserId: dbUser?.external_user_id ? String(dbUser.external_user_id) : null,
+      providerUserId: dbUser?.provider_user_id ? String(dbUser.provider_user_id) : null,
+      authProvider: dbUser?.auth_provider || null,
+      emailVerified: Boolean(dbUser?.email_verified ?? dbUser?.is_verified),
     },
   };
 }
 
-export async function requireSuperAdminSession(
+export async function requireDeveloper(
   supabase: any,
-  decodedToken: any,
-  superAdminEmailsRaw?: string | null
+  decodedToken: any
 ): Promise<
   | { ok: true; admin: any }
   | { ok: false; statusCode: number; error: string; code: string }
 > {
-  const sessionCheck = await resolveAuthenticatedSessionUser(supabase, decodedToken, superAdminEmailsRaw);
+  const sessionCheck = await resolveAuthenticatedSessionUser(supabase, decodedToken);
   if (sessionCheck.ok === false) {
     return {
       ok: false,
@@ -432,127 +535,69 @@ export async function requireSuperAdminSession(
     };
   }
 
-  if (sessionCheck.user.role !== 'super_admin') {
+  if (sessionCheck.user.is_developer !== true) {
     return {
       ok: false,
       statusCode: 403,
-      error: 'Forbidden: super_admin role is required to access developer administration.',
-      code: 'FORBIDDEN_SUPER_ADMIN_ONLY',
+      error: 'Forbidden: Developer authorization (is_developer) is required to access developer administration.',
+      code: 'FORBIDDEN_DEVELOPER_ONLY',
     };
   }
 
   return { ok: true, admin: sessionCheck.user };
 }
 
+export async function requireSuperAdminSession(
+  supabase: any,
+  decodedToken: any,
+  _superAdminEmailsRaw?: string | null
+): Promise<
+  | { ok: true; admin: any }
+  | { ok: false; statusCode: number; error: string; code: string }
+> {
+  return requireDeveloper(supabase, decodedToken);
+}
+
 export async function syncUserOnLogin(
   supabase: any,
   params: {
+    supabaseUserId?: string | null;
     externalUserId?: string | null;
     email: string;
     name?: string | null;
     picture?: string | null;
     provider: 'google' | 'email';
+    emailVerified?: boolean;
   }
-): Promise<{ allowed: true; isNewUser: boolean; user: any | null } | { allowed: false; reason: string }> {
-  if (!supabase || !params.email) {
-    return { allowed: true, isNewUser: false, user: null };
-  }
+): Promise<
+  | { allowed: true; isNewUser: boolean; linkedIdentity?: boolean; user: any | null }
+  | { allowed: false; reason: string; code?: string; statusCode?: number }
+> {
+  const result: SyncUserResult = await syncAuthenticatedUserRecord(supabase, {
+    supabaseUserId: params.supabaseUserId || null,
+    email: params.email,
+    fullName: params.name,
+    avatarUrl: params.picture,
+    authProvider: params.provider,
+    providerUserId: params.externalUserId || null,
+    emailVerified: params.emailVerified ?? params.provider === 'google',
+  });
 
-  const email = normalizeEmail(params.email);
-  const nowIso = new Date().toISOString();
-
-  try {
-    const existing = await findDbUserForIdentity(supabase, { email });
-
-    if (existing) {
-      if (String(existing.status || 'active').toLowerCase() === 'suspended') {
-        return {
-          allowed: false,
-          reason: existing.suspended_reason || 'Account suspended. Please contact support.',
-        };
-      }
-
-      const patchData: Record<string, any> = {
-        last_login_at: nowIso,
-        updated_at: nowIso,
-      };
-      if (params.externalUserId && !existing.external_user_id) {
-        patchData.external_user_id = params.externalUserId;
-      }
-      if (params.name && !existing.full_name) {
-        patchData.full_name = params.name;
-      }
-      if (params.picture && !existing.avatar_url) {
-        patchData.avatar_url = params.picture;
-      }
-      if (params.provider === 'google' && !existing.is_verified) {
-        patchData.is_verified = true;
-      }
-
-      const { error: updateErr } = await supabase
-        .from('users_auth')
-        .update(patchData)
-        .eq('email', existing.email);
-
-      if (updateErr && /column/i.test(updateErr.message || '')) {
-        // Ignore if extended columns are not yet migrated
-      }
-
-      return { allowed: true, isNewUser: false, user: existing };
-    }
-
-    // First-time user (e.g. Google OAuth registration): NEVER set super_admin
-    const insertPayload: Record<string, any> = {
-      email,
-      is_verified: params.provider === 'google',
-      full_name: params.name || email.split('@')[0],
-      avatar_url: params.picture || null,
-      auth_provider: params.provider,
-      external_user_id: params.externalUserId || null,
-      role: 'user',
-      status: 'active',
-      last_login_at: nowIso,
-      created_at: nowIso,
-      updated_at: nowIso,
+  if (result.ok === false) {
+    return {
+      allowed: false,
+      reason: result.error,
+      code: result.code,
+      statusCode: result.statusCode,
     };
-
-    let insertedRow: any = null;
-    const { data, error } = await supabase
-      .from('users_auth')
-      .insert([insertPayload])
-      .select()
-      .maybeSingle();
-
-    if (error) {
-      // Fallback for pre-migration schema without extended columns
-      const { data: fallbackRow } = await supabase
-        .from('users_auth')
-        .insert([{
-          email,
-          is_verified: params.provider === 'google',
-          created_at: nowIso,
-        }])
-        .select()
-        .maybeSingle();
-      insertedRow = stripSensitiveUserFields(fallbackRow);
-    } else {
-      insertedRow = stripSensitiveUserFields(data);
-    }
-
-    await recordPlatformActivity(supabase, {
-      actorId: params.externalUserId || (insertedRow?.id ? String(insertedRow.id) : null),
-      actorEmail: email,
-      actorRole: 'user',
-      action: 'USER_REGISTERED',
-      targetUserId: insertedRow?.id ? String(insertedRow.id) : (params.externalUserId || email),
-      summary: `New user registered via ${params.provider}: ${email}`,
-      metadata: { provider: params.provider },
-    });
-
-    return { allowed: true, isNewUser: true, user: insertedRow };
-  } catch {
-    return { allowed: true, isNewUser: false, user: null };
   }
+
+  return {
+    allowed: true,
+    isNewUser: result.isNewUser,
+    linkedIdentity: result.linkedIdentity,
+    user: result.user,
+  };
 }
 
 export async function recordPlatformActivity(
@@ -1127,6 +1172,7 @@ async function loadPlatformSnapshot(supabase: any, now: Date = new Date()): Prom
         role: 'agency_owner',
         status: 'active',
         isVerified: true,
+        isDeveloper: false,
         organizationCount: isAgencyTest ? 0 : 1,
         organizationIds: [String(a.id)],
         organizationNames: [a.name || a.slug],
@@ -1158,16 +1204,20 @@ async function loadPlatformSnapshot(supabase: any, now: Date = new Date()): Prom
       return acc + evs.length;
     }, 0);
 
+    const userIsDeveloper = resolveDbUserIsDeveloper(u);
     const rawRole = String(u.role || '').toLowerCase();
+    const ownsOrg = linkedOrgs.some(
+      (o) =>
+        String(o.user_id) === String(u.id) ||
+        String(o.user_id) === String(u.external_user_id) ||
+        String(o.user_id) === deriveEmailUserId(u.email)
+    );
     let role: PlatformUserRole = 'user';
-    if (rawRole === 'super_admin') role = 'super_admin';
-    else if (rawRole === 'agency_owner') role = 'agency_owner';
+    if (rawRole === 'agency_owner') role = 'agency_owner';
     else if (rawRole === 'agency_member') role = 'agency_member';
-    else if (linkedOrgs.some((o) => String(o.user_id) === String(u.id) || String(o.user_id) === String(u.external_user_id) || String(o.user_id) === deriveEmailUserId(u.email))) {
-      role = 'agency_owner';
-    } else if (u.organization_id) {
-      role = 'agency_member';
-    }
+    else if (rawRole === 'super_admin' && userIsDeveloper) role = 'super_admin';
+    else if (ownsOrg) role = 'agency_owner';
+    else if (u.organization_id) role = 'agency_member';
 
     return {
       id: String(u.id || u.external_user_id || deriveEmailUserId(u.email)),
@@ -1179,6 +1229,7 @@ async function loadPlatformSnapshot(supabase: any, now: Date = new Date()): Prom
       role,
       status: String(u.status || 'active').toLowerCase() === 'suspended' ? 'suspended' : 'active',
       isVerified: Boolean(u.is_verified),
+      isDeveloper: userIsDeveloper,
       organizationCount: genuineLinkedOrgs.length,
       organizationIds: linkedOrgs.map((o) => String(o.id)),
       organizationNames: linkedOrgs.map((o) => String(o.name || o.slug)),
@@ -1522,6 +1573,7 @@ export async function listUsers(
     search?: string;
     status?: string;
     role?: string;
+    isDeveloper?: string;
     organizationId?: string;
     registeredFrom?: string;
     registeredTo?: string;
@@ -1551,7 +1603,19 @@ export async function listUsers(
   }
 
   if (query.role && query.role !== 'all') {
-    list = list.filter((u) => u.role === query.role);
+    if (query.role === 'super_admin') {
+      list = list.filter((u) => u.role === 'super_admin' || u.isDeveloper);
+    } else {
+      list = list.filter((u) => u.role === query.role);
+    }
+  }
+
+  if (query.isDeveloper && query.isDeveloper !== 'all') {
+    if (query.isDeveloper === 'developers' || query.isDeveloper === 'true') {
+      list = list.filter((u) => u.isDeveloper === true);
+    } else if (query.isDeveloper === 'non_developers' || query.isDeveloper === 'false') {
+      list = list.filter((u) => !u.isDeveloper);
+    }
   }
 
   if (query.organizationId && query.organizationId !== 'all') {
@@ -1639,7 +1703,15 @@ export async function suspendUserAccount(
   }
 
   if (actor.email && target.email.toLowerCase() === actor.email.toLowerCase()) {
-    return { ok: false, statusCode: 400, error: 'You cannot suspend your own super_admin account.' };
+    return { ok: false, statusCode: 400, error: 'You cannot suspend your own developer account.' };
+  }
+
+  if (target.isDeveloper) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: 'Revoke developer access before suspending an active developer account.',
+    };
   }
 
   const nowIso = new Date().toISOString();
@@ -1667,14 +1739,18 @@ export async function suspendUserAccount(
       .insert([
         {
           email: target.email,
+          password_hash: null,
           full_name: target.fullName,
           external_user_id: target.externalUserId || target.id,
           auth_provider: target.authProvider || 'google',
           role: target.role,
+          is_developer: false,
           status: 'suspended',
           suspended_at: nowIso,
           suspended_reason: cleanReason,
           is_verified: true,
+          email_verified: true,
+          is_test: false,
           created_at: target.createdAt || nowIso,
           updated_at: nowIso,
         },
@@ -1687,7 +1763,7 @@ export async function suspendUserAccount(
   await recordPlatformActivity(supabase, {
     actorId: actor.id || null,
     actorEmail: actor.email || null,
-    actorRole: actor.role || 'super_admin',
+    actorRole: actor.role || 'developer',
     action: 'ACCOUNT_SUSPENDED',
     organizationId: target.organizationIds[0] || null,
     targetUserId: target.id,
@@ -1746,7 +1822,7 @@ export async function reactivateUserAccount(
   await recordPlatformActivity(supabase, {
     actorId: actor.id || null,
     actorEmail: actor.email || null,
-    actorRole: actor.role || 'super_admin',
+    actorRole: actor.role || 'developer',
     action: 'ACCOUNT_REACTIVATED',
     organizationId: target.organizationIds[0] || null,
     targetUserId: target.id,
@@ -1761,6 +1837,183 @@ export async function reactivateUserAccount(
       status: 'active',
       suspendedAt: null,
       suspendedReason: null,
+    },
+  };
+}
+
+export async function updateUserDeveloperAccess(
+  supabase: any,
+  targetUserId: string,
+  nextIsDeveloper: boolean,
+  actor: { id?: string; dbUserId?: string | null; email?: string; role?: string }
+): Promise<
+  | { ok: true; user: SanitizedUserRecord; unchanged?: boolean }
+  | { ok: false; statusCode: number; error: string; code?: string }
+> {
+  if (typeof nextIsDeveloper !== 'boolean') {
+    return { ok: false, statusCode: 400, error: 'isDeveloper must be a boolean.', code: 'INVALID_INPUT' };
+  }
+
+  const actorAuthorized = await isDeveloper(supabase, {
+    id: actor?.id,
+    email: actor?.email,
+  });
+  if (!actorAuthorized) {
+    return {
+      ok: false,
+      statusCode: 403,
+      error: 'Forbidden: Developer authorization is required.',
+      code: 'FORBIDDEN_DEVELOPER_ONLY',
+    };
+  }
+
+  const snapshot = await loadPlatformSnapshot(supabase);
+  const target = snapshot.users.find(
+    (u) =>
+      u.id === targetUserId ||
+      u.externalUserId === targetUserId ||
+      u.email.toLowerCase() === targetUserId.toLowerCase()
+  );
+
+  if (!target) {
+    return { ok: false, statusCode: 404, error: 'User not found', code: 'USER_NOT_FOUND' };
+  }
+
+  const actorEmail = normalizeEmail(actor?.email);
+  const targetEmail = normalizeEmail(target.email);
+  const isSelfTarget =
+    (actorEmail && targetEmail && actorEmail === targetEmail) ||
+    (actor?.dbUserId && String(actor.dbUserId) === target.id) ||
+    (actor?.id && (String(actor.id) === target.id || String(actor.id) === target.externalUserId));
+
+  if (isSelfTarget) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: nextIsDeveloper
+        ? 'You cannot modify developer access on your own account.'
+        : 'You cannot revoke your own developer access.',
+      code: 'SELF_MODIFICATION_FORBIDDEN',
+    };
+  }
+
+  const existingDbRow = await findDbUserForIdentity(supabase, { email: target.email, id: target.id });
+  const currentIsDeveloper = existingDbRow ? resolveDbUserIsDeveloper(existingDbRow) : target.isDeveloper;
+
+  if (currentIsDeveloper === nextIsDeveloper) {
+    return { ok: true, user: { ...target, isDeveloper: currentIsDeveloper }, unchanged: true };
+  }
+
+  // Prevent revoking the last remaining active developer in the system
+  if (!nextIsDeveloper) {
+    const activeDevelopers = snapshot.rawUsers.filter(
+      (u) => !u.deleted_at && String(u.status || 'active').toLowerCase() !== 'suspended' && resolveDbUserIsDeveloper(u)
+    );
+    const remainingAfterRevoke = activeDevelopers.filter((u) => {
+      const uEmail = normalizeEmail(u.email);
+      const uId = String(u.id || '');
+      const uExt = String(u.external_user_id || '');
+      return !(
+        (targetEmail && uEmail === targetEmail) ||
+        uId === target.id ||
+        (target.externalUserId && uExt === target.externalUserId)
+      );
+    });
+
+    if (remainingAfterRevoke.length === 0) {
+      return {
+        ok: false,
+        statusCode: 400,
+        error: 'Cannot revoke developer access from the last remaining active developer account.',
+        code: 'LAST_DEVELOPER_PROTECTED',
+      };
+    }
+  }
+
+  if (nextIsDeveloper && target.status === 'suspended') {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: 'Reactivate this suspended account before granting developer access.',
+      code: 'USER_SUSPENDED',
+    };
+  }
+
+  const nowIso = new Date().toISOString();
+
+  // Preserve independent agency role; only normalize legacy `super_admin` string on revoke
+  let nextRole: PlatformUserRole = target.role;
+  if (!nextIsDeveloper && target.role === 'super_admin') {
+    nextRole = target.organizationIds.length > 0 ? 'agency_owner' : 'user';
+  }
+
+  if (existingDbRow) {
+    const updatePatch: Record<string, any> = {
+      is_developer: nextIsDeveloper,
+      updated_at: nowIso,
+    };
+    if (!nextIsDeveloper && String(existingDbRow.role || '').toLowerCase() === 'super_admin') {
+      updatePatch.role = nextRole;
+    }
+
+    const { error } = await supabase
+      .from('users_auth')
+      .update(updatePatch)
+      .eq('email', existingDbRow.email);
+
+    if (error) {
+      return { ok: false, statusCode: 500, error: error.message, code: 'DB_ERROR' };
+    }
+  } else {
+    const { error } = await supabase
+      .from('users_auth')
+      .insert([
+        {
+          email: target.email,
+          password_hash: null,
+          full_name: target.fullName,
+          external_user_id: target.externalUserId || target.id,
+          auth_provider: target.authProvider || 'google',
+          role: nextRole,
+          is_developer: nextIsDeveloper,
+          status: target.status,
+          is_verified: true,
+          email_verified: true,
+          is_test: false,
+          created_at: target.createdAt || nowIso,
+          updated_at: nowIso,
+        },
+      ]);
+
+    if (error) {
+      return { ok: false, statusCode: 500, error: error.message, code: 'DB_ERROR' };
+    }
+  }
+
+  await recordPlatformActivity(supabase, {
+    actorId: actor.id || null,
+    actorEmail: actor.email || null,
+    actorRole: 'developer',
+    action: nextIsDeveloper ? 'DEVELOPER_ACCESS_GRANTED' : 'DEVELOPER_ACCESS_REVOKED',
+    organizationId: target.organizationIds[0] || null,
+    targetUserId: target.id,
+    summary: nextIsDeveloper
+      ? `Granted platform developer access to ${target.email}`
+      : `Revoked platform developer access from ${target.email}`,
+    metadata: {
+      targetEmail: target.email,
+      previousIsDeveloper: currentIsDeveloper,
+      newIsDeveloper: nextIsDeveloper,
+      preservedRole: nextRole,
+    },
+  });
+
+  return {
+    ok: true,
+    user: {
+      ...target,
+      role: nextRole,
+      isDeveloper: nextIsDeveloper,
     },
   };
 }

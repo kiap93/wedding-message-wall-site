@@ -21,13 +21,25 @@ import {
   registerWorkerDeveloperRoutes,
   verifyWorkerSessionWithDb,
   getWorkerSupabase,
+  getWorkerServiceSupabase,
+  extractWorkerToken,
 } from '../server/registerWorkerDeveloperRoutes';
 import {
   syncUserOnLogin,
   recordPlatformActivity,
   findDbUserForIdentity,
   resolveAuthenticatedSessionUser,
+  isDeveloper,
 } from '../server/developerAdminService';
+import {
+  resolveVerifiedGoogleProfile,
+  syncGoogleOAuthUser,
+  verifyTokenAndSyncUser,
+  registerEmailPasswordUser,
+  authenticateEmailPasswordUser,
+  verifyEmailAccountTokenUser,
+  resetUserPasswordWithHash,
+} from '../server/userSyncService';
 import { resolveUserOrganizations } from '../server/billingService';
 import {
   findAgencyBySlugOrHost,
@@ -703,45 +715,54 @@ app.get('/api/auth/callback', async (c) => {
       }),
     });
 
-    const tokens = await tokenResponse.json() as any;
-    
-    // Get user info from ID Token (or skip and fetch userinfo)
-    const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
-    });
-    
-    const userPayload = await userResponse.json() as any;
-    console.log('Google User Payload:', JSON.stringify(userPayload));
-
-    const user = {
-      id: userPayload.sub || userPayload.id || String(Math.random()),
-      sub: userPayload.sub || userPayload.id || String(Math.random()),
-      email: userPayload.email,
-      name: userPayload.name,
-      picture: userPayload.picture,
-    };
-
-    const supabaseForSync = getWorkerSupabase(c);
-    if (supabaseForSync && user.email) {
-      try {
-        const syncResult = await syncUserOnLogin(supabaseForSync, {
-          externalUserId: user.id,
-          email: user.email,
-          name: user.name,
-          picture: user.picture,
-          provider: 'google',
-        });
-        if (syncResult.allowed === false) {
-          return c.redirect(
-            `${targetOrigin}/login?error=${encodeURIComponent(syncResult.reason || 'Account suspended. Please contact support.')}`
-          );
-        }
-      } catch (syncErr) {
-        console.warn('[Worker Auth Callback] Non-fatal user sync note:', syncErr);
-      }
+    const tokens = await tokenResponse.json().catch(() => null) as any;
+    if (!tokenResponse.ok || !tokens || tokens.error) {
+      console.error('[Worker Auth Callback] Google token exchange failed:', tokens?.error || tokenResponse.status);
+      return c.redirect(`${targetOrigin}/login?error=auth_failed`);
     }
 
-    // Sign our session JWT & issue session + CSRF cookies
+    const profileRes = await resolveVerifiedGoogleProfile(tokens, GOOGLE_CLIENT_ID);
+    if (profileRes.ok === false) {
+      console.error('[Worker Auth Callback] Google profile verification failed:', profileRes.code, profileRes.error);
+      const errSlug =
+        profileRes.code === 'GOOGLE_EMAIL_NOT_VERIFIED'
+          ? 'email_not_verified'
+          : profileRes.code === 'MISSING_GOOGLE_PROFILE'
+            ? 'missing_profile'
+            : 'auth_failed';
+      return c.redirect(`${targetOrigin}/login?error=${errSlug}`);
+    }
+
+    const profile = profileRes.profile;
+    const supabaseForSync = getWorkerServiceSupabase(c);
+    if (!supabaseForSync) {
+      console.error('[Worker Auth Callback] Missing SUPABASE_SERVICE_ROLE_KEY for Google user synchronization.');
+      return c.redirect(`${targetOrigin}/login?error=user_sync_failed`);
+    }
+
+    const syncResult = await syncGoogleOAuthUser(supabaseForSync, profile);
+    if (syncResult.ok === false) {
+      console.error('[Worker Auth Callback] User sync failed:', syncResult.code, syncResult.error);
+      if (syncResult.statusCode === 403) {
+        return c.redirect(
+          `${targetOrigin}/login?error=${encodeURIComponent(syncResult.error || 'Account suspended. Please contact support.')}`
+        );
+      }
+      return c.redirect(`${targetOrigin}/login?error=user_sync_failed`);
+    }
+
+    const user = {
+      id: syncResult.canonicalUserId,
+      sub: profile.sub,
+      ...(syncResult.supabaseUserId ? { supabaseUserId: syncResult.supabaseUserId } : {}),
+      providerUserId: profile.sub,
+      authProvider: 'google',
+      email: syncResult.user?.email || profile.email,
+      name: syncResult.user?.full_name || profile.fullName,
+      picture: syncResult.user?.avatar_url || profile.avatarUrl,
+    };
+
+    // Sign our session JWT & issue session + CSRF cookies (never store Google access/ID tokens)
     const token = await sign({
       ...user,
       iat: Math.floor(Date.now() / 1000),
@@ -750,8 +771,22 @@ app.get('/api/auth/callback', async (c) => {
 
     issueWorkerSessionCookies(c, token);
 
+    let userIsDeveloper = syncResult.user?.is_developer === true;
+    try {
+      userIsDeveloper = await isDeveloper(supabaseForSync, {
+        id: syncResult.canonicalUserId,
+        sub: profile.sub,
+        email: user.email,
+      });
+    } catch {
+      userIsDeveloper = syncResult.user?.is_developer === true;
+    }
+
+    const landingPath = userIsDeveloper ? 'developer' : 'workspace';
     // Use JS replace to ensure history cleanup and popup support
-    const redirectUrl = targetOrigin.endsWith('/') ? `${targetOrigin}workspace?token=${token}` : `${targetOrigin}/workspace?token=${token}`;
+    const redirectUrl = targetOrigin.endsWith('/')
+      ? `${targetOrigin}${landingPath}?token=${token}`
+      : `${targetOrigin}/${landingPath}?token=${token}`;
     return c.html(`
       <!DOCTYPE html>
       <html>
@@ -797,7 +832,7 @@ app.get('/api/auth/callback', async (c) => {
 // 3. Get Current User (with sliding session & CSRF refresh)
 app.get('/api/auth/me', async (c) => {
   try {
-    const check = await verifyWorkerSessionWithDb(c);
+    const check = await verifyWorkerSessionWithDb(c, { ensureUserRecord: true });
     if (!check.ok) {
       const errRes = check as { ok: false; statusCode: number; error: string; code: string; suspendedReason?: string | null };
       return c.json(
@@ -815,6 +850,8 @@ app.get('/api/auth/me', async (c) => {
       {
         id: check.user.id,
         sub: check.user.sub,
+        ...(check.user.supabaseUserId ? { supabaseUserId: check.user.supabaseUserId } : {}),
+        ...(check.user.providerUserId ? { providerUserId: check.user.providerUserId } : {}),
         email: check.user.email,
         name: check.user.name,
         picture: check.user.picture,
@@ -831,10 +868,90 @@ app.get('/api/auth/me', async (c) => {
   }
 });
 
+// 3a. Synchronize Authenticated User (Supabase JWT or EventFrame session -> public.users_auth)
+app.post('/api/auth/sync', async (c) => {
+  try {
+    const token = extractWorkerToken(c);
+    if (!token) {
+      return c.json(buildErrorResponse('UNAUTHENTICATED', 'Authentication token is required.'), 401);
+    }
+
+    const supabaseService = getWorkerServiceSupabase(c);
+    if (!supabaseService) {
+      return c.json(
+        buildErrorResponse('DB_UNAVAILABLE', 'SUPABASE_SERVICE_ROLE_KEY is required on the backend for user synchronization.'),
+        500
+      );
+    }
+
+    const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+    const syncRes = await verifyTokenAndSyncUser(supabaseService, token, {
+      verifyInternalJwt: (t) => verify(t, jwtSecret, 'HS256'),
+    });
+
+    if (syncRes.ok === false) {
+      return c.json(buildErrorResponse(syncRes.code, syncRes.error), syncRes.statusCode as any);
+    }
+
+    const sessionRes = await resolveAuthenticatedSessionUser(supabaseService, {
+      id: syncRes.canonicalUserId,
+      sub: syncRes.user?.provider_user_id || syncRes.canonicalUserId,
+      supabaseUserId: syncRes.supabaseUserId,
+      providerUserId: syncRes.user?.provider_user_id || null,
+      email: syncRes.user?.email,
+      name: syncRes.user?.full_name,
+      picture: syncRes.user?.avatar_url,
+    });
+
+    if (sessionRes.ok === false) {
+      return c.json(buildErrorResponse(sessionRes.code, sessionRes.error), sessionRes.statusCode as any);
+    }
+
+    const sessionToken = await sign(
+      {
+        id: sessionRes.user.id,
+        sub: sessionRes.user.sub,
+        ...(sessionRes.user.supabaseUserId ? { supabaseUserId: sessionRes.user.supabaseUserId } : {}),
+        ...(sessionRes.user.providerUserId ? { providerUserId: sessionRes.user.providerUserId } : {}),
+        email: sessionRes.user.email,
+        name: sessionRes.user.name,
+        picture: sessionRes.user.picture,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+      },
+      jwtSecret,
+      'HS256'
+    );
+    const csrfToken = issueWorkerSessionCookies(c, sessionToken);
+
+    return c.json(
+      buildSuccessResponse(
+        {
+          user: sessionRes.user,
+          token: sessionToken,
+          csrfToken,
+          isNewUser: syncRes.isNewUser,
+          linkedIdentity: syncRes.linkedIdentity,
+        },
+        {
+          user: sessionRes.user,
+          token: sessionToken,
+          csrfToken,
+          isNewUser: syncRes.isNewUser,
+          linkedIdentity: syncRes.linkedIdentity,
+        }
+      )
+    );
+  } catch (err: any) {
+    console.error('[Worker Auth Sync] Synchronization error:', err?.message || err);
+    return c.json(buildErrorResponse('USER_SYNC_FAILED', err?.message || 'User synchronization failed.'), 500);
+  }
+});
+
 // 3b. Refresh Session Token & Cookies
 app.post('/api/auth/refresh', async (c) => {
   try {
-    const check = await verifyWorkerSessionWithDb(c);
+    const check = await verifyWorkerSessionWithDb(c, { ensureUserRecord: true });
     if (!check.ok) {
       const errRes = check as { ok: false; statusCode: number; error: string; code: string };
       return c.json(buildErrorResponse(errRes.code, errRes.error), errRes.statusCode as any);
@@ -845,6 +962,8 @@ app.post('/api/auth/refresh', async (c) => {
       {
         id: check.user.id,
         sub: check.user.sub,
+        ...(check.user.supabaseUserId ? { supabaseUserId: check.user.supabaseUserId } : {}),
+        ...(check.user.providerUserId ? { providerUserId: check.user.providerUserId } : {}),
         email: check.user.email,
         name: check.user.name,
         picture: check.user.picture,
@@ -905,9 +1024,15 @@ async function hashPassword(password: string) {
   return `${saltHex}:${hashHex}`;
 }
 
-async function verifyPassword(password: string, storedHash: string) {
+async function verifyPassword(password: string, storedHash: string | null | undefined) {
+  if (!storedHash || typeof storedHash !== 'string' || !storedHash.includes(':')) {
+    return false;
+  }
   const [saltHex, originalHash] = storedHash.split(':');
-  const salt = new Uint8Array(saltHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+  if (!saltHex || !originalHash) return false;
+  const matches = saltHex.match(/.{1,2}/g);
+  if (!matches) return false;
+  const salt = new Uint8Array(matches.map(byte => parseInt(byte, 16)));
   
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
@@ -939,103 +1064,43 @@ async function verifyPassword(password: string, storedHash: string) {
 
 // 5. Email Auth (Magic Link Request - kept for backwards compatibility if needed, or repurposed)
 app.post('/api/auth/email', async (c) => {
-  const { email, password, mode } = await c.req.json();
+  const body = await c.req.json().catch(() => ({} as Record<string, any>));
+  const rawEmail = body?.email;
+  const password = body?.password;
+  const mode = body?.mode;
+  const fullName = body?.fullName || body?.name;
+  const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
   if (!email) return c.json({ error: 'Email is required' }, 400);
 
-  if (email.toLowerCase().endsWith('@gmail.com')) {
+  if (email.endsWith('@gmail.com')) {
     return c.json({ error: 'For Gmail accounts, please use Continue with Google.' }, 400);
   }
 
-  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
-  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);
+  const supabaseService = getWorkerServiceSupabase(c);
+  if (!supabaseService) {
+    return c.json({ error: 'Database service configuration missing' }, 500);
+  }
   const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 
   try {
-    // 1. Check if user exists
-    const res = await fetch(`${supabaseUrl}/rest/v1/users_auth?email=eq.${email}`, {
-      headers: {
-        'apikey': serviceRoleKey,
-        'Authorization': `Bearer ${serviceRoleKey}`
-      }
-    });
-    const users = await res.json() as any[];
-    const existingUser = users.length > 0 ? users[0] : null;
-
     if (mode === 'signup') {
-      if (existingUser) {
-        if (String(existingUser.status || 'active').toLowerCase() === 'suspended') {
-          return c.json({ error: 'Account suspended. Please contact support.' }, 403);
-        }
-        if (existingUser.is_verified) {
-          return c.json({ error: 'User already exists and is verified. Please log in.' }, 400);
-        }
-        // If unverified, we'll fall through and send a new link
-      } else {
-        if (!password) return c.json({ error: 'Password is required' }, 400);
-        const passwordHash = await hashPassword(password);
-        const nowIso = new Date().toISOString();
-        
-        // Save to Supabase (strictly assigning role: 'user', never trusting client role)
-        let insertRes = await fetch(`${supabaseUrl}/rest/v1/users_auth`, {
-          method: 'POST',
-          headers: {
-            'apikey': serviceRoleKey,
-            'Authorization': `Bearer ${serviceRoleKey}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation'
-          },
-          body: JSON.stringify({
-            email,
-            password_hash: passwordHash,
-            is_verified: false,
-            role: 'user',
-            status: 'active',
-            auth_provider: 'email',
-            created_at: nowIso
-          })
-        });
-
-        if (!insertRes.ok) {
-          insertRes = await fetch(`${supabaseUrl}/rest/v1/users_auth`, {
-            method: 'POST',
-            headers: {
-              'apikey': serviceRoleKey,
-              'Authorization': `Bearer ${serviceRoleKey}`,
-              'Content-Type': 'application/json',
-              'Prefer': 'return=representation'
-            },
-            body: JSON.stringify({
-              email,
-              password_hash: passwordHash,
-              is_verified: false,
-              created_at: nowIso
-            })
-          });
-        }
-
-        if (!insertRes.ok) throw new Error('DB Save failed');
-
-        const workerSb = getWorkerSupabase(c);
-        if (workerSb) {
-          await recordPlatformActivity(workerSb, {
-            actorEmail: email,
-            actorRole: 'user',
-            action: 'USER_REGISTERED',
-            summary: `New email account registered: ${email}`,
-            metadata: { provider: 'email' },
-          });
-        }
+      const regRes = await registerEmailPasswordUser(
+        supabaseService,
+        { email, password, fullName },
+        { hashPassword }
+      );
+      if (regRes.ok === false) {
+        return c.json({ error: regRes.error, code: regRes.code }, regRes.statusCode as any);
       }
     } else {
-      // Login mode
-      if (!existingUser) return c.json({ error: 'Account not found' }, 404);
-      if (String(existingUser.status || 'active').toLowerCase() === 'suspended') {
-        return c.json({ error: 'Account suspended. Please contact support.' }, 403);
+      const authRes = await authenticateEmailPasswordUser(
+        supabaseService,
+        { email, password },
+        { verifyPassword }
+      );
+      if (authRes.ok === false) {
+        return c.json({ error: authRes.error, code: authRes.code }, authRes.statusCode as any);
       }
-      if (!password) return c.json({ error: 'Password is required' }, 400);
-      
-      const isValid = await verifyPassword(password, existingUser.password_hash);
-      if (!isValid) return c.json({ error: 'Invalid password' }, 401);
     }
 
     // Generate Magic Link for Verification or Direct Login (Unified Security)
@@ -1119,8 +1184,8 @@ app.post('/api/auth/verify', async (c) => {
   const token = c.req.query('token');
   if (!token) return c.json({ error: 'Token is required' }, 400);
 
-  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
+  const workerSb = getWorkerServiceSupabase(c);
+  if (!workerSb) return c.json({ error: 'Database service configuration missing' }, 500);
   const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 
   try {
@@ -1130,56 +1195,41 @@ app.post('/api/auth/verify', async (c) => {
       return c.json({ error: 'Invalid token type' }, 400);
     }
 
-    const email = payload.email;
-    const workerSb = createClient(supabaseUrl, serviceRoleKey);
-    const existingDbUser = await findDbUserForIdentity(workerSb, { email });
-    if (existingDbUser && String(existingDbUser.status || 'active').toLowerCase() === 'suspended') {
-      return c.json({ error: 'Account suspended. Please contact support.' }, 403);
-    }
-
-    // Update is_verified and last_login_at in Supabase
-    const patchRes = await fetch(`${supabaseUrl}/rest/v1/users_auth?email=eq.${email}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': serviceRoleKey,
-        'Authorization': `Bearer ${serviceRoleKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ is_verified: true, last_login_at: new Date().toISOString() })
-    });
-    if (!patchRes.ok) {
-      await fetch(`${supabaseUrl}/rest/v1/users_auth?email=eq.${email}`, {
-        method: 'PATCH',
-        headers: {
-          'apikey': serviceRoleKey,
-          'Authorization': `Bearer ${serviceRoleKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ is_verified: true })
-      });
+    const verifyRes = await verifyEmailAccountTokenUser(workerSb, payload.email);
+    if (verifyRes.ok === false) {
+      return c.json({ error: verifyRes.error, code: verifyRes.code }, verifyRes.statusCode as any);
     }
 
     const baseUser = {
-      id: `email-${btoa(email).slice(0, 12)}`,
-      email: email,
-      name: existingDbUser?.full_name || email.split('@')[0],
-      picture: null,
+      id: verifyRes.canonicalUserId,
+      sub: verifyRes.user?.provider_user_id || verifyRes.canonicalUserId,
+      ...(verifyRes.supabaseUserId ? { supabaseUserId: verifyRes.supabaseUserId } : {}),
+      email: verifyRes.user?.email || String(payload.email).trim().toLowerCase(),
+      name: verifyRes.user?.full_name || String(payload.email).split('@')[0],
+      picture: verifyRes.user?.avatar_url || null,
     };
     const sessionResolution = await resolveAuthenticatedSessionUser(
       workerSb,
       baseUser,
       c.env.SUPER_ADMIN_EMAILS
     );
-    const user = sessionResolution.ok ? sessionResolution.user : baseUser;
+    if (sessionResolution.ok === false) {
+      return c.json({ error: sessionResolution.error, code: sessionResolution.code }, sessionResolution.statusCode as any);
+    }
 
     const sessionToken = await sign({
-      ...baseUser,
+      id: sessionResolution.user.id,
+      sub: sessionResolution.user.sub,
+      ...(sessionResolution.user.supabaseUserId ? { supabaseUserId: sessionResolution.user.supabaseUserId } : {}),
+      email: sessionResolution.user.email,
+      name: sessionResolution.user.name,
+      picture: sessionResolution.user.picture,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60)
     }, jwtSecret, 'HS256');
 
     const csrfToken = issueWorkerSessionCookies(c, sessionToken);
-    return c.json(buildSuccessResponse({ user, token: sessionToken, csrfToken }, { user, token: sessionToken, csrfToken }));
+    return c.json(buildSuccessResponse({ user: sessionResolution.user, token: sessionToken, csrfToken }, { user: sessionResolution.user, token: sessionToken, csrfToken }));
   } catch (error: any) {
     console.error('Token verification failed:', error.message);
     return c.json({ error: 'Invalid or expired link' }, 401);
@@ -1264,8 +1314,8 @@ app.post('/api/auth/reset-password', async (c) => {
   const { token, password } = await c.req.json();
   if (!token || !password) return c.json({ error: 'Token and password are required' }, 400);
 
-  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
+  const workerSb = getWorkerServiceSupabase(c);
+  if (!workerSb) return c.json({ error: 'Database service configuration missing' }, 500);
   const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 
   try {
@@ -1274,20 +1324,14 @@ app.post('/api/auth/reset-password', async (c) => {
       return c.json({ error: 'Invalid token type' }, 400);
     }
 
-    const email = payload.email;
-    const passwordHash = await hashPassword(password);
-
-    const updateRes = await fetch(`${supabaseUrl}/rest/v1/users_auth?email=eq.${email}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': serviceRoleKey,
-        'Authorization': `Bearer ${serviceRoleKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ password_hash: passwordHash })
-    });
-
-    if (!updateRes.ok) throw new Error('DB Update failed');
+    const resetRes = await resetUserPasswordWithHash(
+      workerSb,
+      { email: payload.email, password },
+      { hashPassword }
+    );
+    if (resetRes.ok === false) {
+      return c.json({ error: resetRes.error, code: resetRes.code }, resetRes.statusCode as any);
+    }
 
     return c.json({ success: true, message: 'Password updated successfully' });
   } catch (error: any) {
@@ -1918,6 +1962,15 @@ app.post('/api/projects', async (c) => {
 
 // --- Template Routes (Staff Only for Mutations) ---
 app.post('/api/ai/generate-template', async (c) => {
+  const authCheck = await verifyWorkerSessionWithDb(c);
+  if (!authCheck.ok) {
+    const errRes = authCheck as { ok: false; statusCode: number; error: string; code: string };
+    return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+  }
+  if (authCheck.user.is_developer !== true) {
+    return c.json({ error: 'Developer access required', code: 'FORBIDDEN_DEVELOPER_ONLY' }, 403);
+  }
+
   const { prompt, existingContext } = await c.req.json();
   if (!prompt) return c.json({ error: 'Prompt is required' }, 400);
   
@@ -2007,22 +2060,19 @@ app.get('/api/templates', async (c) => {
 });
 
 app.post('/api/templates', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
-
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+  const authCheck = await verifyWorkerSessionWithDb(c);
+  if (!authCheck.ok) {
+    const errRes = authCheck as { ok: false; statusCode: number; error: string; code: string };
+    return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+  }
+  if (authCheck.user.is_developer !== true) {
+    return c.json({ error: 'Developer access required', code: 'FORBIDDEN_DEVELOPER_ONLY' }, 403);
+  }
 
   try {
-    const payload = await verify(token, jwtSecret, 'HS256') as any;
-    const isStaff = payload.email === 'buildsiteasia@gmail.com' || payload.email?.endsWith('@eventframe.io');
-    if (!isStaff) return c.json({ error: 'Staff access required' }, 403);
-
     const templateData = await c.req.json();
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) return c.json({ error: 'Database configuration missing' }, 500);
 
     const { data, error } = await supabase
       .from('templates')
@@ -2033,7 +2083,7 @@ app.post('/api/templates', async (c) => {
     if (error) return c.json({ error: error.message }, 500);
     return c.json({ success: true, data }, 201);
   } catch (e: any) {
-    return c.json({ error: 'Invalid session', details: e.message }, 401);
+    return c.json({ error: 'Failed to create template', details: e.message }, 500);
   }
 });
 
@@ -2041,25 +2091,22 @@ app.put('/api/templates/:id', async (c) => updateTemplate(c));
 app.patch('/api/templates/:id', async (c) => updateTemplate(c));
 
 async function updateTemplate(c: any) {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
-
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+  const authCheck = await verifyWorkerSessionWithDb(c);
+  if (!authCheck.ok) {
+    const errRes = authCheck as { ok: false; statusCode: number; error: string; code: string };
+    return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+  }
+  if (authCheck.user.is_developer !== true) {
+    return c.json({ error: 'Developer access required', code: 'FORBIDDEN_DEVELOPER_ONLY' }, 403);
+  }
 
   try {
-    const payload = await verify(token, jwtSecret, 'HS256') as any;
-    const isStaff = payload.email === 'buildsiteasia@gmail.com' || payload.email?.endsWith('@eventframe.io');
-    if (!isStaff) return c.json({ error: 'Staff access required' }, 403);
-
     const { id } = c.req.param();
     const templateData = await c.req.json();
     const { id: _, ...updateData } = templateData;
 
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) return c.json({ error: 'Database configuration missing' }, 500);
 
     const { data, error } = await supabase
       .from('templates')
@@ -2071,27 +2118,24 @@ async function updateTemplate(c: any) {
     if (error) return c.json({ error: error.message }, 500);
     return c.json({ success: true, data });
   } catch (e: any) {
-    return c.json({ error: 'Invalid session', details: e.message }, 401);
+    return c.json({ error: 'Failed to update template', details: e.message }, 500);
   }
 }
 
 app.delete('/api/templates/:id', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
-
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+  const authCheck = await verifyWorkerSessionWithDb(c);
+  if (!authCheck.ok) {
+    const errRes = authCheck as { ok: false; statusCode: number; error: string; code: string };
+    return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+  }
+  if (authCheck.user.is_developer !== true) {
+    return c.json({ error: 'Developer access required', code: 'FORBIDDEN_DEVELOPER_ONLY' }, 403);
+  }
 
   try {
-    const payload = await verify(token, jwtSecret, 'HS256') as any;
-    const isStaff = payload.email === 'buildsiteasia@gmail.com' || payload.email?.endsWith('@eventframe.io');
-    if (!isStaff) return c.json({ error: 'Staff access required' }, 403);
-
     const { id } = c.req.param();
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) return c.json({ error: 'Database configuration missing' }, 500);
 
     const { error } = await supabase
       .from('templates')
@@ -2101,7 +2145,7 @@ app.delete('/api/templates/:id', async (c) => {
     if (error) return c.json({ error: error.message }, 500);
     return c.json({ success: true });
   } catch (e: any) {
-    return c.json({ error: 'Invalid session', details: e.message }, 401);
+    return c.json({ error: 'Failed to delete template', details: e.message }, 500);
   }
 });
 

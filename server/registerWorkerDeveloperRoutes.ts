@@ -18,7 +18,8 @@ import {
   listActivityLogs,
   getPlatformSettings,
   updatePlatformSettings,
-  requireSuperAdminSession,
+  updateUserDeveloperAccess,
+  requireDeveloper,
   resolveAuthenticatedSessionUser,
 } from './developerAdminService';
 import {
@@ -34,13 +35,12 @@ export function extractWorkerToken(c: any): string | null {
   return token || null;
 }
 
-export function getWorkerSupabase(c: any) {
+export function getWorkerServiceSupabase(c: any) {
   const supabaseUrl = c.env?.SUPABASE_URL || c.env?.VITE_SUPABASE_URL;
   const serviceRoleKey =
     c.env?.SUPABASE_SERVICE_ROLE_KEY ||
     c.env?.SUPABASE_SERVICE_KEY ||
-    c.env?.SUPABASE_SECRET_KEY ||
-    c.env?.VITE_SUPABASE_ANON_KEY;
+    c.env?.SUPABASE_SECRET_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
     return null;
@@ -48,7 +48,23 @@ export function getWorkerSupabase(c: any) {
   return createClient(supabaseUrl, serviceRoleKey);
 }
 
-export async function verifyWorkerSessionWithDb(c: any) {
+export function getWorkerSupabase(c: any) {
+  const serviceClient = getWorkerServiceSupabase(c);
+  if (serviceClient) return serviceClient;
+
+  const supabaseUrl = c.env?.SUPABASE_URL || c.env?.VITE_SUPABASE_URL;
+  const fallbackKey = c.env?.VITE_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !fallbackKey) {
+    return null;
+  }
+  return createClient(supabaseUrl, fallbackKey);
+}
+
+export async function verifyWorkerSessionWithDb(
+  c: any,
+  options?: { ensureUserRecord?: boolean }
+) {
   const token = extractWorkerToken(c);
   if (!token) {
     return { ok: false as const, statusCode: 401, error: 'Not authenticated', code: 'UNAUTHENTICATED' };
@@ -62,9 +78,11 @@ export async function verifyWorkerSessionWithDb(c: any) {
     return { ok: false as const, statusCode: 401, error: 'Invalid session', code: 'INVALID_SESSION' };
   }
 
-  const supabase = getWorkerSupabase(c);
+  const supabase = options?.ensureUserRecord
+    ? getWorkerServiceSupabase(c)
+    : getWorkerSupabase(c);
   const superAdminEmails = c.env?.SUPER_ADMIN_EMAILS;
-  return resolveAuthenticatedSessionUser(supabase, payload, superAdminEmails);
+  return resolveAuthenticatedSessionUser(supabase, payload, superAdminEmails, options);
 }
 
 export function registerWorkerDeveloperRoutes(app: Hono<any>) {
@@ -88,7 +106,7 @@ export function registerWorkerDeveloperRoutes(app: Hono<any>) {
       return c.json({ error: 'Database configuration missing' }, 500);
     }
 
-    const authCheck = await requireSuperAdminSession(supabase, decoded, c.env?.SUPER_ADMIN_EMAILS);
+    const authCheck = await requireDeveloper(supabase, decoded);
     if (authCheck.ok === false) {
       return c.json({ error: authCheck.error, code: authCheck.code }, authCheck.statusCode as any);
     }
@@ -107,7 +125,9 @@ export function registerWorkerDeveloperRoutes(app: Hono<any>) {
         email: admin.email,
         name: admin.name,
         picture: admin.picture || null,
-        role: 'super_admin',
+        role: admin.role || 'user',
+        is_developer: true,
+        isDeveloper: true,
         status: admin.status || 'active',
       },
     });
@@ -176,6 +196,7 @@ export function registerWorkerDeveloperRoutes(app: Hono<any>) {
         search: c.req.query('search'),
         status: c.req.query('status'),
         role: c.req.query('role'),
+        isDeveloper: c.req.query('isDeveloper'),
         organizationId: c.req.query('organizationId'),
         registeredFrom: c.req.query('registeredFrom'),
         registeredTo: c.req.query('registeredTo'),
@@ -230,6 +251,33 @@ export function registerWorkerDeveloperRoutes(app: Hono<any>) {
       return c.json({ success: true, user: result.user });
     } catch (err: any) {
       return c.json({ error: err.message || 'Failed to reactivate account' }, 500);
+    }
+  });
+
+  app.patch('/api/developer/users/:id/developer-access', async (c) => {
+    try {
+      const supabase = c.get('supabaseAdmin');
+      const admin = c.get('superAdmin');
+      const body = await c.req.json().catch(() => ({}));
+      const nextIsDeveloper =
+        typeof body?.isDeveloper === 'boolean'
+          ? body.isDeveloper
+          : typeof body?.is_developer === 'boolean'
+            ? body.is_developer
+            : null;
+
+      if (nextIsDeveloper === null) {
+        return c.json({ error: 'isDeveloper boolean is required.' }, 400);
+      }
+
+      const result = await updateUserDeveloperAccess(supabase, c.req.param('id'), nextIsDeveloper, admin);
+      if (result.ok === false) {
+        return c.json({ error: result.error, code: result.code }, result.statusCode as any);
+      }
+
+      return c.json({ success: true, user: result.user, unchanged: Boolean(result.unchanged) });
+    } catch (err: any) {
+      return c.json({ error: err.message || 'Failed to update developer access' }, 500);
     }
   });
 

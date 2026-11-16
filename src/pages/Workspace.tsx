@@ -244,11 +244,9 @@ export default function Workspace() {
     }
   };
 
-  const isSubscribed = agency?.subscription_status === 'active' || 
-                      agency?.is_demo === true || 
-                      user?.email === 'buildsiteasia@gmail.com';
+  const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
   const isCouple = agency?.user_role === 'couple';
-  const isStaff = user?.email === 'buildsiteasia@gmail.com' || user?.email?.includes('@eventframe.io');
+  const isStaff = user?.is_developer === true || user?.isDeveloper === true;
 
   useEffect(() => {
     if (isCouple && events.length === 0 && view === 'list' && !isLoadingEvents) {

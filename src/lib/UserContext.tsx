@@ -5,7 +5,9 @@ import { authenticatedFetch, setAuthToken, removeAuthToken, setCsrfTokenMemory }
 interface UserContextType {
   user: any | null;
   isLoading: boolean;
+  isSessionVerified: boolean;
   setUser: (user: any) => void;
+  refreshUser: () => Promise<any | null>;
   logout: () => Promise<void>;
 }
 
@@ -14,6 +16,64 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSessionVerified, setIsSessionVerified] = useState(false);
+
+  const fetchVerifiedUser = async (signal?: AbortSignal): Promise<any | null> => {
+    const token = localStorage.getItem('wedding_session_token');
+    try {
+      const res = await authenticatedFetch(`${API_BASE}/api/auth/me`, { signal });
+      if (res.ok) {
+        const raw = await res.json();
+        const data = raw?.data && typeof raw.data === 'object' ? { ...raw, ...raw.data } : raw;
+        if (data.csrfToken) {
+          setCsrfTokenMemory(data.csrfToken);
+        }
+        if (data.token && typeof data.token === 'string') {
+          setAuthToken(data.token);
+        }
+        if (data.user) {
+          setUser(data.user);
+          return data.user;
+        }
+        if (token) {
+          removeAuthToken();
+        }
+        setUser(null);
+        return null;
+      }
+
+      if (res.status === 401) {
+        if (token) {
+          removeAuthToken();
+          setCsrfTokenMemory(null);
+        }
+        setUser(null);
+        return null;
+      }
+
+      if (res.status === 403) {
+        const errData = await res.json().catch(() => ({} as any));
+        if (errData?.code === 'ACCOUNT_SUSPENDED' || errData?.error?.code === 'ACCOUNT_SUSPENDED') {
+          removeAuthToken();
+          setCsrfTokenMemory(null);
+          setUser(null);
+          return null;
+        }
+      }
+    } catch {
+      // Silent recovery on abort/network error
+    } finally {
+      setIsSessionVerified(true);
+    }
+    return null;
+  };
+
+  const refreshUser = async (): Promise<any | null> => {
+    setIsSessionVerified(false);
+    const verified = await fetchVerifiedUser();
+    setIsLoading(false);
+    return verified;
+  };
 
   const logout = async () => {
     try {
@@ -24,8 +84,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       // Proceed with local cleanup even if backend is unreachable
     } finally {
       removeAuthToken();
+      localStorage.removeItem('wedding_session_token');
       setCsrfTokenMemory(null);
       setUser(null);
+      setIsSessionVerified(true);
       window.location.replace('/login');
     }
   };
@@ -51,7 +113,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
       const token = localStorage.getItem('wedding_session_token');
 
-      // Optimistic load: if we have a token, decode payload so UI renders immediately
+      // Optimistic load for UI chrome while server verification completes
       if (token && token.split('.').length === 3) {
         try {
           const base64Url = token.split('.')[1];
@@ -86,47 +148,12 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        const res = await authenticatedFetch(`${API_BASE}/api/auth/me`, {
-          signal: controller.signal,
-        });
-
+        await fetchVerifiedUser(controller.signal);
         clearTimeout(timeoutId);
-        if (!active) return;
-
-        if (res.ok) {
-          const raw = await res.json();
-          const data = raw?.data && typeof raw.data === 'object' ? { ...raw, ...raw.data } : raw;
-          if (data.csrfToken) {
-            setCsrfTokenMemory(data.csrfToken);
-          }
-          if (data.token && typeof data.token === 'string') {
-            setAuthToken(data.token);
-          }
-          if (data.user) {
-            setUser(data.user);
-          } else if (token) {
-            removeAuthToken();
-            setUser(null);
-          }
-        } else if (res.status === 401) {
-          if (token) {
-            removeAuthToken();
-            setCsrfTokenMemory(null);
-            setUser(null);
-          }
-        } else if (res.status === 403) {
-          const errData = await res.json().catch(() => ({} as any));
-          if (errData?.code === 'ACCOUNT_SUSPENDED' || errData?.error?.code === 'ACCOUNT_SUSPENDED') {
-            removeAuthToken();
-            setCsrfTokenMemory(null);
-            setUser(null);
-          }
-        }
-      } catch {
-        // Silent recovery on abort/network error
       } finally {
         if (active) {
           setIsLoading(false);
+          setIsSessionVerified(true);
         }
       }
     }
@@ -139,7 +166,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <UserContext.Provider value={{ user, isLoading, setUser, logout }}>
+    <UserContext.Provider value={{ user, isLoading, isSessionVerified, setUser, refreshUser, logout }}>
       {children}
     </UserContext.Provider>
   );

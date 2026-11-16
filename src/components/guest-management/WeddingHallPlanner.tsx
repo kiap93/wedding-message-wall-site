@@ -4,6 +4,7 @@ import {
   Layer, 
   Rect, 
   Circle, 
+  Ellipse,
   Group, 
   Text as KonvaText, 
   Line, 
@@ -52,7 +53,7 @@ import {
   Guest 
 } from '../../types';
 import { 
-  calculateHallBoundingBox, 
+  calculateWorldHallBoundingBox, 
   calculateFitToScreenTransform, 
   calculateZoom100Transform 
 } from '../../utils/hallViewport';
@@ -60,12 +61,19 @@ import {
   VenueUnit,
   VenueOrientation,
   getPixelsPerUnit,
+  getMinWorldDimension,
+  getCanonicalObjectDefaults,
   worldToScreen,
   screenToWorld,
+  worldObjectToScreen,
+  screenObjectToWorld,
+  getObjectScreenRect as computeObjectScreenRect,
+  convertLayoutUnit,
   roundToDecimals,
   formatVenueArea,
   isLegacyLayout,
   migrateVenueLayout,
+  normalizeVenueLayout,
   getOutOfBoundsObjects,
   repositionObjectsInsideVenue
 } from '../../utils/venueCoordinates';
@@ -78,6 +86,17 @@ import {
 } from '../../lib/guestSeatingApi';
 import Button from '../../design-system/components/Button';
 import Badge from '../../design-system/components/Badge';
+
+function genObjectUuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 interface WeddingHallPlannerProps {
   projectId: string;
@@ -119,6 +138,8 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Dynamic Venue World Dimensions & Coordinate System (Layer A & B)
   const currentUnit: VenueUnit = (layout?.venue_unit as VenueUnit) || 'm';
@@ -301,15 +322,23 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
 
   async function loadLayoutData() {
     setIsLoading(true);
+    setLoadError(null);
+    setSaveError(null);
     try {
       const [lData, tData, gData] = await Promise.all([
         fetchVenueLayout(projectId),
         fetchEventTables(projectId),
         fetchEventGuests(projectId)
       ]);
-      let resolvedLayout = lData;
-      if (lData && isLegacyLayout(lData)) {
-        resolvedLayout = migrateVenueLayout(lData);
+      if (!lData) {
+        throw new Error('Venue layout could not be loaded.');
+      }
+
+      const wasLegacy = isLegacyLayout(lData);
+      const migrated = wasLegacy ? migrateVenueLayout(lData) : lData;
+      const resolvedLayout = normalizeVenueLayout(migrated);
+
+      if (wasLegacy) {
         // Persist migrated layout once so repeated migration never occurs
         saveVenueLayout(projectId, resolvedLayout).catch(err => {
           console.warn('Auto-save migrated layout error:', err);
@@ -317,27 +346,27 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
       }
 
       setLayout(resolvedLayout);
+      layoutRef.current = resolvedLayout;
       setTables(tData);
       setGuests(gData);
-      setShowRulers(resolvedLayout?.show_rulers ?? true);
-      setShowGrid(resolvedLayout?.show_grid ?? true);
-      setSnapToGrid(resolvedLayout?.snap_to_grid ?? true);
+      setShowRulers(resolvedLayout.show_rulers ?? true);
+      setShowGrid(resolvedLayout.show_grid ?? true);
+      setSnapToGrid(resolvedLayout.snap_to_grid ?? true);
 
       // Initialize history
-      if (resolvedLayout && resolvedLayout.objects) {
-        const initHist = [JSON.parse(JSON.stringify(resolvedLayout.objects))];
-        setHistory(initHist);
-        setHistoryIndex(0);
-        historyRef.current = initHist;
-        historyIndexRef.current = 0;
+      const initHist = [JSON.parse(JSON.stringify(resolvedLayout.objects || []))];
+      setHistory(initHist);
+      setHistoryIndex(0);
+      historyRef.current = initHist;
+      historyIndexRef.current = 0;
 
-        // Automatically fit layout to screen on initial load
-        setTimeout(() => {
-          handleFitToScreen(resolvedLayout.objects);
-        }, 60);
-      }
-    } catch (err) {
+      // Automatically fit layout to screen on initial load using full resolved layout metadata
+      setTimeout(() => {
+        handleFitToScreen(resolvedLayout);
+      }, 60);
+    } catch (err: any) {
       console.error('Error loading wedding hall layout:', err);
+      setLoadError(err?.message || 'Unable to load wedding hall layout. Please retry.');
     } finally {
       setIsLoading(false);
     }
@@ -443,13 +472,18 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
     const items = clipboardRef.current;
     if (!currentLayout || items.length === 0) return;
 
-    const offset = 30;
+    const u: VenueUnit = currentLayout.venue_unit === 'ft' ? 'ft' : 'm';
+    const offset = u === 'ft' ? 3.0 : 1.0;
+    const vw = currentLayout.venue_width || (u === 'ft' ? 100 : 30);
+    const vh = currentLayout.venue_height || (u === 'ft' ? 65 : 20);
     const newSelectedIds: string[] = [];
-    const pastedObjects: VenueLayoutObject[] = items.map((orig, index) => {
-      const newId = `obj_${Date.now()}_${Math.random().toString(36).substring(2, 6)}_${index}`;
+    const pastedObjects: VenueLayoutObject[] = items.map((orig) => {
+      const newId = genObjectUuid();
       newSelectedIds.push(newId);
 
       const clonedProps = orig.properties ? JSON.parse(JSON.stringify(orig.properties)) : {};
+      const nextX = roundToDecimals(Math.max(0.2, Math.min(Math.max(0.2, vw - orig.width - 0.2), orig.position_x + offset)), 2);
+      const nextY = roundToDecimals(Math.max(0.2, Math.min(Math.max(0.2, vh - orig.height - 0.2), orig.position_y + offset)), 2);
 
       // Wedding data rule: pasted tables must NEVER inherit assigned guests!
       return {
@@ -457,8 +491,8 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
         id: newId,
         object_reference_id: null,
         label: orig.label ? `${orig.label} (Copy)` : 'Copy',
-        position_x: orig.position_x + offset,
-        position_y: orig.position_y + offset,
+        position_x: nextX,
+        position_y: nextY,
         properties: clonedProps,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -478,22 +512,28 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
     const selIds = selectedObjectIdsRef.current;
     if (!currentLayout || selIds.length === 0) return;
 
-    const offset = 30;
+    const u: VenueUnit = currentLayout.venue_unit === 'ft' ? 'ft' : 'm';
+    const offset = u === 'ft' ? 3.0 : 1.0;
+    const vw = currentLayout.venue_width || (u === 'ft' ? 100 : 30);
+    const vh = currentLayout.venue_height || (u === 'ft' ? 65 : 20);
     const newSelectedIds: string[] = [];
     const duplicated: VenueLayoutObject[] = [];
 
     currentLayout.objects.forEach(orig => {
       if (selIds.includes(orig.id)) {
-        const newId = `obj_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        const newId = genObjectUuid();
         newSelectedIds.push(newId);
         const clonedProps = orig.properties ? JSON.parse(JSON.stringify(orig.properties)) : {};
+        const nextX = roundToDecimals(Math.max(0.2, Math.min(Math.max(0.2, vw - orig.width - 0.2), orig.position_x + offset)), 2);
+        const nextY = roundToDecimals(Math.max(0.2, Math.min(Math.max(0.2, vh - orig.height - 0.2), orig.position_y + offset)), 2);
+
         duplicated.push({
           ...orig,
           id: newId,
           object_reference_id: null, // Never copy guest assignments
           label: orig.label ? `${orig.label} (Copy)` : 'Copy',
-          position_x: orig.position_x + offset,
-          position_y: orig.position_y + offset,
+          position_x: nextX,
+          position_y: nextY,
           properties: clonedProps,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -535,22 +575,21 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
       arrowBatchInitialLayoutRef.current = JSON.parse(JSON.stringify(currentLayout.objects));
     }
 
-    const isWorld = currentLayout.coordinate_system === 'world' || (currentLayout.venue_width !== undefined);
-
-    // Immediately update coordinates for 60fps responsive feel
+    // Canonical world coordinates
     const updatedObjects = currentLayout.objects.map(obj => {
       if (selIds.includes(obj.id)) {
         return {
           ...obj,
-          position_x: isWorld ? roundToDecimals(obj.position_x + dx, 2) : Math.round(obj.position_x + dx),
-          position_y: isWorld ? roundToDecimals(obj.position_y + dy, 2) : Math.round(obj.position_y + dy)
+          position_x: roundToDecimals(obj.position_x + dx, 2),
+          position_y: roundToDecimals(obj.position_y + dy, 2)
         };
       }
       return obj;
     });
 
-    setLayout({ ...currentLayout, objects: updatedObjects });
-    layoutRef.current = { ...currentLayout, objects: updatedObjects };
+    const nextLayout = { ...currentLayout, objects: updatedObjects };
+    setLayout(nextLayout);
+    layoutRef.current = nextLayout;
 
     if (arrowBatchTimerRef.current) {
       clearTimeout(arrowBatchTimerRef.current);
@@ -698,12 +737,12 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
         return;
       }
 
-      // Arrow Keys: Nudge position (1px, or 10px with Shift)
+      // Arrow Keys: Nudge position in world units (m or ft)
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
         if (selectedObjectIdsRef.current.length > 0) {
           e.preventDefault();
-          const isWorld = layoutRef.current?.coordinate_system === 'world' || (layoutRef.current?.venue_width !== undefined);
-          const step = isWorld ? (e.shiftKey ? 1.0 : 0.1) : (e.shiftKey ? 10 : 1);
+          const u: VenueUnit = layoutRef.current?.venue_unit === 'ft' ? 'ft' : 'm';
+          const step = e.shiftKey ? (u === 'ft' ? 3.0 : 1.0) : (u === 'ft' ? 0.5 : 0.1);
           let dx = 0;
           let dy = 0;
           if (key === 'arrowup') dy = -step;
@@ -735,38 +774,15 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
   }, [isMaximized]);
 
   // Fit to Screen: centers and scales entire venue boundary and all objects inside viewport with 7% visual padding
-  const handleFitToScreen = (
-    customObjects?: VenueLayoutObject[],
-    customW?: number,
-    customH?: number
-  ) => {
-    const curLayout = layoutRef.current;
-    const objectsToFit = customObjects || curLayout?.objects || [];
-    const u: VenueUnit = (curLayout?.venue_unit as VenueUnit) || 'm';
-    const px = getPixelsPerUnit(u);
-    const hallWidth = customW || (curLayout?.venue_width ? Math.round(curLayout.venue_width * px) : curLayout?.canvas_width) || 1800;
-    const hallHeight = customH || (curLayout?.venue_height ? Math.round(curLayout.venue_height * px) : curLayout?.canvas_height) || 1200;
+  const handleFitToScreen = (layoutOverride?: VenueLayout) => {
+    const targetLayout = layoutOverride || layoutRef.current;
+    if (!targetLayout) return;
 
     const container = containerRef.current;
     const availWidth = container?.clientWidth || containerWidth || 900;
     const availHeight = container?.clientHeight || containerHeight || 700;
 
-    // Convert world objects to screen coordinates for bounding box calculation
-    const screenObjects: VenueLayoutObject[] = objectsToFit.map(o => {
-      const isWorld = curLayout?.coordinate_system === 'world' || (o.width <= 25 && o.height <= 25);
-      if (isWorld) {
-        return {
-          ...o,
-          position_x: Math.round(o.position_x * px),
-          position_y: Math.round(o.position_y * px),
-          width: Math.round(o.width * px),
-          height: Math.round(o.height * px)
-        };
-      }
-      return o;
-    });
-
-    const bbox = calculateHallBoundingBox(screenObjects, hallWidth, hallHeight, true);
+    const bbox = calculateWorldHallBoundingBox(targetLayout, true);
     const transform = calculateFitToScreenTransform({
       availableWidth: availWidth,
       availableHeight: availHeight,
@@ -863,12 +879,20 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
     repositionOutOfBounds?: boolean;
   }) => {
     if (!layout) return;
-    let updatedObjects = layout.objects;
+    setSaveError(null);
+
+    const activeUnit: VenueUnit = layout.venue_unit === 'ft' ? 'ft' : 'm';
+    let updatedObjects =
+      settings.venue_unit !== activeUnit
+        ? convertLayoutUnit(layout, settings.venue_unit).objects
+        : layout.objects;
+
     if (settings.repositionOutOfBounds) {
       updatedObjects = repositionObjectsInsideVenue(
-        layout.objects,
+        updatedObjects,
         settings.venue_width,
-        settings.venue_height
+        settings.venue_height,
+        settings.venue_unit === 'ft' ? 1.5 : 0.5
       );
     }
 
@@ -876,7 +900,7 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
     const newCanvasW = Math.round(settings.venue_width * px);
     const newCanvasH = Math.round(settings.venue_height * px);
 
-    const updatedLayout: VenueLayout = {
+    const updatedLayout: VenueLayout = normalizeVenueLayout({
       ...layout,
       venue_width: settings.venue_width,
       venue_height: settings.venue_height,
@@ -891,56 +915,62 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
       coordinate_system: 'world',
       is_migrated: true,
       objects: updatedObjects
-    };
+    });
 
     setLayout(updatedLayout);
-    commitObjectsChange(updatedObjects);
+    layoutRef.current = updatedLayout;
+    commitObjectsChange(updatedLayout.objects);
 
     setTimeout(() => {
-      handleFitToScreen(updatedObjects, newCanvasW, newCanvasH);
+      handleFitToScreen(updatedLayout);
     }, 60);
 
     try {
-      await saveVenueLayout(projectId, updatedLayout);
+      const saved = await saveVenueLayout(projectId, updatedLayout);
+      const normalizedSaved = normalizeVenueLayout(saved);
+      setLayout(normalizedSaved);
+      layoutRef.current = normalizedSaved;
     } catch (err: any) {
-      console.warn('Auto-save venue settings error:', err.message);
+      console.warn('Auto-save venue settings error:', err?.message);
+      setSaveError(err?.message || 'Venue dimensions updated locally, but auto-save failed.');
     }
   };
 
   // Reposition Out of Bounds Objects Inside Venue
   const handleRepositionOutOfBounds = () => {
     if (!layout) return;
-    const repositioned = repositionObjectsInsideVenue(layout.objects, venueWidthM, venueHeightM);
+    const margin = currentUnit === 'ft' ? 1.5 : 0.5;
+    const repositioned = repositionObjectsInsideVenue(layout.objects, venueWidthM, venueHeightM, margin);
     commitObjectsChange(repositioned);
   };
 
   // Save Layout to Backend
   const handleSave = async () => {
-    if (!layout) return;
+    const activeLayout = layoutRef.current || layout;
+    if (!activeLayout) return;
     setIsSaving(true);
+    setSaveError(null);
     try {
-      await saveVenueLayout(projectId, {
-        venue_width: layout.venue_width || venueWidthM,
-        venue_height: layout.venue_height || venueHeightM,
-        venue_unit: layout.venue_unit || currentUnit,
-        venue_orientation: layout.venue_orientation || (venueWidthM >= venueHeightM ? 'landscape' : 'portrait'),
-        venue_name: layout.venue_name,
-        venue_description: layout.venue_description,
+      const normalizedPayload = normalizeVenueLayout({
+        ...activeLayout,
+        venue_width: activeLayout.venue_width || venueWidthM,
+        venue_height: activeLayout.venue_height || venueHeightM,
+        venue_unit: activeLayout.venue_unit || currentUnit,
+        venue_orientation: activeLayout.venue_orientation || (venueWidthM >= venueHeightM ? 'landscape' : 'portrait'),
         grid_unit_step: gridUnitStep,
         show_grid: showGrid,
         show_rulers: showRulers,
-        coordinate_system: 'world',
-        is_migrated: true,
-        canvas_width: venueWidthPx,
-        canvas_height: venueHeightPx,
-        grid_size: gridStepPx,
-        snap_to_grid: snapToGrid,
-        objects: layout.objects
+        snap_to_grid: snapToGrid
       });
+
+      const saved = await saveVenueLayout(projectId, normalizedPayload);
+      const synced = normalizeVenueLayout(saved);
+      setLayout(synced);
+      layoutRef.current = synced;
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (err: any) {
-      alert('Error saving hall layout: ' + err.message);
+      setSaveError(err?.message || 'Error saving hall layout. Your local changes remain on screen.');
     } finally {
       setIsSaving(false);
     }
@@ -950,92 +980,53 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
   const handleAddObject = (type: VenueObjectType, refTableId?: string) => {
     if (!layout) return;
 
-    const newId = `obj_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const gridSize = layout.grid_size || 40;
+    // If adding an existing reception table that is already placed on the canvas, select it instead of creating a duplicate
+    if (type === 'table' && refTableId) {
+      const existing = layout.objects.find(
+        o => o.object_type === 'table' && o.object_reference_id === refTableId
+      );
+      if (existing) {
+        setSelectedObjectIds([existing.id]);
+        setInteractionState('OBJECT_SELECTED');
+        return;
+      }
+    }
 
-    const isWorld = layout.coordinate_system === 'world' || (layout.venue_width !== undefined);
-    const u: VenueUnit = (layout.venue_unit as VenueUnit) || 'm';
+    const newId = genObjectUuid();
+    const u: VenueUnit = layout.venue_unit === 'ft' ? 'ft' : 'm';
+    const targetTable = type === 'table' && refTableId ? tables.find(t => t.id === refTableId) : undefined;
+    const defaults = getCanonicalObjectDefaults(type, u, targetTable?.table_type);
 
-    let width = isWorld ? (u === 'm' ? 1.8 : 6.0) : 140;
-    let height = isWorld ? (u === 'm' ? 1.8 : 6.0) : 140;
-    let label = 'New Element';
-    let properties: any = {};
+    const width = defaults.width;
+    const height = defaults.height;
+    let label = defaults.label;
+    let properties: Record<string, any> = {
+      ...defaults.properties,
+      world_unit: u,
+      migrated_v2: true
+    };
 
     if (type === 'table') {
-      const targetTable = tables.find(t => t.id === refTableId);
-      const isRect = targetTable?.table_type === 'rectangular';
-      if (isWorld) {
-        width = isRect ? (u === 'm' ? 2.4 : 8.0) : (u === 'm' ? 1.8 : 6.0);
-        height = isRect ? (u === 'm' ? 1.0 : 3.3) : (u === 'm' ? 1.8 : 6.0);
-      } else {
-        width = isRect ? 180 : 130;
-        height = isRect ? 90 : 130;
-      }
       label = targetTable ? `T${targetTable.table_number}: ${targetTable.table_name}` : 'Reception Table';
       properties = {
+        ...properties,
         tableShape: targetTable?.table_type || 'round',
         capacity: targetTable?.capacity || 10,
         tableNumber: targetTable?.table_number || '1'
       };
-    } else if (type === 'stage') {
-      width = isWorld ? (u === 'm' ? 8.0 : 26.0) : 500;
-      height = isWorld ? (u === 'm' ? 3.0 : 10.0) : 120;
-      label = 'Main Stage & Altar';
-      properties = { color: '#252525', textColor: '#FFFFFF' };
-    } else if (type === 'dance_floor') {
-      width = isWorld ? (u === 'm' ? 6.0 : 20.0) : 360;
-      height = isWorld ? (u === 'm' ? 5.0 : 16.0) : 260;
-      label = 'Dance Floor';
-      properties = { color: '#F2EFE9', textColor: '#252525' };
-    } else if (type === 'entrance') {
-      width = isWorld ? (u === 'm' ? 4.0 : 13.0) : 240;
-      height = isWorld ? (u === 'm' ? 1.2 : 4.0) : 60;
-      label = 'Grand Entrance';
-      properties = { color: '#8B806F', textColor: '#FFFFFF' };
-    } else if (type === 'buffet') {
-      width = isWorld ? (u === 'm' ? 5.0 : 16.0) : 300;
-      height = isWorld ? (u === 'm' ? 1.5 : 5.0) : 80;
-      label = 'Buffet Catering';
-      properties = { color: '#4A3E3D', textColor: '#FFFFFF' };
-    } else if (type === 'bar') {
-      width = isWorld ? (u === 'm' ? 3.0 : 10.0) : 200;
-      height = isWorld ? (u === 'm' ? 1.2 : 4.0) : 70;
-      label = 'Cocktail Bar';
-      properties = { color: '#3A443B', textColor: '#FFFFFF' };
-    } else if (type === 'photo_booth') {
-      width = isWorld ? (u === 'm' ? 2.5 : 8.0) : 150;
-      height = isWorld ? (u === 'm' ? 2.5 : 8.0) : 150;
-      label = 'Photo Booth';
-      properties = { color: '#FAF9F7', textColor: '#252525' };
-    } else if (type === 'pillar') {
-      width = isWorld ? (u === 'm' ? 0.8 : 2.6) : 60;
-      height = isWorld ? (u === 'm' ? 0.8 : 2.6) : 60;
-      label = 'Pillar';
-      properties = { color: '#CCCCCC' };
-    } else if (type === 'wall') {
-      width = isWorld ? (u === 'm' ? 5.0 : 16.0) : 400;
-      height = isWorld ? (u === 'm' ? 0.3 : 1.0) : 20;
-      label = 'Wall Partition';
-      properties = { color: '#252525' };
     }
 
-    let posX = 100;
-    let posY = 100;
-    if (isWorld) {
-      const centerScreenX = (-position.x + (containerRef.current?.clientWidth || 800) / 2) / scale;
-      const centerScreenY = (-position.y + (containerRef.current?.clientHeight || 600) / 2) / scale;
-      let rawWorldX = screenToWorld(centerScreenX, u);
-      let rawWorldY = screenToWorld(centerScreenY, u);
-      if (snapToGrid) {
-        rawWorldX = Math.round(rawWorldX / gridUnitStep) * gridUnitStep;
-        rawWorldY = Math.round(rawWorldY / gridUnitStep) * gridUnitStep;
-      }
-      posX = Math.max(0.5, Math.min(venueWidthM - width - 0.5, roundToDecimals(rawWorldX, 2)));
-      posY = Math.max(0.5, Math.min(venueHeightM - height - 0.5, roundToDecimals(rawWorldY, 2)));
-    } else {
-      posX = Math.round((-position.x + 300) / gridSize) * gridSize;
-      posY = Math.round((-position.y + 250) / gridSize) * gridSize;
+    const centerScreenX = (-position.x + (containerRef.current?.clientWidth || 800) / 2) / scale;
+    const centerScreenY = (-position.y + (containerRef.current?.clientHeight || 600) / 2) / scale;
+    let rawWorldX = screenToWorld(centerScreenX, u) - width / 2;
+    let rawWorldY = screenToWorld(centerScreenY, u) - height / 2;
+    if (snapToGrid && gridUnitStep > 0) {
+      rawWorldX = Math.round(rawWorldX / gridUnitStep) * gridUnitStep;
+      rawWorldY = Math.round(rawWorldY / gridUnitStep) * gridUnitStep;
     }
+    const margin = u === 'ft' ? 1.5 : 0.5;
+    const posX = roundToDecimals(Math.max(margin, Math.min(Math.max(margin, venueWidthM - width - margin), rawWorldX)), 2);
+    const posY = roundToDecimals(Math.max(margin, Math.min(Math.max(margin, venueHeightM - height - margin), rawWorldY)), 2);
 
     const newObj: VenueLayoutObject = {
       id: newId,
@@ -1058,51 +1049,30 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
     const newObjects = [...layout.objects, newObj];
     commitObjectsChange(newObjects);
     setSelectedObjectId(newId);
-  };
-
-
-
-  // Helper to snap coordinates
-  const snapVal = (val: number, size: number) => {
-    return snapToGrid ? Math.round(val / size) * size : val;
+    setInteractionState('OBJECT_SELECTED');
   };
 
   const selectedObject = layout?.objects.find(o => o.id === selectedObjectId);
 
-  // Helper to convert world object coordinates to screen-space render dimensions
-  const getObjectScreenRect = (obj: VenueLayoutObject) => {
-    const isWorld = layout?.coordinate_system === 'world' || (obj.width <= 25 && obj.height <= 25);
-    if (isWorld) {
-      return {
-        x: Math.round(obj.position_x * pxPerUnit),
-        y: Math.round(obj.position_y * pxPerUnit),
-        width: Math.max(20, Math.round(obj.width * pxPerUnit)),
-        height: Math.max(20, Math.round(obj.height * pxPerUnit))
-      };
-    }
-    return {
-      x: obj.position_x,
-      y: obj.position_y,
-      width: obj.width,
-      height: obj.height
-    };
-  };
-
-  // Render Chairs around table visually
-  const renderChairs = (obj: VenueLayoutObject, capacity: number, isRect: boolean, screenW: number, screenH: number) => {
+  // Render Chairs around table visually for round, rectangular, square, and custom shapes
+  const renderChairs = (capacity: number, shape: string, screenW: number, screenH: number) => {
     const chairs: React.ReactNode[] = [];
     const count = Math.min(24, Math.max(2, capacity || 8));
     const chairSize = Math.max(8, Math.round(0.38 * pxPerUnit));
 
-    if (isRect) {
-      // Chairs along top and bottom
-      const perSide = Math.ceil(count / 2);
-      const step = screenW / (perSide + 1);
-      for (let i = 1; i <= perSide; i++) {
+    if (shape === 'rectangular' || shape === 'custom') {
+      const hasEndChairs = count >= 6 && screenW >= 72 && screenH >= 42;
+      const endCount = hasEndChairs ? 2 : 0;
+      const sideTotal = Math.max(2, count - endCount);
+      const topCount = Math.ceil(sideTotal / 2);
+      const botCount = Math.max(1, sideTotal - topCount);
+
+      const topStep = screenW / (topCount + 1);
+      for (let i = 1; i <= topCount; i++) {
         chairs.push(
           <Circle
             key={`chair-top-${i}`}
-            x={step * i}
+            x={topStep * i}
             y={-chairSize / 2 - 2}
             radius={chairSize / 2}
             fill="#8B806F"
@@ -1110,10 +1080,13 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
             strokeWidth={1}
           />
         );
+      }
+      const botStep = screenW / (botCount + 1);
+      for (let i = 1; i <= botCount; i++) {
         chairs.push(
           <Circle
             key={`chair-bot-${i}`}
-            x={step * i}
+            x={botStep * i}
             y={screenH + chairSize / 2 + 2}
             radius={chairSize / 2}
             fill="#8B806F"
@@ -1122,14 +1095,97 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
           />
         );
       }
+      if (hasEndChairs) {
+        chairs.push(
+          <Circle
+            key="chair-left-end"
+            x={-chairSize / 2 - 2}
+            y={screenH / 2}
+            radius={chairSize / 2}
+            fill="#8B806F"
+            stroke="#252525"
+            strokeWidth={1}
+          />,
+          <Circle
+            key="chair-right-end"
+            x={screenW + chairSize / 2 + 2}
+            y={screenH / 2}
+            radius={chairSize / 2}
+            fill="#8B806F"
+            stroke="#252525"
+            strokeWidth={1}
+          />
+        );
+      }
+    } else if (shape === 'square') {
+      const basePerSide = Math.floor(count / 4);
+      const remainder = count % 4;
+      const sides = [0, 1, 2, 3].map(s => basePerSide + (s < remainder ? 1 : 0));
+
+      // Top
+      for (let i = 1; i <= sides[0]; i++) {
+        chairs.push(
+          <Circle
+            key={`chair-sq-top-${i}`}
+            x={(screenW / (sides[0] + 1)) * i}
+            y={-chairSize / 2 - 2}
+            radius={chairSize / 2}
+            fill="#FAF9F7"
+            stroke="#8B806F"
+            strokeWidth={1.5}
+          />
+        );
+      }
+      // Right
+      for (let i = 1; i <= sides[1]; i++) {
+        chairs.push(
+          <Circle
+            key={`chair-sq-right-${i}`}
+            x={screenW + chairSize / 2 + 2}
+            y={(screenH / (sides[1] + 1)) * i}
+            radius={chairSize / 2}
+            fill="#FAF9F7"
+            stroke="#8B806F"
+            strokeWidth={1.5}
+          />
+        );
+      }
+      // Bottom
+      for (let i = 1; i <= sides[2]; i++) {
+        chairs.push(
+          <Circle
+            key={`chair-sq-bot-${i}`}
+            x={(screenW / (sides[2] + 1)) * i}
+            y={screenH + chairSize / 2 + 2}
+            radius={chairSize / 2}
+            fill="#FAF9F7"
+            stroke="#8B806F"
+            strokeWidth={1.5}
+          />
+        );
+      }
+      // Left
+      for (let i = 1; i <= sides[3]; i++) {
+        chairs.push(
+          <Circle
+            key={`chair-sq-left-${i}`}
+            x={-chairSize / 2 - 2}
+            y={(screenH / (sides[3] + 1)) * i}
+            radius={chairSize / 2}
+            fill="#FAF9F7"
+            stroke="#8B806F"
+            strokeWidth={1.5}
+          />
+        );
+      }
     } else {
-      // Radial chairs around circle
-      const radius = screenW / 2;
-      const chairDistance = radius + chairSize / 2 + 4;
+      // Radial chairs around round/oval table
+      const rx = screenW / 2 + chairSize / 2 + 4;
+      const ry = screenH / 2 + chairSize / 2 + 4;
       for (let i = 0; i < count; i++) {
         const angle = (i / count) * 2 * Math.PI;
-        const cx = radius + chairDistance * Math.cos(angle);
-        const cy = radius + chairDistance * Math.sin(angle);
+        const cx = screenW / 2 + rx * Math.cos(angle);
+        const cy = screenH / 2 + ry * Math.sin(angle);
         chairs.push(
           <Circle
             key={`chair-rad-${i}`}
@@ -1334,11 +1390,16 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
             defaultValue=""
           >
             <option value="" disabled>+ Add Table to Canvas</option>
-            {tables.map(t => (
-              <option key={t.id} value={t.id}>
-                Table {t.table_number}: {t.table_name} ({t.assigned_count || 0}/{t.capacity})
-              </option>
-            ))}
+            {tables.map(t => {
+              const isOnCanvas = layout?.objects?.some(
+                o => o.object_type === 'table' && o.object_reference_id === t.id
+              );
+              return (
+                <option key={t.id} value={t.id}>
+                  Table {t.table_number}: {t.table_name} ({t.assigned_count || 0}/{t.capacity}){isOnCanvas ? ' • On Canvas' : ''}
+                </option>
+              );
+            })}
           </select>
 
           {/* Add Venue Element Dropdown */}
@@ -1360,8 +1421,11 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
             <option value="buffet">Buffet Catering Area</option>
             <option value="bar">Cocktail Bar</option>
             <option value="photo_booth">Photo Booth</option>
+            <option value="registration">Registration Desk</option>
             <option value="pillar">Pillar</option>
             <option value="wall">Wall Divider</option>
+            <option value="decor">Floral Decor</option>
+            <option value="label">Section Label</option>
           </select>
 
           {/* Venue Dimensions Settings Button */}
@@ -1603,6 +1667,32 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
         </div>
       </div>
 
+      {/* Save Error Banner */}
+      {saveError && (
+        <div className="bg-rose-50 border border-rose-200 px-3.5 py-2 rounded-xl flex items-center justify-between text-xs text-rose-900 shadow-xs shrink-0 gap-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{saveError}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              className="px-2.5 py-1 bg-rose-700 text-white rounded text-[11px] font-medium hover:bg-rose-800 transition-colors"
+            >
+              Retry Save
+            </button>
+            <button
+              type="button"
+              onClick={() => setSaveError(null)}
+              className="px-2 py-1 text-[11px] text-rose-700 hover:underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Out of Bounds Warning Alert Banner */}
       {outOfBounds.outOfBoundsIds.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-xl flex items-center justify-between text-xs text-amber-900 shadow-xs flex-wrap gap-2 shrink-0">
@@ -1667,6 +1757,24 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
               <div className="flex flex-col items-center gap-2">
                 <Loader2 className="w-6 h-6 text-[#8B806F] animate-spin" />
                 <span className="text-xs font-mono text-[#777777]">Loading Wedding Hall Canvas...</span>
+              </div>
+            </div>
+          ) : loadError ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/95 z-20 p-6">
+              <div className="max-w-md w-full bg-[#FAF9F7] border border-rose-200 rounded-xl p-5 text-center space-y-3 shadow-xs">
+                <AlertTriangle className="w-8 h-8 text-rose-600 mx-auto" />
+                <h4 className="text-sm font-semibold text-[#252525]">Failed to Load Hall Blueprint</h4>
+                <p className="text-xs text-[#666666] leading-relaxed">{loadError}</p>
+                <div className="pt-1">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={loadLayoutData}
+                    className="!bg-[#252525] text-white"
+                  >
+                    Retry Loading
+                  </Button>
+                </div>
               </div>
             </div>
           ) : (
@@ -1752,12 +1860,22 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                 {layout?.objects.map((obj) => {
                   const isSelected = selectedObjectIds.includes(obj.id);
                   const isTable = obj.object_type === 'table';
-                  const targetTable = isTable ? tables.find(t => t.id === obj.object_reference_id) : null;
-                  const assignedCount = targetTable?.assigned_count || 0;
-                  const capacity = targetTable?.capacity || obj.properties?.capacity || 10;
-                  const isRect = obj.properties?.tableShape === 'rectangular';
-                  const screenRect = getObjectScreenRect(obj);
+                  const targetTable = isTable && obj.object_reference_id
+                    ? tables.find(t => t.id === obj.object_reference_id)
+                    : null;
+                  const assignedCount = Math.max(0, Number(targetTable?.assigned_count ?? 0) || 0);
+                  const capacity = Math.max(1, Number(targetTable?.capacity ?? obj.properties?.capacity ?? 10) || 10);
+                  const tableShape = String(targetTable?.table_type || obj.properties?.tableShape || 'round').toLowerCase();
+                  const isRectangular = tableShape === 'rectangular' || tableShape === 'custom';
+                  const isSquare = tableShape === 'square';
+                  const screenRect = computeObjectScreenRect(obj, layout);
                   const isOut = outOfBounds.outOfBoundsIds.includes(obj.id);
+                  const defaults = getCanonicalObjectDefaults(obj.object_type, currentUnit, tableShape);
+                  const tableTitle = targetTable?.table_number
+                    ? `Table ${targetTable.table_number}`
+                    : obj.properties?.tableNumber
+                      ? `Table ${obj.properties.tableNumber}`
+                      : obj.label || 'Table';
 
                   return (
                     <Group
@@ -1767,7 +1885,7 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                       y={screenRect.y}
                       width={screenRect.width}
                       height={screenRect.height}
-                      rotation={obj.rotation}
+                      rotation={obj.rotation || 0}
                       draggable={interactionState !== 'CANVAS_PANNING'}
                       onMouseDown={(e) => {
                         // Left-click object selection
@@ -1807,7 +1925,7 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                           if (layoutRef.current) {
                             layoutRef.current.objects.forEach(o => {
                               if (currentSel.includes(o.id)) {
-                                const sRect = getObjectScreenRect(o);
+                                const sRect = computeObjectScreenRect(o, layoutRef.current);
                                 map.set(o.id, { x: sRect.x, y: sRect.y });
                               }
                             });
@@ -1847,28 +1965,22 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                         if (e.target.id() === obj.id) {
                           e.cancelBubble = true;
                           const origSelf = dragGroupStartPositionsRef.current.get(obj.id);
-                          const isWorld = layoutRef.current?.coordinate_system === 'world' || (obj.width <= 25);
-                          const u: VenueUnit = (layoutRef.current?.venue_unit as VenueUnit) || 'm';
+                          const curLayout = layoutRef.current;
+                          const u: VenueUnit = curLayout?.venue_unit === 'ft' ? 'ft' : 'm';
                           const px = getPixelsPerUnit(u);
-                          const step = layoutRef.current?.grid_unit_step || 0.5;
+                          const step = curLayout?.grid_unit_step && curLayout.grid_unit_step > 0
+                            ? curLayout.grid_unit_step
+                            : u === 'ft' ? 2.0 : 0.5;
 
-                          if (origSelf && layoutRef.current) {
+                          if (origSelf && curLayout) {
                             let snappedSelfX = e.target.x();
                             let snappedSelfY = e.target.y();
 
                             if (snapToGrid) {
-                              if (isWorld) {
-                                let worldX = snappedSelfX / px;
-                                let worldY = snappedSelfY / px;
-                                worldX = Math.round(worldX / step) * step;
-                                worldY = Math.round(worldY / step) * step;
-                                snappedSelfX = Math.round(worldX * px);
-                                snappedSelfY = Math.round(worldY * px);
-                              } else {
-                                const gridSize = layoutRef.current.grid_size || 40;
-                                snappedSelfX = Math.round(snappedSelfX / gridSize) * gridSize;
-                                snappedSelfY = Math.round(snappedSelfY / gridSize) * gridSize;
-                              }
+                              const worldX = Math.round((snappedSelfX / px) / step) * step;
+                              const worldY = Math.round((snappedSelfY / px) / step) * step;
+                              snappedSelfX = Math.round(worldX * px);
+                              snappedSelfY = Math.round(worldY * px);
                             }
 
                             const dx = snappedSelfX - origSelf.x;
@@ -1877,7 +1989,7 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                             e.target.position({ x: snappedSelfX, y: snappedSelfY });
 
                             const selIds = selectedObjectIdsRef.current;
-                            const newObjects = layoutRef.current.objects.map(o => {
+                            const newObjects = curLayout.objects.map(o => {
                               if (selIds.includes(o.id)) {
                                 const origPos = dragGroupStartPositionsRef.current.get(o.id);
                                 if (origPos) {
@@ -1886,13 +1998,17 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                                   const otherNode = stageRef.current?.findOne(`#${o.id}`);
                                   if (otherNode) otherNode.position({ x: finalScreenX, y: finalScreenY });
 
-                                  const finalWorldX = isWorld ? roundToDecimals(finalScreenX / px, 2) : finalScreenX;
-                                  const finalWorldY = isWorld ? roundToDecimals(finalScreenY / px, 2) : finalScreenY;
+                                  const oRect = computeObjectScreenRect(o, curLayout);
+                                  const worldRect = screenObjectToWorld(
+                                    { x: finalScreenX, y: finalScreenY, width: oRect.width, height: oRect.height },
+                                    u,
+                                    2
+                                  );
 
                                   return {
                                     ...o,
-                                    position_x: finalWorldX,
-                                    position_y: finalWorldY
+                                    position_x: worldRect.position_x,
+                                    position_y: worldRect.position_y
                                   };
                                 }
                               }
@@ -1915,28 +2031,31 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                         node.scaleX(1);
                         node.scaleY(1);
 
-                        if (layoutRef.current) {
-                          const isWorld = layoutRef.current.coordinate_system === 'world' || (obj.width <= 25);
-                          const u: VenueUnit = (layoutRef.current.venue_unit as VenueUnit) || 'm';
-                          const px = getPixelsPerUnit(u);
+                        const curLayout = layoutRef.current;
+                        if (curLayout) {
+                          const u: VenueUnit = curLayout.venue_unit === 'ft' ? 'ft' : 'm';
+                          const baseRect = computeObjectScreenRect(obj, curLayout);
+                          const finalScreenW = Math.max(8, Math.round((node.width() || baseRect.width) * scaleX));
+                          const finalScreenH = Math.max(8, Math.round((node.height() || baseRect.height) * scaleY));
 
-                          const finalScreenW = Math.max(20, Math.round(node.width() * scaleX));
-                          const finalScreenH = Math.max(20, Math.round(node.height() * scaleY));
-                          const finalScreenX = Math.round(node.x());
-                          const finalScreenY = Math.round(node.y());
+                          const worldCoords = screenObjectToWorld(
+                            {
+                              x: Math.round(node.x()),
+                              y: Math.round(node.y()),
+                              width: finalScreenW,
+                              height: finalScreenH
+                            },
+                            u,
+                            2
+                          );
 
-                          const finalWorldX = isWorld ? roundToDecimals(finalScreenX / px, 2) : finalScreenX;
-                          const finalWorldY = isWorld ? roundToDecimals(finalScreenY / px, 2) : finalScreenY;
-                          const finalWorldW = isWorld ? roundToDecimals(finalScreenW / px, 2) : finalScreenW;
-                          const finalWorldH = isWorld ? roundToDecimals(finalScreenH / px, 2) : finalScreenH;
-
-                          const newObjects = layoutRef.current.objects.map(o => 
+                          const newObjects = curLayout.objects.map(o =>
                             o.id === obj.id ? {
                               ...o,
-                              position_x: finalWorldX,
-                              position_y: finalWorldY,
-                              width: finalWorldW,
-                              height: finalWorldH,
+                              position_x: worldCoords.position_x,
+                              position_y: worldCoords.position_y,
+                              width: worldCoords.width,
+                              height: worldCoords.height,
                               rotation: Math.round(node.rotation())
                             } : o
                           );
@@ -1966,14 +2085,26 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                       {isTable ? (
                         <>
                           {/* Chairs around table */}
-                          {renderChairs(obj, capacity, isRect, screenRect.width, screenRect.height)}
+                          {renderChairs(capacity, tableShape, screenRect.width, screenRect.height)}
 
                           {/* Table Body */}
-                          {isRect ? (
+                          {isRectangular || isSquare ? (
                             <Rect
                               width={screenRect.width}
                               height={screenRect.height}
-                              cornerRadius={8}
+                              cornerRadius={isSquare ? 6 : 8}
+                              fill="#FFFFFF"
+                              stroke={isSelected ? "#8B806F" : "#252525"}
+                              strokeWidth={isSelected ? 3 : 1.5}
+                              shadowColor="rgba(0,0,0,0.08)"
+                              shadowBlur={6}
+                            />
+                          ) : Math.abs(screenRect.width - screenRect.height) > 6 ? (
+                            <Ellipse
+                              x={screenRect.width / 2}
+                              y={screenRect.height / 2}
+                              radiusX={screenRect.width / 2}
+                              radiusY={screenRect.height / 2}
                               fill="#FFFFFF"
                               stroke={isSelected ? "#8B806F" : "#252525"}
                               strokeWidth={isSelected ? 3 : 1.5}
@@ -1983,8 +2114,8 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                           ) : (
                             <Circle
                               x={screenRect.width / 2}
-                              y={screenRect.width / 2}
-                              radius={screenRect.width / 2}
+                              y={screenRect.height / 2}
+                              radius={Math.min(screenRect.width, screenRect.height) / 2}
                               fill="#FFFFFF"
                               stroke={isSelected ? "#8B806F" : "#252525"}
                               strokeWidth={isSelected ? 3 : 1.5}
@@ -1995,14 +2126,14 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
 
                           {/* Table Label & Seating Occupancy text */}
                           <KonvaText
-                            text={`Table ${targetTable?.table_number || obj.properties?.tableNumber || '1'}`}
+                            text={tableTitle}
                             fontSize={12}
                             fontStyle="bold"
                             fontFamily="Inter, sans-serif"
                             fill="#252525"
                             align="center"
                             width={screenRect.width}
-                            y={isRect ? screenRect.height / 2 - 14 : screenRect.width / 2 - 14}
+                            y={Math.max(4, screenRect.height / 2 - 14)}
                           />
 
                           <KonvaText
@@ -2012,32 +2143,64 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                             fill={assignedCount >= capacity ? "#DC2626" : "#059669"}
                             align="center"
                             width={screenRect.width}
-                            y={isRect ? screenRect.height / 2 + 2 : screenRect.width / 2 + 2}
+                            y={Math.max(18, screenRect.height / 2 + 2)}
                           />
                         </>
-                      ) : (
-                        /* Architectural & Venue Objects */
+                      ) : obj.object_type === 'label' ? (
+                        /* Section Label Element */
                         <>
                           <Rect
                             width={screenRect.width}
                             height={screenRect.height}
-                            cornerRadius={obj.object_type === 'pillar' ? 30 : 6}
-                            fill={obj.properties?.color || "#FAF9F7"}
+                            cornerRadius={6}
+                            fill={isSelected ? "rgba(139, 128, 111, 0.08)" : "rgba(255, 255, 255, 0.72)"}
+                            stroke={isSelected ? "#8B806F" : "#C4BFB6"}
+                            strokeWidth={isSelected ? 2 : 1}
+                            dash={[5, 4]}
+                          />
+                          <KonvaText
+                            text={obj.label || defaults.label}
+                            fontSize={13}
+                            fontStyle="bold"
+                            fontFamily="Inter, sans-serif"
+                            fill={obj.properties?.textColor || "#252525"}
+                            align="center"
+                            verticalAlign="middle"
+                            width={screenRect.width}
+                            height={screenRect.height}
+                          />
+                        </>
+                      ) : (
+                        /* Architectural & Venue Objects (all remaining types) */
+                        <>
+                          <Rect
+                            width={screenRect.width}
+                            height={screenRect.height}
+                            cornerRadius={
+                              obj.object_type === 'pillar'
+                                ? Math.min(screenRect.width, screenRect.height) / 2
+                                : obj.object_type === 'wall'
+                                  ? 2
+                                  : 6
+                            }
+                            fill={obj.properties?.color || defaults.properties.color || "#FAF9F7"}
                             stroke={isSelected ? "#8B806F" : "#252525"}
                             strokeWidth={isSelected ? 2.5 : 1}
                             shadowColor="rgba(0,0,0,0.06)"
                             shadowBlur={4}
                           />
-                          <KonvaText
-                            text={obj.label || obj.object_type.toUpperCase()}
-                            fontSize={11}
-                            fontStyle="bold"
-                            fontFamily="Inter, sans-serif"
-                            fill={obj.properties?.textColor || "#252525"}
-                            align="center"
-                            width={screenRect.width}
-                            y={screenRect.height / 2 - 6}
-                          />
+                          {screenRect.width >= 24 && screenRect.height >= 16 && (
+                            <KonvaText
+                              text={obj.label || defaults.label || obj.object_type.toUpperCase()}
+                              fontSize={11}
+                              fontStyle="bold"
+                              fontFamily="Inter, sans-serif"
+                              fill={obj.properties?.textColor || defaults.properties.textColor || "#252525"}
+                              align="center"
+                              width={screenRect.width}
+                              y={Math.max(2, screenRect.height / 2 - 6)}
+                            />
+                          )}
                         </>
                       )}
                     </Group>
@@ -2059,7 +2222,7 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                   anchorSize={8}
                   anchorCornerRadius={2}
                   boundBoxFunc={(oldBox, newBox) => {
-                    if (newBox.width < 40 || newBox.height < 30) {
+                    if (newBox.width < 8 || newBox.height < 8) {
                       return oldBox;
                     }
                     return newBox;
@@ -2223,7 +2386,8 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                         step={gridUnitStep}
                         value={roundToDecimals(selectedObject.position_x, 2)}
                         onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
+                          const parsed = parseFloat(e.target.value);
+                          const val = Number.isFinite(parsed) ? parsed : 0;
                           const newObjects = layout!.objects.map(o => 
                             o.id === selectedObject.id ? { ...o, position_x: roundToDecimals(val, 2) } : o
                           );
@@ -2239,7 +2403,8 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                         step={gridUnitStep}
                         value={roundToDecimals(selectedObject.position_y, 2)}
                         onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
+                          const parsed = parseFloat(e.target.value);
+                          const val = Number.isFinite(parsed) ? parsed : 0;
                           const newObjects = layout!.objects.map(o => 
                             o.id === selectedObject.id ? { ...o, position_y: roundToDecimals(val, 2) } : o
                           );
@@ -2253,10 +2418,12 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                       <input
                         type="number"
                         step="0.1"
-                        min="0.2"
+                        min={getMinWorldDimension(currentUnit)}
                         value={roundToDecimals(selectedObject.width, 2)}
                         onChange={(e) => {
-                          const val = Math.max(0.2, parseFloat(e.target.value) || 0.2);
+                          const minDim = getMinWorldDimension(currentUnit);
+                          const parsed = parseFloat(e.target.value);
+                          const val = Number.isFinite(parsed) ? Math.max(minDim, parsed) : minDim;
                           const newObjects = layout!.objects.map(o => 
                             o.id === selectedObject.id ? { ...o, width: roundToDecimals(val, 2) } : o
                           );
@@ -2270,10 +2437,12 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                       <input
                         type="number"
                         step="0.1"
-                        min="0.2"
+                        min={getMinWorldDimension(currentUnit)}
                         value={roundToDecimals(selectedObject.height, 2)}
                         onChange={(e) => {
-                          const val = Math.max(0.2, parseFloat(e.target.value) || 0.2);
+                          const minDim = getMinWorldDimension(currentUnit);
+                          const parsed = parseFloat(e.target.value);
+                          const val = Number.isFinite(parsed) ? Math.max(minDim, parsed) : minDim;
                           const newObjects = layout!.objects.map(o => 
                             o.id === selectedObject.id ? { ...o, height: roundToDecimals(val, 2) } : o
                           );
@@ -2478,11 +2647,11 @@ export default function WeddingHallPlanner({ projectId }: WeddingHallPlannerProp
                 <h5 className="font-semibold uppercase tracking-wider text-[11px] text-[#8B806F]">Nudge & Move</h5>
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center py-1 border-b border-[#F2EFE9]">
-                    <span className="text-[#555555]">Nudge 1px</span>
+                    <span className="text-[#555555]">Nudge (Fine: 0.1m / 0.5ft)</span>
                     <kbd className="px-1.5 py-0.5 bg-[#FAF9F7] border border-[#E8E8E5] rounded text-[11px] font-mono text-[#252525]">Arrow Keys</kbd>
                   </div>
                   <div className="flex justify-between items-center py-1 border-b border-[#F2EFE9]">
-                    <span className="text-[#555555]">Nudge 10px</span>
+                    <span className="text-[#555555]">Nudge (Coarse: 1m / 3ft)</span>
                     <kbd className="px-1.5 py-0.5 bg-[#FAF9F7] border border-[#E8E8E5] rounded text-[11px] font-mono text-[#252525]">Shift + Arrows</kbd>
                   </div>
                   <div className="flex justify-between items-center py-1 border-b border-[#F2EFE9]">

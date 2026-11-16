@@ -218,10 +218,10 @@ export default function DeveloperSettings() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-[#555555]">
           <div className="p-3 bg-[#F7F7F5] border border-[#E8E8E5] rounded">
-            <div className="font-medium text-[#1A1A1A]">Server-Side Role Enforcement</div>
+            <div className="font-medium text-[#1A1A1A]">Server-Side Developer Enforcement</div>
             <div className="text-[11px] mt-0.5">
-              Every <code className="font-mono">/api/developer/*</code> route validates JWT signature + DB{' '}
-              <code className="font-mono">super_admin</code> role or <code className="font-mono">SUPER_ADMIN_EMAILS</code>.
+              Every <code className="font-mono">/api/developer/*</code> route validates the session JWT and queries{' '}
+              <code className="font-mono">users_auth.is_developer = true</code> directly from the database.
             </div>
           </div>
           <div className="p-3 bg-[#F7F7F5] border border-[#E8E8E5] rounded">

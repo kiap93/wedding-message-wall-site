@@ -1,15 +1,14 @@
 import { API_BASE } from './config';
-import { authenticatedFetch } from './auth';
-import { 
-  Guest, 
-  GuestGroup, 
-  SeatingTable, 
-  VenueLayout, 
-  VenueLayoutObject 
+import { authenticatedFetch, extractApiErrorMessage } from './auth';
+import {
+  Guest,
+  GuestGroup,
+  SeatingTable,
+  VenueLayout
 } from '../types';
 
 function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('wedding_session_token');
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('wedding_session_token') : null;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
@@ -24,17 +23,13 @@ function getAuthHeaders(): Record<string, string> {
 // -------------------------------------------------------------
 
 export async function fetchEventGuests(projectId: string): Promise<Guest[]> {
-  try {
-    const res = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/guests`);
-    if (!res.ok) {
-      throw new Error('Failed to fetch guests');
-    }
-    const data = await res.json();
-    return data.guests || [];
-  } catch (err) {
-    console.error('Error fetching guests:', err);
-    return [];
+  const res = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/guests`);
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(extractApiErrorMessage(errBody, 'Failed to fetch guests'));
   }
+  const data = await res.json();
+  return Array.isArray(data.guests) ? data.guests : [];
 }
 
 export async function createEventGuest(projectId: string, guestData: Partial<Guest>): Promise<Guest> {
@@ -45,7 +40,7 @@ export async function createEventGuest(projectId: string, guestData: Partial<Gue
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to create guest');
+    throw new Error(extractApiErrorMessage(err, 'Failed to create guest'));
   }
   const data = await res.json();
   return data.guest;
@@ -59,7 +54,7 @@ export async function updateEventGuest(projectId: string, guestId: string, updat
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to update guest');
+    throw new Error(extractApiErrorMessage(err, 'Failed to update guest'));
   }
   const data = await res.json();
   return data.guest;
@@ -71,7 +66,7 @@ export async function deleteEventGuest(projectId: string, guestId: string): Prom
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to delete guest');
+    throw new Error(extractApiErrorMessage(err, 'Failed to delete guest'));
   }
 }
 
@@ -88,7 +83,7 @@ export async function bulkUpdateGuests(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to perform bulk operation');
+    throw new Error(extractApiErrorMessage(err, 'Failed to perform bulk operation'));
   }
   const data = await res.json();
   return data.guests || [];
@@ -102,7 +97,7 @@ export async function importGuests(projectId: string, guests: Array<Partial<Gues
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to import guests');
+    throw new Error(extractApiErrorMessage(err, 'Failed to import guests'));
   }
   const data = await res.json();
   return data.guests || [];
@@ -113,15 +108,13 @@ export async function importGuests(projectId: string, guests: Array<Partial<Gues
 // -------------------------------------------------------------
 
 export async function fetchEventGroups(projectId: string): Promise<GuestGroup[]> {
-  try {
-    const res = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/guest-groups`);
-    if (!res.ok) throw new Error('Failed to fetch groups');
-    const data = await res.json();
-    return data.groups || [];
-  } catch (err) {
-    console.error('Error fetching groups:', err);
-    return [];
+  const res = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/guest-groups`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractApiErrorMessage(err, 'Failed to fetch guest groups'));
   }
+  const data = await res.json();
+  return Array.isArray(data.groups) ? data.groups : [];
 }
 
 export async function createEventGroup(projectId: string, groupData: Partial<GuestGroup>): Promise<GuestGroup> {
@@ -132,7 +125,7 @@ export async function createEventGroup(projectId: string, groupData: Partial<Gue
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to create group');
+    throw new Error(extractApiErrorMessage(err, 'Failed to create group'));
   }
   const data = await res.json();
   return data.group;
@@ -146,7 +139,7 @@ export async function updateEventGroup(projectId: string, groupId: string, updat
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to update group');
+    throw new Error(extractApiErrorMessage(err, 'Failed to update group'));
   }
   const data = await res.json();
   return data.group;
@@ -158,7 +151,7 @@ export async function deleteEventGroup(projectId: string, groupId: string): Prom
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to delete group');
+    throw new Error(extractApiErrorMessage(err, 'Failed to delete group'));
   }
 }
 
@@ -167,15 +160,13 @@ export async function deleteEventGroup(projectId: string, groupId: string): Prom
 // -------------------------------------------------------------
 
 export async function fetchEventTables(projectId: string): Promise<SeatingTable[]> {
-  try {
-    const res = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/tables`);
-    if (!res.ok) throw new Error('Failed to fetch tables');
-    const data = await res.json();
-    return data.tables || [];
-  } catch (err) {
-    console.error('Error fetching tables:', err);
-    return [];
+  const res = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/tables`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(extractApiErrorMessage(err, 'Failed to fetch seating tables'));
   }
+  const data = await res.json();
+  return Array.isArray(data.tables) ? data.tables : [];
 }
 
 export async function createEventTable(projectId: string, tableData: Partial<SeatingTable>): Promise<SeatingTable> {
@@ -186,7 +177,7 @@ export async function createEventTable(projectId: string, tableData: Partial<Sea
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to create table');
+    throw new Error(extractApiErrorMessage(err, 'Failed to create table'));
   }
   const data = await res.json();
   return data.table;
@@ -200,7 +191,7 @@ export async function updateEventTable(projectId: string, tableId: string, updat
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to update table');
+    throw new Error(extractApiErrorMessage(err, 'Failed to update table'));
   }
   const data = await res.json();
   return data.table;
@@ -212,14 +203,14 @@ export async function deleteEventTable(projectId: string, tableId: string): Prom
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to delete table');
+    throw new Error(extractApiErrorMessage(err, 'Failed to delete table'));
   }
 }
 
 export async function assignGuestToTable(
-  projectId: string, 
-  tableId: string, 
-  guestId: string, 
+  projectId: string,
+  tableId: string,
+  guestId: string,
   seatNumber?: number
 ): Promise<SeatingTable[]> {
   const res = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/tables/${tableId}/assign`, {
@@ -229,15 +220,15 @@ export async function assignGuestToTable(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to assign guest to table');
+    throw new Error(extractApiErrorMessage(err, 'Failed to assign guest to table'));
   }
   const data = await res.json();
   return data.tables || [];
 }
 
 export async function assignGroupToTable(
-  projectId: string, 
-  tableId: string, 
+  projectId: string,
+  tableId: string,
   groupId: string
 ): Promise<{ tables: SeatingTable[]; assignedCount: number }> {
   const res = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/tables/${tableId}/assign-group`, {
@@ -247,7 +238,7 @@ export async function assignGroupToTable(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to assign group to table');
+    throw new Error(extractApiErrorMessage(err, 'Failed to assign group to table'));
   }
   const data = await res.json();
   return { tables: data.tables || [], assignedCount: data.assignedCount || 0 };
@@ -261,7 +252,7 @@ export async function unassignGuest(projectId: string, guestId: string): Promise
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to unassign guest');
+    throw new Error(extractApiErrorMessage(err, 'Failed to unassign guest'));
   }
   const data = await res.json();
   return data.tables || [];
@@ -275,9 +266,12 @@ export async function fetchVenueLayout(projectId: string): Promise<VenueLayout> 
   const res = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/layout`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to fetch venue layout');
+    throw new Error(extractApiErrorMessage(err, 'Failed to fetch venue layout'));
   }
   const data = await res.json();
+  if (!data.layout) {
+    throw new Error('Server returned an empty venue layout payload');
+  }
   return data.layout;
 }
 
@@ -289,8 +283,11 @@ export async function saveVenueLayout(projectId: string, layout: Partial<VenueLa
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to save venue layout');
+    throw new Error(extractApiErrorMessage(err, 'Failed to save venue layout'));
   }
   const data = await res.json();
+  if (!data.layout) {
+    throw new Error('Server returned an empty response after saving layout');
+  }
   return data.layout;
 }

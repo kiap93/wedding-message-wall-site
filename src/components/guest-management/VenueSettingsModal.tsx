@@ -136,10 +136,19 @@ export const VenueSettingsModal: React.FC<VenueSettingsModalProps> = ({
     setSelectedPresetId(null);
   };
 
-  // Check out of bounds objects based on current width and height
-  // Note: if unit is changed or objects are in meters, check against width/height
-  const currentObjects = layout.objects || [];
-  const { outOfBoundsObjects } = getOutOfBoundsObjects(currentObjects, width, height);
+  // Check out of bounds objects converted into the preview measurement unit
+  const rawObjects = layout.objects || [];
+  const previewObjects =
+    unit === currentUnit
+      ? rawObjects
+      : rawObjects.map(obj => ({
+          ...obj,
+          position_x: convertUnitValue(obj.position_x, currentUnit, unit),
+          position_y: convertUnitValue(obj.position_y, currentUnit, unit),
+          width: convertUnitValue(obj.width, currentUnit, unit),
+          height: convertUnitValue(obj.height, currentUnit, unit)
+        }));
+  const { outOfBoundsObjects } = getOutOfBoundsObjects(previewObjects, width, height);
   const outOfBoundsCount = outOfBoundsObjects.length;
 
   const handleSave = () => {

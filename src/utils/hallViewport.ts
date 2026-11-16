@@ -1,4 +1,5 @@
-import { VenueLayoutObject } from '../types';
+import { VenueLayout, VenueLayoutObject } from '../types';
+import { getObjectScreenRect, getPixelsPerUnit, VenueUnit } from './venueCoordinates';
 
 export interface HallBoundingBox {
   minX: number;
@@ -13,26 +14,29 @@ export interface HallBoundingBox {
 }
 
 /**
- * Calculates the bounding box of all objects placed inside the wedding hall layout.
- * Includes chairs clearance around tables and accounts for object rotation.
+ * Calculates the bounding box (in canvas screen pixels) of all objects placed inside the wedding hall layout.
+ * Includes chair clearance around tables and accounts for object rotation.
  * If no objects are placed, falls back to the venue hall boundary.
  */
 export function calculateHallBoundingBox(
   objects?: VenueLayoutObject[] | null,
-  defaultWidth: number = 2000,
-  defaultHeight: number = 1400,
+  defaultWidth: number = 1800,
+  defaultHeight: number = 1200,
   includeVenueBoundary: boolean = false
 ): HallBoundingBox {
+  const safeDefaultW = Math.max(120, Number.isFinite(defaultWidth) && defaultWidth > 0 ? defaultWidth : 1800);
+  const safeDefaultH = Math.max(120, Number.isFinite(defaultHeight) && defaultHeight > 0 ? defaultHeight : 1200);
+
   if (!objects || objects.length === 0) {
     return {
       minX: 0,
       minY: 0,
-      maxX: defaultWidth,
-      maxY: defaultHeight,
-      width: defaultWidth,
-      height: defaultHeight,
-      centerX: defaultWidth / 2,
-      centerY: defaultHeight / 2,
+      maxX: safeDefaultW,
+      maxY: safeDefaultH,
+      width: safeDefaultW,
+      height: safeDefaultH,
+      centerX: safeDefaultW / 2,
+      centerY: safeDefaultH / 2,
       hasObjects: false
     };
   }
@@ -44,25 +48,25 @@ export function calculateHallBoundingBox(
 
   for (const obj of objects) {
     const isTable = obj.object_type === 'table';
-    // Visual clearance for chairs around tables (approx 24px on each side)
+    // Visual clearance for chairs around tables (approx 24px on each side in screen space)
     const padding = isTable ? 24 : 0;
-    const w = obj.width || 120;
-    const h = obj.height || 120;
+    const x = Number.isFinite(obj.position_x) ? obj.position_x : 0;
+    const y = Number.isFinite(obj.position_y) ? obj.position_y : 0;
+    const w = Number.isFinite(obj.width) && obj.width > 0 ? obj.width : 120;
+    const h = Number.isFinite(obj.height) && obj.height > 0 ? obj.height : 120;
 
-    const rotDeg = obj.rotation || 0;
+    const rotDeg = Number.isFinite(obj.rotation) ? obj.rotation : 0;
     if (rotDeg === 0) {
-      const left = obj.position_x - padding;
-      const right = obj.position_x + w + padding;
-      const top = obj.position_y - padding;
-      const bottom = obj.position_y + h + padding;
+      const left = x - padding;
+      const right = x + w + padding;
+      const top = y - padding;
+      const bottom = y + h + padding;
 
       if (left < minX) minX = left;
       if (right > maxX) maxX = right;
       if (top < minY) minY = top;
       if (bottom > maxY) maxY = bottom;
     } else {
-      // In Konva, Group rotates around origin (position_x, position_y).
-      // Calculate world coordinates of all 4 corners including padding:
       const rad = (rotDeg * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
@@ -75,8 +79,8 @@ export function calculateHallBoundingBox(
       ];
 
       for (const pt of localCorners) {
-        const wx = obj.position_x + (pt.dx * cos - pt.dy * sin);
-        const wy = obj.position_y + (pt.dx * sin + pt.dy * cos);
+        const wx = x + (pt.dx * cos - pt.dy * sin);
+        const wy = y + (pt.dx * sin + pt.dy * cos);
 
         if (wx < minX) minX = wx;
         if (wx > maxX) maxX = wx;
@@ -86,25 +90,23 @@ export function calculateHallBoundingBox(
     }
   }
 
-  // If requested or if bounds are invalid, ensure venue boundary is encompassed
+  // Ensure venue boundary is encompassed when requested (includes top ruler space if desired)
   if (includeVenueBoundary) {
     minX = Math.min(minX, 0);
     minY = Math.min(minY, 0);
-    maxX = Math.max(maxX, defaultWidth);
-    maxY = Math.max(maxY, defaultHeight);
+    maxX = Math.max(maxX, safeDefaultW);
+    maxY = Math.max(maxY, safeDefaultH);
   }
 
-  // Safety fallback if invalid bounds
   if (minX === Infinity || maxX === -Infinity) {
     minX = 0;
-    maxX = defaultWidth;
+    maxX = safeDefaultW;
   }
   if (minY === Infinity || maxY === -Infinity) {
     minY = 0;
-    maxY = defaultHeight;
+    maxY = safeDefaultH;
   }
 
-  // Ensure minimum dimensions to avoid division by zero or infinitesimally small boxes
   const width = Math.max(120, maxX - minX);
   const height = Math.max(120, maxY - minY);
 
@@ -121,18 +123,45 @@ export function calculateHallBoundingBox(
   };
 }
 
+/**
+ * Convenience wrapper for canonical world-coordinate VenueLayout objects:
+ * converts objects to screen pixels using getObjectScreenRect() before computing the hall bounding box.
+ */
+export function calculateWorldHallBoundingBox(
+  layout: VenueLayout | null | undefined,
+  includeVenueBoundary: boolean = true
+): HallBoundingBox {
+  const unit: VenueUnit = layout?.venue_unit === 'ft' ? 'ft' : 'm';
+  const px = getPixelsPerUnit(unit);
+  const hallW = Math.round((layout?.venue_width || (unit === 'ft' ? 100 : 30)) * px);
+  const hallH = Math.round((layout?.venue_height || (unit === 'ft' ? 65 : 20)) * px);
+
+  const screenObjects: VenueLayoutObject[] = (layout?.objects || []).map(obj => {
+    const rect = getObjectScreenRect(obj, layout);
+    return {
+      ...obj,
+      position_x: rect.x,
+      position_y: rect.y,
+      width: rect.width,
+      height: rect.height
+    };
+  });
+
+  return calculateHallBoundingBox(screenObjects, hallW, hallH, includeVenueBoundary);
+}
+
 export interface FitToScreenOptions {
   availableWidth: number;
   availableHeight: number;
   bbox: HallBoundingBox;
   minScale?: number;
   maxScale?: number;
-  paddingPercent?: number; // 0.05 to 0.08 (5% - 8% visual padding)
+  paddingPercent?: number;
 }
 
 /**
  * Calculates the exact scale and position transform to fit the bounding box
- * centered in the available canvas viewport with 5–8% visual padding.
+ * centered in the available canvas viewport with visual padding.
  * Never modifies actual object positions, rotations, or dimensions.
  */
 export function calculateFitToScreenTransform({
@@ -141,23 +170,23 @@ export function calculateFitToScreenTransform({
   bbox,
   minScale = 0.25,
   maxScale = 2.0,
-  paddingPercent = 0.07 // 7% visual padding
+  paddingPercent = 0.07
 }: FitToScreenOptions): { scale: number; position: { x: number; y: number } } {
   const safeW = Math.max(100, availableWidth);
   const safeH = Math.max(100, availableHeight);
 
-  // Available space with visual padding applied on all edges
   const usableWidth = safeW * Math.max(0.7, 1 - paddingPercent * 2);
   const usableHeight = safeH * Math.max(0.7, 1 - paddingPercent * 2);
 
-  // Calculate zoom scale to fit entire layout
-  const scaleX = usableWidth / bbox.width;
-  const scaleY = usableHeight / bbox.height;
+  const safeBoxW = Math.max(120, bbox.width);
+  const safeBoxH = Math.max(120, bbox.height);
+
+  const scaleX = usableWidth / safeBoxW;
+  const scaleY = usableHeight / safeBoxH;
   const calculatedScale = Math.min(scaleX, scaleY);
 
   const finalScale = Math.max(minScale, Math.min(maxScale, calculatedScale));
 
-  // Center horizontally and vertically
   const posX = safeW / 2 - bbox.centerX * finalScale;
   const posY = safeH / 2 - bbox.centerY * finalScale;
 
@@ -190,10 +219,10 @@ export function calculateZoom100Transform({
   const targetScale = 1.0;
   const centerX = viewportWidth / 2;
   const centerY = viewportHeight / 2;
+  const safeScale = currentScale > 0 ? currentScale : 1;
 
-  // Determine the world point at center of current view
-  const worldX = focusPoint ? focusPoint.x : (centerX - currentPosition.x) / currentScale;
-  const worldY = focusPoint ? focusPoint.y : (centerY - currentPosition.y) / currentScale;
+  const worldX = focusPoint ? focusPoint.x : (centerX - currentPosition.x) / safeScale;
+  const worldY = focusPoint ? focusPoint.y : (centerY - currentPosition.y) / safeScale;
 
   return {
     scale: targetScale,

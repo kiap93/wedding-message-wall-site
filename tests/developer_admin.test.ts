@@ -4,7 +4,7 @@
  * Verifies:
  * 1. Unauthenticated access rejection (401) + /developer noindex SEO & robots.txt Disallow
  * 2. Non-admin role rejection (403) across EVERY /api/developer/* endpoint (Express & Hono Worker)
- * 3. Authorized super_admin access (DB role & SUPER_ADMIN_EMAILS) + zero password_hash/access_password leaks
+ * 3. Authorized developer access (DB is_developer = true) + rejection of env allowlist bypass & zero leaks
  * 4. Accurate non-test/non-demo organization & user counting
  * 5. Registration analytics (daily, weekly, monthly, MoM growth) from real created_at timestamps
  * 6. Strict payment accounting (only succeeded, strictly excludes pending/failed/cancelled/refunded)
@@ -73,6 +73,10 @@ class InMemoryQueryBuilder {
   order(col: string, opts?: { ascending?: boolean }) {
     this.orderCol = col;
     this.orderAsc = opts?.ascending !== false;
+    return this;
+  }
+
+  limit(_n: number) {
     return this;
   }
 
@@ -216,6 +220,7 @@ async function runTests() {
         full_name: 'Platform Admin',
         auth_provider: 'email',
         role: 'super_admin',
+        is_developer: true,
         status: 'active',
         is_verified: true,
         password_hash: 'SECRET_HASH_MUST_NEVER_LEAK',
@@ -232,6 +237,7 @@ async function runTests() {
         full_name: 'Allowlist Admin',
         auth_provider: 'google',
         role: 'user',
+        is_developer: false,
         status: 'active',
         is_verified: true,
         password_hash: 'ANOTHER_SECRET_HASH',
@@ -248,6 +254,7 @@ async function runTests() {
         full_name: 'Aria Chen',
         auth_provider: 'google',
         role: 'agency_owner',
+        is_developer: false,
         status: 'active',
         is_verified: true,
         password_hash: 'OWNER1_HASH_NEVER_EXPOSE',
@@ -264,6 +271,7 @@ async function runTests() {
         full_name: 'Liam Member',
         auth_provider: 'email',
         role: 'agency_member',
+        is_developer: false,
         status: 'active',
         is_verified: true,
         password_hash: 'MEMBER1_HASH_NEVER_EXPOSE',
@@ -280,6 +288,7 @@ async function runTests() {
         full_name: 'Zara Atelier',
         auth_provider: 'email',
         role: 'agency_owner',
+        is_developer: false,
         status: 'active',
         is_verified: true,
         password_hash: 'OWNER2_HASH_NEVER_EXPOSE',
@@ -296,6 +305,7 @@ async function runTests() {
         full_name: 'Test Bot',
         auth_provider: 'email',
         role: 'user',
+        is_developer: false,
         status: 'active',
         is_verified: false,
         created_at: isoDaysAgo(2),
@@ -309,6 +319,7 @@ async function runTests() {
         full_name: 'Deleted User',
         auth_provider: 'email',
         role: 'user',
+        is_developer: false,
         status: 'active',
         is_verified: false,
         created_at: isoDaysAgo(2),
@@ -666,11 +677,11 @@ async function runTests() {
     const meRes = await fetch(`${baseUrl}/api/developer/me`, {
       headers: { Authorization: `Bearer ${superAdminToken}` },
     });
-    assert(meRes.status === 200, 'DB super_admin /api/developer/me returns 200');
+    assert(meRes.status === 200, 'DB is_developer=true /api/developer/me returns 200');
     const allowMeRes = await fetch(`${baseUrl}/api/developer/me`, {
       headers: { Authorization: `Bearer ${allowlistToken}` },
     });
-    assert(allowMeRes.status === 200, 'SUPER_ADMIN_EMAILS allowlist user /api/developer/me returns 200');
+    assert(allowMeRes.status === 403, 'SUPER_ADMIN_EMAILS allowlist user without DB is_developer=true rejected with 403');
 
     const overviewRes = await fetch(`${baseUrl}/api/developer/overview`, {
       headers: { Authorization: `Bearer ${superAdminToken}` },

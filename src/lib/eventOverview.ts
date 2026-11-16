@@ -8,6 +8,7 @@ import {
   VenueLayoutObject,
   WeddingEvent,
 } from '../types';
+import { normalizeVenueLayout } from '../utils/venueCoordinates';
 import { EditorElement } from '../editor/store';
 
 export interface OverviewStats {
@@ -490,8 +491,7 @@ export function projectFloorPlanPreview(
       ? 20
       : 65;
 
-  const rawObjects = Array.isArray(layout?.objects) ? layout!.objects : [];
-  if (rawObjects.length === 0) {
+  if (!layout || !Array.isArray(layout.objects) || layout.objects.length === 0) {
     return {
       venueWidth,
       venueHeight,
@@ -502,26 +502,22 @@ export function projectFloorPlanPreview(
     };
   }
 
+  const normalized = normalizeVenueLayout(layout);
+  const normUnit: 'm' | 'ft' = normalized.venue_unit === 'ft' ? 'ft' : 'm';
+  const normW = normalized.venue_width || venueWidth;
+  const normH = normalized.venue_height || venueHeight;
+
   const tableMap = new Map<string, SeatingTable>();
   tables.forEach((t) => tableMap.set(t.id, t));
 
-  const legacyW = Number(layout?.canvas_width) > 0 ? Number(layout!.canvas_width) : 1600;
-  const legacyH = Number(layout?.canvas_height) > 0 ? Number(layout!.canvas_height) : 1000;
-
-  const isWorldLayout = layout?.coordinate_system === 'world';
-
-  const projected: FloorPlanProjectedObject[] = rawObjects
+  const projected: FloorPlanProjectedObject[] = normalized.objects
     .slice()
     .sort((a, b) => (a.z_index || 0) - (b.z_index || 0))
     .map((obj) => {
-      const objIsWorld = isWorldLayout || obj.width <= 25;
-      const totalW = objIsWorld ? venueWidth : legacyW;
-      const totalH = objIsWorld ? venueHeight : legacyH;
-
-      const xPct = Math.max(0, Math.min(100, (obj.position_x / totalW) * 100));
-      const yPct = Math.max(0, Math.min(100, (obj.position_y / totalH) * 100));
-      const wPct = Math.max(1.5, Math.min(100, (obj.width / totalW) * 100));
-      const hPct = Math.max(1.5, Math.min(100, (obj.height / totalH) * 100));
+      const xPct = Math.max(0, Math.min(100, (obj.position_x / normW) * 100));
+      const yPct = Math.max(0, Math.min(100, (obj.position_y / normH) * 100));
+      const wPct = Math.max(1.5, Math.min(100, (obj.width / normW) * 100));
+      const hPct = Math.max(1.5, Math.min(100, (obj.height / normH) * 100));
 
       const linkedTable = obj.object_reference_id
         ? tableMap.get(obj.object_reference_id)

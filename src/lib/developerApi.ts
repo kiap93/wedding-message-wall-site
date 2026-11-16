@@ -41,7 +41,9 @@ export interface DeveloperAdminIdentity {
   email: string;
   name: string;
   picture?: string | null;
-  role: 'super_admin';
+  role: string;
+  is_developer: boolean;
+  isDeveloper?: boolean;
   status: 'active';
 }
 
@@ -112,6 +114,7 @@ export interface UserRow {
   role: 'user' | 'agency_owner' | 'agency_member' | 'super_admin';
   status: 'active' | 'suspended';
   isVerified: boolean;
+  isDeveloper: boolean;
   organizationCount: number;
   organizationIds: string[];
   organizationNames: string[];
@@ -267,6 +270,16 @@ export const developerApi = {
     devFetch<{ success: boolean; user: UserRow }>(`/api/developer/users/${encodeURIComponent(id)}/reactivate`, {
       method: 'POST',
     }),
+
+  updateUserDeveloperAccess: (id: string, isDeveloper: boolean) =>
+    devFetch<{ success: boolean; user: UserRow; unchanged?: boolean }>(
+      `/api/developer/users/${encodeURIComponent(id)}/developer-access`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isDeveloper }),
+      }
+    ),
 
   getEvents: (params: Record<string, any> = {}) =>
     devFetch<PaginatedApiResponse<PlatformEventRow>>(`/api/developer/events${buildQuery(params)}`),

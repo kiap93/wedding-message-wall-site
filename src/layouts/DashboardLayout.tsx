@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { useUser } from '../lib/UserContext';
 import { useWorkspace } from '../lib/WorkspaceContext';
-import { removeAuthToken } from '../lib/auth';
 
 export interface EventSidebarNav {
   eventName: string;
@@ -38,15 +37,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useUser();
+  const { user, logout } = useUser();
   const { workspace } = useWorkspace();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [tabletSidebarCollapsed, setTabletSidebarCollapsed] = useState(false);
 
-  const handleLogout = () => {
-    removeAuthToken();
-    localStorage.removeItem('wedding_session_token');
-    window.location.href = '/login';
+  const handleLogout = async () => {
+    await logout();
   };
 
   const navItems = [

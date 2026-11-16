@@ -77,7 +77,7 @@ export const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
     classes = 'bg-[#FEF2F2] text-[#B91C1C] border-[#FECACA]';
   } else if (['pending', 'pending_payment', 'expired', 'refunded', 'partially_refunded', 'awaiting_async_payment', 'processing'].includes(normalized)) {
     classes = 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]';
-  } else if (['super_admin'].includes(normalized)) {
+  } else if (['super_admin', 'developer'].includes(normalized)) {
     classes = 'bg-[#252525] text-white border-[#252525]';
   } else if (['agency_owner'].includes(normalized)) {
     classes = 'bg-[#FAF5EA] text-[#736959] border-[#E6D6B0]';

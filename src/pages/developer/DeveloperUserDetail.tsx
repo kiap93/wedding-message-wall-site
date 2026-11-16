@@ -1,6 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, ShieldBan, ShieldCheck, AlertTriangle } from 'lucide-react';
+import {
+  ArrowLeft,
+  ShieldBan,
+  ShieldCheck,
+  ShieldPlus,
+  ShieldOff,
+  AlertTriangle,
+  CheckCircle2,
+} from 'lucide-react';
 import {
   developerApi,
   UserRow,
@@ -9,6 +17,7 @@ import {
   PaymentRow,
   ActivityLogRow,
 } from '../../lib/developerApi';
+import { useUser } from '../../lib/UserContext';
 import DataTable, { Column } from '../../design-system/components/DataTable';
 import Modal from '../../design-system/components/Modal';
 import {
@@ -23,6 +32,7 @@ import {
 export default function DeveloperUserDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user: currentUser } = useUser();
 
   const [detail, setDetail] = useState<{
     user: UserRow;
@@ -33,9 +43,11 @@ export default function DeveloperUserDetail() {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [suspendModalOpen, setSuspendModalOpen] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
+  const [developerActionNext, setDeveloperActionNext] = useState<boolean | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
 
   const loadDetail = useCallback(async () => {
@@ -60,11 +72,13 @@ export default function DeveloperUserDetail() {
     if (!detail) return;
     setActionBusy(true);
     setError(null);
+    setNotice(null);
     try {
       await developerApi.suspendUser(
         detail.user.id,
         suspendReason.trim() || 'Suspended by platform administrator'
       );
+      setNotice(`Suspended account for ${detail.user.email}.`);
       setSuspendModalOpen(false);
       setSuspendReason('');
       await loadDetail();
@@ -79,11 +93,35 @@ export default function DeveloperUserDetail() {
     if (!detail) return;
     setActionBusy(true);
     setError(null);
+    setNotice(null);
     try {
       await developerApi.reactivateUser(detail.user.id);
+      setNotice(`Reactivated account for ${detail.user.email}.`);
       await loadDetail();
     } catch (err: any) {
       setError(err?.message || 'Failed to reactivate user account');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleConfirmDeveloperAccess = async () => {
+    if (!detail || developerActionNext === null) return;
+    setActionBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await developerApi.updateUserDeveloperAccess(detail.user.id, developerActionNext);
+      setNotice(
+        developerActionNext
+          ? `Granted developer access to ${detail.user.email}.`
+          : `Revoked developer access from ${detail.user.email}.`
+      );
+      setDeveloperActionNext(null);
+      await loadDetail();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update developer access');
+      setDeveloperActionNext(null);
     } finally {
       setActionBusy(false);
     }
@@ -183,6 +221,14 @@ export default function DeveloperUserDetail() {
   if (!detail) return null;
   const { user, organizations, events, payments, activityLogs } = detail;
 
+  const actorEmail = String(currentUser?.email || '').trim().toLowerCase();
+  const targetEmail = String(user.email || '').trim().toLowerCase();
+  const isSelf = Boolean(
+    (actorEmail && targetEmail && actorEmail === targetEmail) ||
+      (currentUser?.dbUserId && String(currentUser.dbUserId) === user.id) ||
+      (currentUser?.id && (String(currentUser.id) === user.id || String(currentUser.id) === user.externalUserId))
+  );
+
   const collectedRevenueCents = payments
     .filter((p) => p.status === 'succeeded')
     .reduce((acc, p) => acc + p.amountCents, 0);
@@ -200,7 +246,8 @@ export default function DeveloperUserDetail() {
           </Link>
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-lg font-semibold text-[#1A1A1A] tracking-tight">{user.fullName}</h1>
-            <StatusBadge status={user.role} />
+            {user.isDeveloper && <StatusBadge status="developer" />}
+            {!(user.role === 'super_admin' && user.isDeveloper) && <StatusBadge status={user.role} />}
             <StatusBadge status={user.status} />
           </div>
           <div className="text-xs text-[#666666] mt-1 font-mono">
@@ -208,9 +255,33 @@ export default function DeveloperUserDetail() {
           </div>
         </div>
 
-        {user.role !== 'super_admin' && (
-          <div>
-            {user.status === 'suspended' ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {!isSelf && user.status !== 'suspended' && (
+            user.isDeveloper ? (
+              <button
+                type="button"
+                disabled={actionBusy}
+                onClick={() => setDeveloperActionNext(false)}
+                className="h-9 px-3.5 bg-white text-[#B45309] border border-[#FDE68A] rounded-md text-xs font-medium hover:bg-[#FFFBEB] inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <ShieldOff className="w-3.5 h-3.5" />
+                <span>Revoke Developer</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={actionBusy}
+                onClick={() => setDeveloperActionNext(true)}
+                className="h-9 px-3.5 bg-[#252525] text-white border border-[#252525] rounded-md text-xs font-medium hover:bg-[#3A3A3A] inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <ShieldPlus className="w-3.5 h-3.5 text-[#D8B979]" />
+                <span>Grant Developer</span>
+              </button>
+            )
+          )}
+
+          {!isSelf && (
+            user.status === 'suspended' ? (
               <button
                 type="button"
                 disabled={actionBusy}
@@ -220,7 +291,7 @@ export default function DeveloperUserDetail() {
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>{actionBusy ? 'Reactivating...' : 'Reactivate Account'}</span>
               </button>
-            ) : (
+            ) : !user.isDeveloper ? (
               <button
                 type="button"
                 disabled={actionBusy}
@@ -233,10 +304,17 @@ export default function DeveloperUserDetail() {
                 <ShieldBan className="w-3.5 h-3.5" />
                 <span>Suspend Account</span>
               </button>
-            )}
-          </div>
-        )}
+            ) : null
+          )}
+        </div>
       </div>
+
+      {notice && (
+        <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg px-4 py-3 flex items-center gap-2.5 text-xs text-[#15803D]">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{notice}</span>
+        </div>
+      )}
 
       {user.status === 'suspended' && (
         <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-lg p-4 flex items-start gap-3">
@@ -356,6 +434,64 @@ export default function DeveloperUserDetail() {
           </div>
         </div>
       )}
+
+      {/* Developer Access Confirmation Modal */}
+      <Modal
+        isOpen={developerActionNext !== null}
+        onClose={() => !actionBusy && setDeveloperActionNext(null)}
+        title={
+          developerActionNext
+            ? 'Grant Platform Developer Access'
+            : 'Revoke Platform Developer Access'
+        }
+        description={
+          developerActionNext
+            ? `Grant ${user.email} access to the /developer console and /api/developer/* endpoints.`
+            : `Immediately revoke /developer console and /api/developer/* access from ${user.email}.`
+        }
+        footer={
+          <>
+            <button
+              type="button"
+              disabled={actionBusy}
+              onClick={() => setDeveloperActionNext(null)}
+              className="h-8 px-3 bg-white border border-[#E8E8E5] rounded text-xs font-medium text-[#252525] hover:bg-[#FAF9F7]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={actionBusy}
+              onClick={handleConfirmDeveloperAccess}
+              className={`h-8 px-3.5 text-white rounded text-xs font-medium disabled:opacity-50 ${
+                developerActionNext
+                  ? 'bg-[#252525] hover:bg-[#3A3A3A]'
+                  : 'bg-[#B45309] hover:bg-[#92400E]'
+              }`}
+            >
+              {actionBusy
+                ? 'Updating...'
+                : developerActionNext
+                  ? 'Confirm Grant Developer'
+                  : 'Confirm Revoke Developer'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-2.5 text-xs text-[#555555]">
+          {developerActionNext ? (
+            <p>
+              This user will receive platform-level <code className="font-mono">is_developer = true</code>{' '}
+              authorization without changing any existing agency ownership or organization memberships.
+            </p>
+          ) : (
+            <p>
+              Revoking developer access takes effect immediately on the server across Express and Cloudflare
+              Worker routes. Agency workspace ownership and normal access remain unaffected.
+            </p>
+          )}
+        </div>
+      </Modal>
 
       {/* Suspend Confirmation Modal */}
       <Modal

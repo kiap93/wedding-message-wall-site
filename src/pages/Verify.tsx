@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { CheckCircle2, XCircle, Loader2, ArrowRight } from 'lucide-react';
 import { API_BASE } from '../lib/config';
 import { setAuthToken, setCsrfTokenMemory, extractApiErrorMessage, unwrapApiData } from '../lib/auth';
+import { useUser } from '../lib/UserContext';
 import AuthLayout from '../layouts/AuthLayout';
 import Button from '../design-system/components/Button';
 
@@ -12,6 +13,7 @@ export default function Verify() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Verifying your email address...');
   const navigate = useNavigate();
+  const { setUser, refreshUser } = useUser();
 
   useEffect(() => {
     if (!token) {
@@ -19,6 +21,8 @@ export default function Verify() {
       setMessage('Missing or invalid verification token.');
       return;
     }
+
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const verifyToken = async () => {
       try {
@@ -31,15 +35,27 @@ export default function Verify() {
         const data = unwrapApiData<any>(raw) || {};
         const verifiedToken = data.token || raw?.token;
         const csrfToken = data.csrfToken || raw?.csrfToken;
+        let verifiedUser = data.user || raw?.user || null;
 
         if (response.ok && verifiedToken) {
           setAuthToken(verifiedToken);
           if (csrfToken) setCsrfTokenMemory(csrfToken);
+          if (verifiedUser) {
+            setUser(verifiedUser);
+          } else {
+            verifiedUser = await refreshUser();
+          }
+          const isDev = verifiedUser?.is_developer === true || verifiedUser?.isDeveloper === true;
+          const destination = isDev ? '/developer' : '/workspace';
           setStatus('success');
-          setMessage('Email confirmed successfully. Redirecting you to your workspace...');
-          setTimeout(() => {
-            navigate('/workspace');
-          }, 1800);
+          setMessage(
+            isDev
+              ? 'Email confirmed successfully. Redirecting you to the Developer Console...'
+              : 'Email confirmed successfully. Redirecting you to your workspace...'
+          );
+          timeoutId = setTimeout(() => {
+            navigate(destination, { replace: true });
+          }, 1400);
         } else {
           setStatus('error');
           setMessage(extractApiErrorMessage(raw, 'Verification link expired or already used.'));
@@ -51,6 +67,9 @@ export default function Verify() {
     };
 
     verifyToken();
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [token, navigate]);
 
   return (

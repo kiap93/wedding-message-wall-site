@@ -559,6 +559,7 @@ export interface VenueLayout {
   show_rulers?: boolean;
   coordinate_system?: string;
   is_migrated?: boolean;
+  migration_version?: number;
   canvas_width: number;
   canvas_height: number;
   grid_size: number;

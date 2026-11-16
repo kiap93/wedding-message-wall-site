@@ -15,7 +15,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { DeveloperAdminIdentity } from '../../lib/developerApi';
-import { removeAuthToken } from '../../lib/auth';
+import { useUser } from '../../lib/UserContext';
 
 interface DeveloperLayoutProps {
   admin: DeveloperAdminIdentity;
@@ -42,14 +42,11 @@ export const DeveloperLayout: React.FC<DeveloperLayoutProps> = ({
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { logout } = useUser();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const handleLogout = () => {
-    removeAuthToken();
-    localStorage.removeItem('wedding_session_token');
-    fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).finally(() => {
-      window.location.href = '/login';
-    });
+  const handleLogout = async () => {
+    await logout();
   };
 
   const isActivePath = (to: string, exact?: boolean) => {
@@ -69,7 +66,7 @@ export const DeveloperLayout: React.FC<DeveloperLayoutProps> = ({
               EventFrame Admin
             </div>
             <div className="text-[10px] font-mono uppercase tracking-wider text-[#777777]">
-              super_admin
+              Platform Developer
             </div>
           </div>
         </Link>

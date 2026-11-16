@@ -16,7 +16,8 @@ import {
   listActivityLogs,
   getPlatformSettings,
   updatePlatformSettings,
-  requireSuperAdminSession,
+  updateUserDeveloperAccess,
+  requireDeveloper,
   resolveAuthenticatedSessionUser,
 } from './developerAdminService';
 import {
@@ -46,7 +47,8 @@ export function extractBearerOrCookieToken(req: express.Request): string | null 
  */
 export async function verifySessionWithDb(
   req: express.Request,
-  deps: DeveloperRouterDeps
+  deps: DeveloperRouterDeps,
+  options?: { ensureUserRecord?: boolean }
 ): Promise<
   | { ok: true; user: any; token: string }
   | { ok: false; statusCode: number; error: string; code: string; suspendedReason?: string | null }
@@ -73,7 +75,8 @@ export async function verifySessionWithDb(
   const check = await resolveAuthenticatedSessionUser(
     supabase,
     decoded,
-    deps.getSuperAdminEmails ? deps.getSuperAdminEmails() : undefined
+    deps.getSuperAdminEmails ? deps.getSuperAdminEmails() : undefined,
+    options
   );
   if (check.ok === false) {
     return check;
@@ -106,11 +109,7 @@ export function createDeveloperRouter(deps: DeveloperRouterDeps): express.Router
       return res.status(500).json({ error: err?.message || 'Database client unavailable' });
     }
 
-    const authCheck = await requireSuperAdminSession(
-      supabase,
-      decoded,
-      deps.getSuperAdminEmails ? deps.getSuperAdminEmails() : undefined
-    );
+    const authCheck = await requireDeveloper(supabase, decoded);
 
     if (authCheck.ok === false) {
       return res.status(authCheck.statusCode).json({
@@ -124,7 +123,7 @@ export function createDeveloperRouter(deps: DeveloperRouterDeps): express.Router
     next();
   });
 
-  // 1. Current Super Admin Identity
+  // 1. Current Developer Admin Identity
   router.get('/me', (req, res) => {
     const admin = (req as any).superAdmin;
     res.json({
@@ -134,7 +133,9 @@ export function createDeveloperRouter(deps: DeveloperRouterDeps): express.Router
         email: admin.email,
         name: admin.name,
         picture: admin.picture || null,
-        role: 'super_admin',
+        role: admin.role || 'user',
+        is_developer: true,
+        isDeveloper: true,
         status: admin.status || 'active',
       },
     });
@@ -212,6 +213,7 @@ export function createDeveloperRouter(deps: DeveloperRouterDeps): express.Router
         search: req.query.search as string | undefined,
         status: req.query.status as string | undefined,
         role: req.query.role as string | undefined,
+        isDeveloper: req.query.isDeveloper as string | undefined,
         organizationId: req.query.organizationId as string | undefined,
         registeredFrom: req.query.registeredFrom as string | undefined,
         registeredTo: req.query.registeredTo as string | undefined,
@@ -273,6 +275,37 @@ export function createDeveloperRouter(deps: DeveloperRouterDeps): express.Router
       res.json({ success: true, user: result.user });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to reactivate account' });
+    }
+  });
+
+  // 9b. Grant or Revoke Platform Developer Access (`is_developer`)
+  router.patch('/users/:id/developer-access', async (req, res) => {
+    try {
+      const supabase = (req as any).supabaseAdmin;
+      const admin = (req as any).superAdmin;
+      const body = req.body || {};
+      const nextIsDeveloper =
+        typeof body.isDeveloper === 'boolean'
+          ? body.isDeveloper
+          : typeof body.is_developer === 'boolean'
+            ? body.is_developer
+            : null;
+
+      if (nextIsDeveloper === null) {
+        return res.status(400).json({ error: 'isDeveloper boolean is required.' });
+      }
+
+      const result = await updateUserDeveloperAccess(supabase, req.params.id, nextIsDeveloper, admin);
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({
+          error: result.error,
+          code: result.code,
+        });
+      }
+
+      res.json({ success: true, user: result.user, unchanged: Boolean(result.unchanged) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to update developer access' });
     }
   });
 

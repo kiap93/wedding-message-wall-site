@@ -5,13 +5,14 @@ import { useNavigate } from 'react-router-dom';
 import { fetchTemplates, saveTemplate, deleteTemplate } from '../lib/templates';
 import { WeddingTemplate } from '../types';
 import { useUser } from '../lib/UserContext';
+import { authenticatedFetch } from '../lib/auth';
 import { Button } from '../design-system/components/Button';
 import { Badge } from '../design-system/components/Badge';
 import { Input } from '../design-system/components/Input';
 import { Select } from '../design-system/components/Select';
 
 export default function StaffTemplates() {
-  const { user } = useUser();
+  const { user, isLoading: isUserLoading, isSessionVerified } = useUser();
   const navigate = useNavigate();
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,16 +25,17 @@ export default function StaffTemplates() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Security check: Only allow staff
-  const isStaff = user?.email === 'buildsiteasia@gmail.com' || user?.email?.includes('@eventframe.io');
+  // Security check: Only allow authenticated platform developers
+  const isStaff = user?.is_developer === true || user?.isDeveloper === true;
 
   useEffect(() => {
-    if (!isStaff && user) {
-      navigate('/workspace');
+    if (isUserLoading || !isSessionVerified) return;
+    if (!isStaff) {
+      navigate('/workspace', { replace: true });
       return;
     }
     loadTemplates();
-  }, [user]);
+  }, [user, isStaff, isUserLoading, isSessionVerified, navigate]);
 
   async function loadTemplates() {
     setIsLoading(true);
@@ -83,11 +85,10 @@ export default function StaffTemplates() {
     if (!aiPrompt.trim()) return;
     setIsGenerating(true);
     try {
-      const response = await fetch('/api/ai/generate-template', {
+      const response = await authenticatedFetch('/api/ai/generate-template', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('wedding_session')}`
         },
         body: JSON.stringify({
           prompt: aiPrompt,
