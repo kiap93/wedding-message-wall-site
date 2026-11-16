@@ -8,9 +8,9 @@ import {
   fetchEventOverviewBundle,
 } from '../../lib/eventOverview';
 import { updateMessageStatus } from '../../lib/api';
-import { getSupabase } from '../../lib/supabase';
+import { subscribeToProjectStream } from '../../lib/guestMessageProvider';
 import { API_BASE } from '../../lib/config';
-import { authenticatedFetch } from '../../lib/auth';
+import { authenticatedFetch, extractApiErrorMessage } from '../../lib/auth';
 import EventOverviewHeader from './EventOverviewHeader';
 import OverviewStatCards from './OverviewStatCards';
 import EventTimelineWidget from './EventTimelineWidget';
@@ -106,59 +106,38 @@ export const EventOverviewDashboard: React.FC<EventOverviewDashboardProps> = ({
     loadBundle(false);
   }, [loadBundle]);
 
-  // Real-time Wish Wall subscription scoped strictly to projectId
+  // Real-time Wish Wall SSE subscription scoped strictly to projectId
   useEffect(() => {
     if (!projectId) return;
-    let channel: any = null;
 
-    try {
-      const supabase = getSupabase();
-      channel = supabase
-        .channel(`overview-messages-${projectId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'messages',
-            filter: `project_id=eq.${projectId}`,
-          },
-          (payload: any) => {
-            if (payload.eventType === 'INSERT' && payload.new) {
-              setMessages((prev) => {
-                if (prev.some((m) => m.id === payload.new.id)) return prev;
-                return [payload.new as Message, ...prev].slice(0, 100);
-              });
-            } else if (payload.eventType === 'UPDATE' && payload.new) {
-              setMessages((prev) =>
-                prev.map((m) => (m.id === payload.new.id ? (payload.new as Message) : m))
-              );
-            } else if (payload.eventType === 'DELETE' && payload.old) {
-              setMessages((prev) => prev.filter((m) => m.id !== payload.old.id));
-            }
+    const unsubscribe = subscribeToProjectStream({
+      projectId,
+      includeAll: true,
+      pin: eventPin,
+      onMessageUpsert: (msg) => {
+        setMessages((prev) => {
+          const exists = prev.some((m) => m.id === msg.id);
+          if (exists) {
+            return prev.map((m) => (m.id === msg.id ? msg : m));
           }
-        )
-        .subscribe();
-    } catch {
-      // Realtime optional fallback
-    }
+          return [msg, ...prev].slice(0, 100);
+        });
+      },
+      onMessageRemove: (messageId) => {
+        setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      },
+    });
 
     return () => {
-      if (channel) {
-        try {
-          getSupabase().removeChannel(channel);
-        } catch {
-          // ignore cleanup
-        }
-      }
+      unsubscribe();
     };
-  }, [projectId]);
+  }, [projectId, eventPin]);
 
   const handleModerateMessage = async (
     messageId: string,
     status: 'approved' | 'rejected'
   ) => {
-    await updateMessageStatus(messageId, status);
+    await updateMessageStatus(messageId, status, eventPin);
     setMessages((prev) =>
       prev.map((m) => (m.id === messageId ? { ...m, status } : m))
     );
@@ -203,7 +182,7 @@ export const EventOverviewDashboard: React.FC<EventOverviewDashboardProps> = ({
 
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.error || 'Failed to save milestone');
+      throw new Error(extractApiErrorMessage(errBody, 'Failed to save milestone'));
     }
 
     onEventUpdated?.({

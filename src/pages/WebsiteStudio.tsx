@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
-import { getSupabase } from '../lib/supabase';
+import { authenticatedFetch } from '../lib/auth';
+import { API_BASE } from '../lib/config';
 import { WeddingEvent } from '../types';
 import { useWebsiteStore } from '../website-builder/store/websiteStore';
 import { BuilderHeader } from '../website-builder/components/BuilderHeader';
@@ -50,18 +51,13 @@ export default function WebsiteStudio() {
 
       try {
         setIsLoading(true);
-        const supabase = getSupabase();
-        const { data, error } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('id', projectId)
-          .maybeSingle();
-
-        if (error || !data) {
-          throw new Error(error?.message || 'Wedding event not found');
+        const res = await authenticatedFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.data) {
+          throw new Error(json?.error || 'Wedding event not found');
         }
 
-        init(data);
+        init(json.data);
       } catch (err: any) {
         console.error('Failed to load project for Website Studio:', err);
         setLoadError(err.message || 'Could not load event data');
@@ -82,11 +78,10 @@ export default function WebsiteStudio() {
 
     setSaveStatus('saving');
     try {
-      const response = await fetch(`/api/projects/${projectId}`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('wedding_session_token') || ''}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           website_config: config

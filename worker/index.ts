@@ -7,7 +7,15 @@ import Stripe from 'stripe';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { EVENT_PACKAGES, getPackageById, isEventActive, getDaysRemaining } from '../src/lib/packages';
 import { EVENT_PRICING, formatPrice } from '../src/config/pricing';
-import { activateEventPurchase } from '../server/billingService';
+import {
+  activateEventPurchase,
+  createPayPerEventCheckout,
+  verifyAndCompleteCheckoutSession,
+  cancelCheckoutOrder,
+  processStripeWebhookEvent,
+  getBillingEventsForUser,
+  getBillingHistoryForUser,
+} from '../server/billingService';
 import { configureSupabase } from '../server/supabaseAdmin';
 import {
   registerWorkerDeveloperRoutes,
@@ -20,6 +28,37 @@ import {
   findDbUserForIdentity,
   resolveAuthenticatedSessionUser,
 } from '../server/developerAdminService';
+import { resolveUserOrganizations } from '../server/billingService';
+import {
+  findAgencyBySlugOrHost,
+  findAgenciesForUser,
+  sanitizePublicAgency,
+  onboardWorkspaceForUser,
+  createAgencyForUser,
+  updateAgencyForUser,
+  listProjectsForUser,
+  getProjectForAuthorizedUser,
+  createProjectForUser,
+  updateProjectForUserOrPin,
+  deleteProjectForUser,
+  resolvePublicEvent,
+  verifyCouplePinLogin,
+} from '../server/agencyService';
+import {
+  buildSuccessResponse,
+  buildErrorResponse,
+  generateCsrfToken,
+  validateCookieMutationCsrf,
+} from '../server/apiResponse';
+import {
+  listProjectMessages,
+  createGuestMessage,
+  moderateMessageStatus,
+  updateMessageHighlightForProject,
+  listProjectRsvps,
+  updateRsvpVipAuthorized,
+  getPublicEventCounts,
+} from '../server/messageAndRsvpService';
 import { buildSitemapXml } from '../src/seo/sitemap';
 import {
   buildLocalizedRoutePath,
@@ -104,10 +143,63 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+// Cookie & Security Helpers for Cloudflare Worker
+function isWorkerHttps(c: any): boolean {
+  const url = String(c.req.url || '');
+  const proto = String(c.req.header('x-forwarded-proto') || '').toLowerCase();
+  return url.startsWith('https://') || proto === 'https';
+}
+
+function getWorkerCookieDomain(c: any): string | undefined {
+  try {
+    const hostname = new URL(c.req.url).hostname.toLowerCase();
+    if (hostname.endsWith('eventframe.io')) return '.eventframe.io';
+  } catch {}
+  return undefined;
+}
+
+function issueWorkerSessionCookies(c: any, sessionToken: string): string {
+  const existingCsrf = getCookie(c, 'wedding_csrf');
+  const csrfToken = existingCsrf && existingCsrf.length >= 16 ? existingCsrf : generateCsrfToken();
+  const https = isWorkerHttps(c);
+  const domain = getWorkerCookieDomain(c);
+
+  setCookie(c, 'wedding_session', sessionToken, {
+    httpOnly: true,
+    secure: https,
+    sameSite: https ? 'None' : 'Lax',
+    maxAge: 60 * 60 * 24 * 7,
+    path: '/',
+    ...(domain ? { domain } : {}),
+  });
+  setCookie(c, 'wedding_csrf', csrfToken, {
+    httpOnly: false,
+    secure: https,
+    sameSite: https ? 'None' : 'Lax',
+    maxAge: 60 * 60 * 24 * 7,
+    path: '/',
+    ...(domain ? { domain } : {}),
+  });
+  return csrfToken;
+}
+
+function clearWorkerSessionCookies(c: any) {
+  const https = isWorkerHttps(c);
+  const domain = getWorkerCookieDomain(c);
+  const clearOpts: any = {
+    path: '/',
+    secure: https,
+    sameSite: https ? 'None' : 'Lax',
+    ...(domain ? { domain } : {}),
+  };
+  deleteCookie(c, 'wedding_session', clearOpts);
+  deleteCookie(c, 'wedding_csrf', clearOpts);
+}
+
 // CORS Middleware
 app.use('*', async (c, next) => {
   const origin = c.req.header('Origin');
-  
+
   if (c.req.method === 'OPTIONS') {
     const headers = new Headers();
     if (origin) {
@@ -115,7 +207,7 @@ app.use('*', async (c, next) => {
       headers.set('Access-Control-Allow-Credentials', 'true');
     }
     headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Event-PIN');
     headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
     return new Response(null, {
       status: 204,
@@ -127,22 +219,40 @@ app.use('*', async (c, next) => {
     c.res.headers.set('Access-Control-Allow-Origin', origin);
     c.res.headers.set('Access-Control-Allow-Credentials', 'true');
     c.res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Event-PIN');
   }
-  
-  // Custom secure headers for OAuth popups
+
   c.res.headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  await next();
+});
+
+// CSRF Protection for Cookie-Authenticated Mutations
+app.use('/api/*', async (c, next) => {
+  const authHeader = String(c.req.header('Authorization') || '');
+  const csrfCheck = validateCookieMutationCsrf({
+    method: c.req.method,
+    path: c.req.path,
+    hasSessionCookie: Boolean(getCookie(c, 'wedding_session')),
+    hasBearerToken: authHeader.startsWith('Bearer '),
+    hasEventPin: Boolean(c.req.header('x-event-pin')),
+    csrfCookie: getCookie(c, 'wedding_csrf') || null,
+    csrfHeader: c.req.header('x-csrf-token') || null,
+    origin: c.req.header('Origin') || null,
+    host: c.req.header('Host') || null,
+    requestedWith: c.req.header('X-Requested-With') || null,
+  });
+
+  if (csrfCheck.ok === false) {
+    return c.json(buildErrorResponse(csrfCheck.code, csrfCheck.message), csrfCheck.statusCode as any);
+  }
   await next();
 });
 
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
 
-// Public client config (Safe: only exposes public project URL and anon key, never service-role secrets)
-app.get('/api/config', (c) => c.json({
-  supabaseUrl: c.env.VITE_SUPABASE_URL || c.env.SUPABASE_URL || '',
-  supabaseAnonKey: c.env.VITE_SUPABASE_ANON_KEY || c.env.SUPABASE_ANON_KEY || '',
-}));
+// Safe runtime metadata endpoint (never exposes Supabase URLs or keys to browsers)
+app.get('/api/config', (c) => c.json(buildSuccessResponse({ apiVersion: 'v2', realtimeTransport: 'sse' })));
 
 // --- Public Demo Mode Routes (Isolated Ephemeral Store, Zero Production DB Writes) ---
 function getCloudflareDefaultCache(): Cache | null {
@@ -307,17 +417,205 @@ app.get('/api/demo/stats', async (c) => {
   return c.json(getDemoRoomCoreStats(room), 200, { 'Cache-Control': 'no-store' });
 });
 
-// Strict Protection: Reject demo messages trying to target production persistence
+// Centralized Backend Production Messages, Moderation & Live SSE Stream
+app.get('/api/messages', async (c) => {
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
+
+  const projectId = String(c.req.query('projectId') || c.req.query('project_id') || '').trim();
+  const includeAll = c.req.query('includeAll') === 'true' || c.req.query('include_all') === 'true';
+  const limit = Number(c.req.query('limit')) || 100;
+  const pinHeader = c.req.header('x-event-pin') || c.req.query('pin') || null;
+
+  let authUser = null;
+  if (includeAll && !pinHeader) {
+    const authCheck = await verifyWorkerSessionWithDb(c);
+    if (authCheck.ok) authUser = authCheck.user;
+  }
+
+  const result = await listProjectMessages(supabase, {
+    projectId,
+    includeAll,
+    limit,
+    authUser,
+    pin: pinHeader,
+  });
+
+  if (result.ok === false) {
+    return c.json(buildErrorResponse(result.code, result.error), result.statusCode as any);
+  }
+
+  return c.json(buildSuccessResponse(result.data, { messages: result.data }), 200, {
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+  });
+});
+
+app.get('/api/messages/stream', async (c) => {
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
+
+  const projectId = String(c.req.query('projectId') || c.req.query('project_id') || '').trim();
+  if (!projectId) {
+    return c.json(buildErrorResponse('INVALID_PROJECT_ID', 'projectId is required.'), 400);
+  }
+
+  const includeAll = c.req.query('includeAll') === 'true';
+  const pinParam = c.req.header('x-event-pin') || c.req.query('pin') || null;
+
+  let authUser = null;
+  if (includeAll && !pinParam) {
+    const authCheck = await verifyWorkerSessionWithDb(c);
+    if (authCheck.ok) authUser = authCheck.user;
+  }
+
+  const initialResult = await listProjectMessages(supabase, {
+    projectId,
+    includeAll,
+    limit: 100,
+    authUser,
+    pin: pinParam,
+  });
+
+  if (initialResult.ok === false) {
+    return c.json(buildErrorResponse(initialResult.code, initialResult.error), initialResult.statusCode as any);
+  }
+
+  const resolved = await resolvePublicEvent(supabase, { id: projectId, pin: pinParam || undefined });
+  const initialConfig = resolved.ok
+    ? {
+        message_display_config: resolved.data.project?.message_display_config || null,
+        theme_id: resolved.data.project?.theme_id || null,
+      }
+    : null;
+
+  const encoder = new TextEncoder();
+  let timer: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
+
+  let lastConfigHash = JSON.stringify(initialConfig || {});
+  const seenSignatures = new Map<string, string>();
+  for (const m of initialResult.data) {
+    if (m?.id) {
+      seenSignatures.set(String(m.id), `${m.status}|${m.classification}|${m.is_featured}|${m.is_pinned}|${m.wish_category}|${m.message}`);
+    }
+  }
+
+  const stream = new ReadableStream({
+    start(controller) {
+      const writeEvent = (eventName: string, data: unknown) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          closed = true;
+        }
+      };
+
+      writeEvent('snapshot', {
+        projectId,
+        messages: initialResult.data,
+        config: initialConfig,
+        timestamp: Date.now(),
+      });
+
+      timer = setInterval(async () => {
+        if (closed) {
+          if (timer) clearInterval(timer);
+          return;
+        }
+        try {
+          const latestMsgs = await listProjectMessages(supabase, {
+            projectId,
+            includeAll,
+            limit: 100,
+            authUser,
+            pin: pinParam,
+          });
+          if (latestMsgs.ok) {
+            const currentIds = new Set<string>();
+            for (const m of latestMsgs.data) {
+              if (!m?.id) continue;
+              const mid = String(m.id);
+              currentIds.add(mid);
+              const sig = `${m.status}|${m.classification}|${m.is_featured}|${m.is_pinned}|${m.wish_category}|${m.message}`;
+              if (seenSignatures.get(mid) !== sig) {
+                seenSignatures.set(mid, sig);
+                writeEvent('message:upsert', m);
+              }
+            }
+            for (const oldId of Array.from(seenSignatures.keys())) {
+              if (!currentIds.has(oldId)) {
+                seenSignatures.delete(oldId);
+                writeEvent('message:remove', { id: oldId });
+              }
+            }
+          }
+
+          const latestEvent = await resolvePublicEvent(supabase, { id: projectId, pin: pinParam || undefined });
+          if (latestEvent.ok) {
+            const nextConfig = {
+              message_display_config: latestEvent.data.project?.message_display_config || null,
+              theme_id: latestEvent.data.project?.theme_id || null,
+            };
+            const nextHash = JSON.stringify(nextConfig);
+            if (nextHash !== lastConfigHash) {
+              lastConfigHash = nextHash;
+              writeEvent('config:update', nextConfig);
+            }
+          }
+        } catch {
+          // Keep stream alive across transient polling hiccups
+        }
+      }, 2500);
+    },
+    cancel() {
+      closed = true;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      Connection: 'keep-alive',
+    },
+  });
+});
+
 app.post('/api/messages', async (c) => {
-  const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
-  const projectId = body?.project_id;
+  const body = await c.req.json().catch(() => ({} as Record<string, any>));
+  const projectId = body?.project_id || body?.projectId;
   if (projectId === PUBLIC_DEMO_ROOM_ID || projectId === 'demo' || projectId === 'demo-project') {
     return c.json(
-      { error: 'Demo messages cannot be persisted to production database. Use /api/demo/messages endpoint.' },
+      buildErrorResponse(
+        'DEMO_ISOLATION',
+        'Demo messages cannot be persisted to production database. Use /api/demo/messages endpoint.'
+      ),
       400
     );
   }
-  return c.json({ error: 'Production guest messages are submitted directly via event workspace configuration.' }, 400);
+
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
+
+  const result = await createGuestMessage(supabase, {
+    projectId,
+    name: body?.name,
+    message: body?.message,
+    wishCategory: body?.wishCategory,
+    wish_category: body?.wish_category,
+  });
+
+  if (result.ok === false) {
+    return c.json(buildErrorResponse(result.code, result.error), result.statusCode as any);
+  }
+
+  return c.json(buildSuccessResponse(result.data, { message: result.data }), 201);
 });
 
 // 1. Redirect to Google
@@ -443,30 +741,14 @@ app.get('/api/auth/callback', async (c) => {
       }
     }
 
-    // Sign our session JWT
-    // Use an object that definitely has keys to avoid empty payload issues
-    const token = await sign({ 
-      ...user, 
+    // Sign our session JWT & issue session + CSRF cookies
+    const token = await sign({
+      ...user,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60)
     }, jwtSecret, 'HS256');
 
-    // Set cookie with SameSite=None for cross-domain support
-    const cookieOptions: any = {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'None',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-      path: '/',
-    };
-
-    // If we're on eventframe.io, use a wildcard domain to share cookies with subdomains
-    const hostname = new URL(c.req.url).hostname;
-    if (hostname.endsWith('eventframe.io')) {
-      cookieOptions.domain = '.eventframe.io';
-    }
-
-    setCookie(c, 'wedding_session', token, cookieOptions);
+    issueWorkerSessionCookies(c, token);
 
     // Use JS replace to ensure history cleanup and popup support
     const redirectUrl = targetOrigin.endsWith('/') ? `${targetOrigin}workspace?token=${token}` : `${targetOrigin}/workspace?token=${token}`;
@@ -512,7 +794,7 @@ app.get('/api/auth/callback', async (c) => {
   }
 });
 
-// 3. Get Current User
+// 3. Get Current User (with sliding session & CSRF refresh)
 app.get('/api/auth/me', async (c) => {
   try {
     const check = await verifyWorkerSessionWithDb(c);
@@ -520,35 +802,75 @@ app.get('/api/auth/me', async (c) => {
       const errRes = check as { ok: false; statusCode: number; error: string; code: string; suspendedReason?: string | null };
       return c.json(
         {
-          error: errRes.error,
+          ...buildErrorResponse(errRes.code, errRes.error),
           code: errRes.code,
           ...(errRes.suspendedReason ? { suspendedReason: errRes.suspendedReason } : {}),
         },
         errRes.statusCode as any
       );
     }
-    return c.json({ user: check.user });
-  } catch (e: any) {
-    console.error('Worker auth/me internal error:', e.message);
-    return c.json({ error: 'Invalid session', details: e.message }, 401);
+
+    const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+    const freshToken = await sign(
+      {
+        id: check.user.id,
+        sub: check.user.sub,
+        email: check.user.email,
+        name: check.user.name,
+        picture: check.user.picture,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+      },
+      jwtSecret,
+      'HS256'
+    );
+    const csrfToken = issueWorkerSessionCookies(c, freshToken);
+    return c.json(buildSuccessResponse(check.user, { user: check.user, csrfToken }));
+  } catch {
+    return c.json(buildErrorResponse('UNAUTHENTICATED', 'Invalid session'), 401);
+  }
+});
+
+// 3b. Refresh Session Token & Cookies
+app.post('/api/auth/refresh', async (c) => {
+  try {
+    const check = await verifyWorkerSessionWithDb(c);
+    if (!check.ok) {
+      const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+      return c.json(buildErrorResponse(errRes.code, errRes.error), errRes.statusCode as any);
+    }
+
+    const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+    const refreshedToken = await sign(
+      {
+        id: check.user.id,
+        sub: check.user.sub,
+        email: check.user.email,
+        name: check.user.name,
+        picture: check.user.picture,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+      },
+      jwtSecret,
+      'HS256'
+    );
+    const csrfToken = issueWorkerSessionCookies(c, refreshedToken);
+
+    return c.json(
+      buildSuccessResponse(
+        { user: check.user, token: refreshedToken, csrfToken },
+        { user: check.user, token: refreshedToken, csrfToken }
+      )
+    );
+  } catch {
+    return c.json(buildErrorResponse('UNAUTHENTICATED', 'Session expired. Please sign in again.'), 401);
   }
 });
 
 // 4. Logout
 app.post('/api/auth/logout', (c) => {
-  const cookieOptions: any = {
-    path: '/',
-    secure: true,
-    sameSite: 'None'
-  };
-
-  const hostname = new URL(c.req.url).hostname;
-  if (hostname.endsWith('eventframe.io')) {
-    cookieOptions.domain = '.eventframe.io';
-  }
-
-  deleteCookie(c, 'wedding_session', cookieOptions);
-  return c.json({ success: true });
+  clearWorkerSessionCookies(c);
+  return c.json(buildSuccessResponse({ loggedOut: true }));
 });
 
 // Auth Helpers
@@ -850,27 +1172,14 @@ app.post('/api/auth/verify', async (c) => {
     );
     const user = sessionResolution.ok ? sessionResolution.user : baseUser;
 
-    const sessionToken = await sign({ 
-      ...baseUser, 
+    const sessionToken = await sign({
+      ...baseUser,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60)
     }, jwtSecret, 'HS256');
 
-    const cookieOptions: any = {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'None',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    };
-
-    const hostname = new URL(c.req.url).hostname;
-    if (hostname.endsWith('eventframe.io')) {
-      cookieOptions.domain = '.eventframe.io';
-    }
-
-    setCookie(c, 'wedding_session', sessionToken, cookieOptions);
-    return c.json({ success: true, user, token: sessionToken });
+    const csrfToken = issueWorkerSessionCookies(c, sessionToken);
+    return c.json(buildSuccessResponse({ user, token: sessionToken, csrfToken }, { user, token: sessionToken, csrfToken }));
   } catch (error: any) {
     console.error('Token verification failed:', error.message);
     return c.json({ error: 'Invalid or expired link' }, 401);
@@ -1023,84 +1332,118 @@ const getSupabase = (c: any) => {
   return createClient(supabaseUrl, serviceRoleKey);
 };
 
-// 5.4 Image Upload and Management API (Dual Architecture Support)
-app.post('/api/upload', async (c) => {
-  if (!isR2Configured(c.env)) {
-    return c.json({
-      error: 'Cloudflare R2 storage is not configured in Worker environment.',
-      details: 'Please set R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME in your Cloudflare Worker.'
-    }, 503);
-  }
+async function authorizeWorkerUpload(c: any, eventId?: string | null) {
   const tokenHeader = c.req.header('Authorization');
   const cookieToken = getCookie(c, 'wedding_session');
-  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const pinHeader = (c.req.header('x-event-pin') || '').trim();
+  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const supabase = getWorkerSupabase(c);
 
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+  if (token) {
+    const check = await verifyWorkerSessionWithDb(c);
+    if (!check.ok) {
+      const errRes = check as { ok: false; statusCode: number; code: string; error: string };
+      return { ok: false as const, statusCode: errRes.statusCode, code: errRes.code, message: errRes.error };
+    }
+    if (eventId && eventId !== 'default-event' && supabase && check.user.role !== 'super_admin') {
+      const resolved = await resolvePublicEvent(supabase, { id: eventId });
+      if (resolved.ok) {
+        const orgs = await resolveUserOrganizations(supabase, check.user);
+        const owns = orgs.some((org) => String(org.id) === String(resolved.data.agency.id));
+        if (!owns) {
+          return {
+            ok: false as const,
+            statusCode: 403,
+            code: 'FORBIDDEN_AGENCY_ACCESS',
+            message: 'You do not have permission to manage media for this event.',
+          };
+        }
+      }
+    }
+    return { ok: true as const, actorId: String(check.user.id || check.user.sub || 'user') };
+  }
 
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+  if (pinHeader && eventId && eventId !== 'default-event' && supabase) {
+    const resolved = await resolvePublicEvent(supabase, { id: eventId, pin: pinHeader });
+    if (resolved.ok && resolved.data.project?.access_password === pinHeader) {
+      return { ok: true as const, actorId: `couple_${eventId}` };
+    }
+    return {
+      ok: false as const,
+      statusCode: 403,
+      code: 'INVALID_EVENT_PIN',
+      message: 'Invalid event PIN or unauthorized access.',
+    };
+  }
+
+  return {
+    ok: false as const,
+    statusCode: 401,
+    code: 'UNAUTHENTICATED',
+    message: 'Authentication or valid event PIN is required.',
+  };
+}
+
+// 5.4 Image Upload and Management API (Dual JWT + Event PIN Support)
+app.post('/api/upload', async (c) => {
+  if (!isR2Configured(c.env)) {
+    return c.json(
+      buildErrorResponse('STORAGE_NOT_CONFIGURED', 'Cloudflare R2 storage is not configured in Worker environment.'),
+      503
+    );
+  }
 
   try {
-    const payload = await verify(token, jwtSecret, 'HS256') as any;
-    const activeUserId = payload.id || payload.sub || 'guest_user';
-
     const body = await c.req.parseBody();
-    const file = body.image as any; 
-    const event_id = (body.event_id || body.projectId || 'default-event') as string;
+    const file = body.image as any;
+    const event_id = String(body.event_id || body.projectId || 'default-event').trim();
 
     if (!file || !(file instanceof File)) {
-      return c.json({ error: 'No file uploaded or file is invalid.' }, 400);
+      return c.json(buildErrorResponse('MISSING_FILE', 'No file uploaded or file is invalid.'), 400);
     }
 
+    const authCheck = await authorizeWorkerUpload(c, event_id);
+    if (authCheck.ok === false) {
+      return c.json(buildErrorResponse(authCheck.code, authCheck.message), authCheck.statusCode as any);
+    }
+
+    const activeUserId = authCheck.actorId;
     const fileBuffer = await file.arrayBuffer();
     const fileBytes = new Uint8Array(fileBuffer);
     const uniqueId = Math.random().toString(36).substring(2, 11) + '_' + Date.now();
 
-    // Generate unique remote file paths
     const r2Folder = `${activeUserId}/${event_id}`;
     const fileExt = file.name.split('.').pop() || 'webp';
     const originalKey = `${r2Folder}/original/${uniqueId}_original.${fileExt}`;
     const mediumKey = `${r2Folder}/medium/${uniqueId}_medium.${fileExt}`;
     const thumbnailKey = `${r2Folder}/thumbnail/${uniqueId}_thumbnail.${fileExt}`;
 
-    let originalUrl = '';
-    let mediumUrl = '';
-    let thumbnailUrl = '';
+    const s3 = getS3Client(c.env);
+    const bucket = c.env.R2_BUCKET_NAME!;
+    const cdnUrl = c.env.R2_PUBLIC_URL || c.env.R2_ENDPOINT;
 
-    if (isR2Configured(c.env)) {
-      const s3 = getS3Client(c.env);
-      const bucket = c.env.R2_BUCKET_NAME!;
-      const cdnUrl = c.env.R2_PUBLIC_URL || c.env.R2_ENDPOINT;
+    const uploadToR2 = async (key: string, bytes: Uint8Array) => {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: bytes,
+          ContentType: file.type || 'image/jpeg',
+          CacheControl: 'public, max-age=31536000, immutable',
+        })
+      );
+    };
 
-      const uploadToR2 = async (key: string, bytes: Uint8Array) => {
-        await s3.send(
-          new PutObjectCommand({
-            Bucket: bucket,
-            Key: key,
-            Body: bytes,
-            ContentType: file.type || 'image/jpeg',
-            CacheControl: 'public, max-age=31536000, immutable',
-          })
-        );
-      };
+    await Promise.all([
+      uploadToR2(originalKey, fileBytes),
+      uploadToR2(mediumKey, fileBytes),
+      uploadToR2(thumbnailKey, fileBytes),
+    ]);
 
-      // Upload raw files to R2 in parallel (Worker bypasses Sharp to skip native node module issues)
-      await Promise.all([
-        uploadToR2(originalKey, fileBytes),
-        uploadToR2(mediumKey, fileBytes),
-        uploadToR2(thumbnailKey, fileBytes),
-      ]);
-
-      const cleanPublicUrl = cdnUrl?.endsWith('/') ? cdnUrl.slice(0, -1) : cdnUrl;
-      originalUrl = `${cleanPublicUrl}/${originalKey}`;
-      mediumUrl = `${cleanPublicUrl}/${mediumKey}`;
-      thumbnailUrl = `${cleanPublicUrl}/${thumbnailKey}`;
-    } else {
-      // Return local fallback URLs
-      const urlFolder = `/uploads/${activeUserId}/${event_id}`;
-      originalUrl = `${urlFolder}/original/${uniqueId}_original.${fileExt}`;
-      mediumUrl = `${urlFolder}/medium/${uniqueId}_medium.${fileExt}`;
-      thumbnailUrl = `${urlFolder}/thumbnail/${uniqueId}_thumbnail.${fileExt}`;
-    }
+    const cleanPublicUrl = cdnUrl?.endsWith('/') ? cdnUrl.slice(0, -1) : cdnUrl;
+    const originalUrl = `${cleanPublicUrl}/${originalKey}`;
+    const mediumUrl = `${cleanPublicUrl}/${mediumKey}`;
+    const thumbnailUrl = `${cleanPublicUrl}/${thumbnailKey}`;
 
     const dbRecord = {
       id: uniqueId,
@@ -1109,46 +1452,40 @@ app.post('/api/upload', async (c) => {
       original_url: originalUrl,
       medium_url: mediumUrl,
       thumbnail_url: thumbnailUrl,
-      width: 1200, 
-      height: 800, 
+      width: 1200,
+      height: 800,
       file_size: file.size,
       created_at: new Date().toISOString()
     };
 
     const supabase = getSupabase(c);
     const { error: dbError } = await supabase.from('uploaded_images').insert([dbRecord]);
-
     if (dbError) {
-      console.error('Worker image save to DB failed:', dbError.message);
-      return c.json({ error: 'Database transaction failed: ' + dbError.message }, 500);
+      return c.json(buildErrorResponse('UPLOAD_METADATA_SAVE_FAILED', 'Unable to save uploaded image metadata.'), 500);
     }
 
-    return c.json({
-      success: true,
-      message: 'Image fully processed and saved successfully.',
-      data: dbRecord
-    }, 201);
-
-  } catch (err: any) {
-    console.error('Worker image upload failed:', err);
-    return c.json({ error: 'Image upload failed: ' + err.message }, 500);
+    return c.json(
+      buildSuccessResponse(dbRecord, {
+        message: 'Image fully processed and saved successfully.',
+        url: dbRecord.original_url,
+        publicUrl: dbRecord.original_url,
+      }),
+      201
+    );
+  } catch {
+    return c.json(buildErrorResponse('IMAGE_PROCESSING_FAILED', 'Image upload failed.'), 500);
   }
 });
 
 app.get('/api/images', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
-
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
-
   try {
-    const payload = await verify(token, jwtSecret, 'HS256') as any;
-    const activeUserId = payload.id || payload.sub || 'guest_user';
-    const event_id = (c.req.query('event_id') || c.req.query('projectId')) as string;
+    const event_id = (c.req.query('event_id') || c.req.query('projectId')) as string | undefined;
+    const authCheck = await authorizeWorkerUpload(c, event_id || null);
+    if (authCheck.ok === false) {
+      return c.json(buildErrorResponse(authCheck.code, authCheck.message), authCheck.statusCode as any);
+    }
 
+    const activeUserId = authCheck.actorId;
     const supabase = getSupabase(c);
     let query = supabase.from('uploaded_images').select('*').eq('user_id', activeUserId);
     if (event_id) {
@@ -1158,49 +1495,39 @@ app.get('/api/images', async (c) => {
 
     const { data: imagesList, error: queryError } = await query;
     if (queryError) {
-      console.error('Worker error querying images:', queryError.message);
-      return c.json({ error: 'Failed to query image library: ' + queryError.message }, 500);
+      return c.json(buildErrorResponse('IMAGE_FETCH_FAILED', 'Failed to query image library.'), 500);
     }
 
-    return c.json({
-      success: true,
-      data: imagesList || []
-    });
-  } catch (err: any) {
-    console.error('Worker error fetching images:', err);
-    return c.json({ error: 'Failed to load image library: ' + err.message }, 500);
+    return c.json(buildSuccessResponse(imagesList || []));
+  } catch {
+    return c.json(buildErrorResponse('IMAGE_FETCH_FAILED', 'Failed to load image library.'), 500);
   }
 });
 
 app.delete('/api/images/:id', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
-
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
-
   try {
-    const payload = await verify(token, jwtSecret, 'HS256') as any;
-    const activeUserId = payload.id || payload.sub || 'guest_user';
     const imageId = c.req.param('id');
+    const event_id = (c.req.query('event_id') || c.req.query('projectId')) as string | undefined;
+    const authCheck = await authorizeWorkerUpload(c, event_id || null);
+    if (authCheck.ok === false) {
+      return c.json(buildErrorResponse(authCheck.code, authCheck.message), authCheck.statusCode as any);
+    }
 
+    const activeUserId = authCheck.actorId;
     const supabase = getSupabase(c);
-    
-    // Check if image exists and is owned by user
+
     const { data: imageRecord, error: fetchError } = await supabase
       .from('uploaded_images')
       .select('*')
       .eq('id', imageId)
       .eq('user_id', activeUserId)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (fetchError || !imageRecord) {
-      return c.json({ error: 'Image record not found or unauthorized.' }, 404);
+      return c.json(buildErrorResponse('IMAGE_NOT_FOUND', 'Image record not found or unauthorized.'), 404);
     }
 
-    // Attempt to delete from R2 if configured
     if (isR2Configured(c.env)) {
       const s3 = getS3Client(c.env);
       const bucket = c.env.R2_BUCKET_NAME!;
@@ -1209,7 +1536,7 @@ app.delete('/api/images/:id', async (c) => {
         try {
           const urlObj = new URL(url);
           return urlObj.pathname.startsWith('/') ? urlObj.pathname.substring(1) : urlObj.pathname;
-        } catch (e) {
+        } catch {
           return url.replace(/https?:\/\/[^\/]+\//, '');
         }
       };
@@ -1223,231 +1550,369 @@ app.delete('/api/images/:id', async (c) => {
       await Promise.all(
         keys.map(async (key) => {
           try {
-            await s3.send(
-              new DeleteObjectCommand({
-                Bucket: bucket,
-                Key: key,
-              })
-            );
-          } catch (err) {
-            console.error(`[WORKER] Error deleting R2 key ${key}:`, err);
-          }
+            await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+          } catch {}
         })
       );
     }
 
-    // Delete record from Supabase
     const { error: deleteError } = await supabase
       .from('uploaded_images')
       .delete()
       .eq('id', imageId);
 
     if (deleteError) {
-      console.error('Worker failed to delete image record:', deleteError.message);
-      return c.json({ error: 'Failed to delete image record: ' + deleteError.message }, 500);
+      return c.json(buildErrorResponse('IMAGE_DELETE_FAILED', 'Failed to delete image record.'), 500);
+    }
+
+    return c.json(buildSuccessResponse({ id: imageId }, { message: 'Image and files completely deleted.' }));
+  } catch {
+    return c.json(buildErrorResponse('IMAGE_DELETE_FAILED', 'Failed deleting resources.'), 500);
+  }
+});
+
+// 5.4 Public & Authenticated Agency / Event Resolution Routes (Parity with server.ts)
+app.get('/api/agencies/resolve', async (c) => {
+  try {
+    const slug = c.req.query('slug');
+    const id = c.req.query('id');
+    const host = c.req.query('host') || c.req.header('host');
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) {
+      return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
+    }
+
+    const result = await findAgencyBySlugOrHost(supabase, { slug, id, host });
+    if (result.ok === false) {
+      return c.json(
+        { ...buildErrorResponse(result.code, result.error), found: false, agency: null, code: result.code },
+        result.statusCode as any
+      );
+    }
+
+    const publicAgency = sanitizePublicAgency(result.data);
+    return c.json(buildSuccessResponse(publicAgency, { found: true, agency: publicAgency }));
+  } catch (e: any) {
+    console.error('[Worker Agencies Resolve] Unexpected error:', e?.message || e);
+    return c.json(buildErrorResponse('DATABASE_ERROR', 'Unable to resolve agency workspace'), 500);
+  }
+});
+
+app.get('/api/agencies/me', async (c) => {
+  const check = await verifyWorkerSessionWithDb(c);
+  if (!check.ok) {
+    const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+    return c.json(buildErrorResponse(errRes.code, errRes.error), errRes.statusCode as any);
+  }
+
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
+
+  const result = await findAgenciesForUser(supabase, check.user);
+  if (result.ok === false) {
+    return c.json(buildErrorResponse(result.code, result.error), result.statusCode as any);
+  }
+
+  return c.json(
+    buildSuccessResponse(result.data, {
+      agencies: result.data.agencies,
+      primaryAgency: result.data.primaryAgency,
+      requiresOnboarding: result.data.requiresOnboarding,
+    })
+  );
+});
+
+app.get('/api/agencies/:slug', async (c) => {
+  try {
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
+
+    const result = await findAgencyBySlugOrHost(supabase, { slug: c.req.param('slug') });
+    if (result.ok === false) {
+      return c.json(
+        buildErrorResponse(result.code || 'AGENCY_NOT_FOUND', result.error || 'Agency not found'),
+        (result.statusCode === 500 ? 500 : 404) as any
+      );
+    }
+
+    const publicAgency = sanitizePublicAgency(result.data);
+    return c.json(buildSuccessResponse(publicAgency, { agency: publicAgency }));
+  } catch {
+    return c.json(buildErrorResponse('DATABASE_ERROR', 'Unable to look up agency.'), 500);
+  }
+});
+
+app.post('/api/agencies', async (c) => {
+  const check = await verifyWorkerSessionWithDb(c);
+  if (!check.ok) {
+    const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+    return c.json(buildErrorResponse(errRes.code, errRes.error), errRes.statusCode as any);
+  }
+
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
+
+  const body = await c.req.json().catch(() => ({}));
+  const result = await createAgencyForUser(supabase, check.user, body);
+  if (result.ok === false) {
+    return c.json(buildErrorResponse(result.code, result.error), result.statusCode as any);
+  }
+
+  return c.json(
+    buildSuccessResponse(result.data, { reused: Boolean(result.reused) }),
+    result.statusCode as any
+  );
+});
+
+app.put('/api/agencies/:id', async (c) => {
+  const check = await verifyWorkerSessionWithDb(c);
+  if (!check.ok) {
+    const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+    return c.json(buildErrorResponse(errRes.code, errRes.error), errRes.statusCode as any);
+  }
+
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
+
+  const body = await c.req.json().catch(() => ({}));
+  const result = await updateAgencyForUser(supabase, check.user, c.req.param('id'), body);
+  if (result.ok === false) {
+    return c.json(buildErrorResponse(result.code, result.error), result.statusCode as any);
+  }
+
+  return c.json(buildSuccessResponse(result.data));
+});
+
+app.get('/api/events/resolve', async (c) => {
+  try {
+    const id = c.req.query('id');
+    const slug = c.req.query('slug');
+    const agencySlug = c.req.query('agency');
+    const agencyId = c.req.query('agencyId');
+    const host = c.req.query('host');
+    const pinHeader = c.req.header('x-event-pin');
+
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) {
+      return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
+    }
+
+    const result = await resolvePublicEvent(supabase, {
+      id,
+      slug,
+      agencySlug,
+      agencyId,
+      host,
+      pin: pinHeader,
+    });
+
+    if (result.ok === false) {
+      return c.json(
+        { ...buildErrorResponse(result.code, result.error), found: false, code: result.code },
+        result.statusCode as any
+      );
+    }
+
+    const stats = await getPublicEventCounts(supabase, String(result.data.project.id));
+    return c.json(
+      buildSuccessResponse(
+        { project: result.data.project, agency: result.data.agency, stats },
+        {
+          found: true,
+          project: result.data.project,
+          agency: result.data.agency,
+          stats,
+        }
+      )
+    );
+  } catch (e: any) {
+    console.error('[Worker Events Resolve] Unexpected error:', e?.message || e);
+    return c.json(buildErrorResponse('DATABASE_ERROR', 'Unable to load wedding event'), 500);
+  }
+});
+
+app.post('/api/couple/login', async (c) => {
+  try {
+    const { agencySlug, slug, password } = await c.req.json().catch(() => ({} as any));
+    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
+    const serviceRoleKey =
+      c.env.SUPABASE_SERVICE_ROLE_KEY ||
+      c.env.SUPABASE_SERVICE_KEY ||
+      c.env.SUPABASE_SECRET_KEY ||
+      c.env.VITE_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return c.json({ error: 'Database configuration missing', code: 'DATABASE_ERROR' }, 500);
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const result = await verifyCouplePinLogin(supabase, { agencySlug, slug, password });
+    if (result.ok === false) {
+      return c.json(
+        { success: false, code: result.code, error: result.error },
+        result.statusCode as any
+      );
     }
 
     return c.json({
       success: true,
-      message: 'Image and files completely deleted.'
+      project: result.data.project,
+      agency: result.data.agency,
     });
-  } catch (err: any) {
-    console.error('Worker error deleting image:', err);
-    return c.json({ error: 'Failed deleting resources: ' + err.message }, 500);
+  } catch (e: any) {
+    console.error('[Worker Couple Login] Unexpected error:', e?.message || e);
+    return c.json({ error: 'Unable to sign in to wedding dashboard', code: 'DATABASE_ERROR' }, 500);
   }
 });
 
 // 5.5 Projects API
+app.get('/api/projects', async (c) => {
+  const check = await verifyWorkerSessionWithDb(c);
+  if (!check.ok) {
+    const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+    return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+  }
+
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json({ error: 'Database configuration missing', code: 'DATABASE_ERROR' }, 500);
+
+  const agencyId = c.req.query('agency_id');
+  const result = await listProjectsForUser(supabase, check.user, agencyId);
+  if (result.ok === false) {
+    return c.json({ error: result.error, code: result.code }, result.statusCode as any);
+  }
+
+  return c.json({ success: true, data: result.data });
+});
+
+app.get('/api/projects/:id', async (c) => {
+  const check = await verifyWorkerSessionWithDb(c);
+  if (!check.ok) {
+    const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+    return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+  }
+
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json({ error: 'Database configuration missing', code: 'DATABASE_ERROR' }, 500);
+
+  const result = await getProjectForAuthorizedUser(supabase, check.user, c.req.param('id'));
+  if (result.ok === false) {
+    return c.json({ error: result.error, code: result.code }, result.statusCode as any);
+  }
+
+  return c.json({ success: true, data: result.data.project, agency: result.data.agency });
+});
+
 app.put('/api/projects/:id', async (c) => updateProject(c));
 app.patch('/api/projects/:id', async (c) => updateProject(c));
 
 async function updateProject(c: any) {
   const tokenHeader = c.req.header('Authorization');
   const cookieToken = getCookie(c, 'wedding_session');
-  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const pinHeader = c.req.header('x-event-pin');
+  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
 
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+  if (!token && !pinHeader) return c.json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' }, 401);
 
   const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 
   try {
-    const payload = await verify(token, jwtSecret, 'HS256') as any;
     const project_id = c.req.param('id');
     const projectData = await c.req.json();
-    
-    // Stringify JSON fields if column type is text (robustness)
-    if (projectData.rsvp_fields && typeof projectData.rsvp_fields === 'object') {
-      projectData.rsvp_fields = JSON.stringify(projectData.rsvp_fields);
-    }
-
     const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
     const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);
 
     if (!supabaseUrl || !serviceRoleKey) {
-      return c.json({ error: 'Supabase configuration missing', details: 'URL or Key not set in environment (Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Settings)' }, 500);
+      return c.json({ error: 'Supabase configuration missing', code: 'DATABASE_ERROR' }, 500);
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
-
-    // Verify agency
-    const { data: agency } = await supabase
-      .from('agencies')
-      .select('id')
-      .eq('user_id', payload.id || payload.sub)
-      .single();
-
-    if (!agency) return c.json({ error: 'Agency not found' }, 403);
-
-    // Exclude immutable
-    const { id, agency_id, created_at, ...updateData } = projectData;
-
-    const { data, error } = await supabase
-      .from('projects')
-      .update(updateData)
-      .eq('id', project_id)
-      .eq('agency_id', agency.id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Worker project update error:', error);
-      return c.json({ error: error.message }, 500);
+    let authUser = null;
+    if (token) {
+      const payload = await verify(token, jwtSecret, 'HS256') as any;
+      const activeCheck = await resolveAuthenticatedSessionUser(supabase, payload, c.env.SUPER_ADMIN_EMAILS);
+      if (!activeCheck.ok) {
+        const errRes = activeCheck as { ok: false; statusCode: number; error: string; code: string };
+        return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+      }
+      authUser = activeCheck.user;
     }
 
-    return c.json({ success: true, data });
+    const result = await updateProjectForUserOrPin(supabase, {
+      projectId: project_id,
+      authUser,
+      pin: pinHeader || null,
+      body: projectData,
+    });
+
+    if (result.ok === false) {
+      return c.json({ error: result.error, code: result.code }, result.statusCode as any);
+    }
+
+    return c.json({ success: true, data: result.data });
   } catch (e: any) {
     if (e.name === 'JwtTokenInvalid' || e.name === 'JwtTokenExpired' || e.name === 'JwtTokenIssuedAt' || e.message?.includes('JWT')) {
-      console.error('Worker project update auth failed:', e.message);
-      return c.json({ error: 'Invalid session', details: e.message }, 401);
+      return c.json({ error: 'Invalid session', code: 'UNAUTHENTICATED' }, 401);
     }
     console.error('Worker project update internal error:', e.message);
-    return c.json({ error: 'Internal server error', details: e.message }, 500);
+    return c.json({ error: 'Internal server error', code: 'DATABASE_ERROR' }, 500);
   }
 }
 
 app.delete('/api/projects/:id', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
-
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
-
-  try {
-    const payload = await verify(token, jwtSecret, 'HS256') as any;
-    const project_id = c.req.param('id');
-
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      return c.json({ error: 'Supabase configuration missing' }, 500);
-    }
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-
-    // Verify agency
-    const { data: agency } = await supabase
-      .from('agencies')
-      .select('id')
-      .eq('user_id', payload.id || payload.sub)
-      .single();
-
-    if (!agency) return c.json({ error: 'Agency not found' }, 403);
-
-    const { error } = await supabase
-      .from('projects')
-      .delete()
-      .eq('id', project_id)
-      .eq('agency_id', agency.id);
-
-    if (error) {
-      console.error('Worker project deletion error:', error);
-      return c.json({ error: error.message }, 500);
-    }
-
-    return c.json({ success: true });
-  } catch (e: any) {
-    return c.json({ error: 'Internal server error' }, 500);
+  const check = await verifyWorkerSessionWithDb(c);
+  if (!check.ok) {
+    const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+    return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
   }
+
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json({ error: 'Supabase configuration missing', code: 'DATABASE_ERROR' }, 500);
+
+  const result = await deleteProjectForUser(supabase, {
+    projectId: c.req.param('id'),
+    authUser: check.user,
+  });
+
+  if (result.ok === false) {
+    return c.json({ error: result.error, code: result.code }, result.statusCode as any);
+  }
+
+  return c.json({ success: true });
 });
 
 app.post('/api/projects', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const check = await verifyWorkerSessionWithDb(c);
+  if (!check.ok) {
+    const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+    return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+  }
 
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json({ error: 'Supabase configuration missing', code: 'DATABASE_ERROR' }, 500);
 
   try {
-    const payload = await verify(token, jwtSecret, 'HS256') as any;
     const projectData = await c.req.json();
-
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      return c.json({ error: 'Supabase configuration missing' }, 500);
+    const result = await createProjectForUser(supabase, check.user, projectData);
+    if (result.ok === false) {
+      return c.json({ error: result.error, code: result.code }, result.statusCode as any);
     }
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-    const activeCheck = await resolveAuthenticatedSessionUser(supabase, payload, c.env.SUPER_ADMIN_EMAILS);
-    if (!activeCheck.ok) {
-      const errRes = activeCheck as { ok: false; statusCode: number; error: string };
-      return c.json({ error: errRes.error }, errRes.statusCode as any);
-    }
-
-    // Verify agency
-    const { data: agency } = await supabase
-      .from('agencies')
-      .select('id, name')
-      .eq('user_id', payload.id || payload.sub)
-      .single();
-
-    if (!agency) return c.json({ error: 'Agency not found' }, 403);
-
-    const newProject = {
-      status: 'draft',
-      payment_status: 'unpaid',
-      package_id: 'standard',
-      ...projectData,
-      agency_id: agency.id,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    if (newProject.rsvp_fields && typeof newProject.rsvp_fields === 'object') {
-      newProject.rsvp_fields = JSON.stringify(newProject.rsvp_fields);
-    }
-
-    const { data, error } = await supabase
-      .from('projects')
-      .insert([newProject])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Worker project creation error:', error);
-      return c.json({ error: error.message }, 500);
-    }
-
+    const { project: data, agency } = result.data;
     await recordPlatformActivity(supabase, {
-      actorId: payload.id || payload.sub,
-      actorEmail: payload.email || null,
-      actorRole: activeCheck.user.role,
+      actorId: check.user.id,
+      actorEmail: check.user.email || null,
+      actorRole: check.user.role,
       action: 'EVENT_CREATED',
-      organizationId: agency.id,
+      organizationId: String(agency.id),
       targetEventId: data?.id ? String(data.id) : null,
-      summary: `Event "${data?.name || newProject.name || 'Untitled'}" created under ${agency.name}`,
+      summary: `Event "${data?.name || 'Untitled'}" created under ${agency.name}`,
     });
 
     return c.json({ success: true, data }, 201);
   } catch (e: any) {
     console.error('Worker project creation internal error:', e.message);
-    return c.json({ error: 'Internal server error', details: e.message }, 500);
+    return c.json({ error: 'Internal server error', code: 'DATABASE_ERROR' }, 500);
   }
 });
 
@@ -1641,144 +2106,76 @@ app.delete('/api/templates/:id', async (c) => {
 });
 
 app.post('/api/onboard', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  let token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const check = await verifyWorkerSessionWithDb(c);
+  if (!check.ok) {
+    const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+    return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+  }
 
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json({ error: 'Database configuration missing', code: 'DATABASE_ERROR' }, 500);
 
   try {
-    const payload = await verify(token, jwtSecret, 'HS256') as any;
-    const { role, name, groomName, brideName, slug } = await c.req.json();
-    const userId = payload.id || payload.sub;
-
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-    const activeCheck = await resolveAuthenticatedSessionUser(supabase, payload, c.env.SUPER_ADMIN_EMAILS);
-    if (!activeCheck.ok) {
-      const errRes = activeCheck as { ok: false; statusCode: number; error: string };
-      return c.json({ error: errRes.error }, errRes.statusCode as any);
+    const body = await c.req.json().catch(() => ({}));
+    const result = await onboardWorkspaceForUser(supabase, check.user, body);
+    if (result.ok === false) {
+      return c.json({ error: result.error, code: result.code }, result.statusCode as any);
     }
 
-    // 1. Check if slug exists
-    const { data: existing } = await supabase
-      .from('agencies')
-      .select('id')
-      .eq('slug', slug)
-      .maybeSingle();
-      
-    if (existing) {
-      return c.json({ error: 'This subdomain is already taken' }, 400);
-    }
-
-    // 2. Create agency
-    const orgName = role === 'couple' ? `${groomName} & ${brideName}` : name;
-    let { data: agency, error: agencyError } = await supabase
-      .from('agencies')
-      .insert([{
-        name: orgName,
-        slug,
-        user_id: userId,
-        user_role: role,
-        owner_email: payload.email || null,
-        created_at: new Date().toISOString()
-      }])
-      .select()
-      .single();
-
-    if (agencyError && /owner_email/i.test(agencyError.message || '')) {
-      const fallback = await supabase
-        .from('agencies')
-        .insert([{
-          name: orgName,
-          slug,
-          user_id: userId,
-          user_role: role,
-          created_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
-      agency = fallback.data;
-      agencyError = fallback.error;
-    }
-    
-    if (agencyError) throw agencyError;
-
-    await recordPlatformActivity(supabase, {
-      actorId: userId,
-      actorEmail: payload.email || null,
-      actorRole: role === 'couple' ? 'user' : 'agency_owner',
-      action: 'ORGANIZATION_CREATED',
-      organizationId: agency?.id ? String(agency.id) : null,
-      summary: `Organization "${orgName}" (${slug}) created`,
-      metadata: { slug, userRole: role },
-    });
-
-    let createdProjectId = null;
-
-    // 3. If couple, create initial project ONLY (no sample data)
-    if (role === 'couple' && agency) {
-      const { data: project, error: projectError } = await supabase
-        .from('projects')
-        .insert([{
-          agency_id: agency.id,
-          name: `${groomName} & ${brideName}'s Wedding`,
-          groom_name: groomName,
-          bride_name: brideName,
-          slug: slug,
-          theme_id: 'garden',
-          wedding_date: new Date(Date.now() + 15552000000).toISOString().split('T')[0],
-          location: 'To Be Announced',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
-      
-      if (projectError) throw projectError;
-      if (project) {
-        createdProjectId = project.id;
-        await recordPlatformActivity(supabase, {
-          actorId: userId,
-          actorEmail: payload.email || null,
-          action: 'EVENT_CREATED',
-          organizationId: agency.id,
-          targetEventId: String(project.id),
-          summary: `Event "${project.name}" created during couple onboarding`,
-        });
-      }
-    }
-
-    return c.json({ success: true, agency, createdProjectId }, 201);
+    return c.json(
+      {
+        success: true,
+        reused: Boolean(result.reused),
+        agency: result.data.agency,
+        createdProjectId: result.data.createdProjectId,
+      },
+      result.statusCode as any
+    );
   } catch (error: any) {
     console.error('Worker onboarding error:', error);
-    return c.json({ error: error.message || 'Internal server error during onboarding' }, 500);
+    return c.json({ error: 'Internal server error during onboarding', code: 'DATABASE_ERROR' }, 500);
+  }
+});
+
+app.get('/api/projects/:id/rsvps', async (c) => {
+  try {
+    const projectId = c.req.param('id');
+    const pinHeader = c.req.header('x-event-pin') || null;
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
+
+    let authUser = null;
+    if (!pinHeader) {
+      const authCheck = await verifyWorkerSessionWithDb(c);
+      if (authCheck.ok) authUser = authCheck.user;
+    }
+
+    const result = await listProjectRsvps(supabase, { projectId, authUser, pin: pinHeader });
+    if (result.ok === false) {
+      return c.json(buildErrorResponse(result.code, result.error), result.statusCode as any);
+    }
+
+    return c.json(buildSuccessResponse(result.data, { rsvps: result.data }));
+  } catch {
+    return c.json(buildErrorResponse('RSVP_FETCH_FAILED', 'Unable to load RSVPs.'), 500);
   }
 });
 
 app.post('/api/rsvps', async (c) => {
   try {
     const rsvpData = await c.req.json();
-    
-    // Stringify responses if column type is text (robustness)
     if (rsvpData.responses && typeof rsvpData.responses === 'object') {
       rsvpData.responses = JSON.stringify(rsvpData.responses);
     }
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);
 
-    if (!supabaseUrl || !serviceRoleKey) {
-      return c.json({ error: 'Supabase configuration missing', details: 'URL or Key not set' }, 500);
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) {
+      return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
     }
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { data, error } = await supabase
       .from('rsvps')
-      .insert([{ 
+      .insert([{
         ...rsvpData,
         created_at: new Date().toISOString()
       }])
@@ -1786,174 +2183,161 @@ app.post('/api/rsvps', async (c) => {
       .single();
 
     if (error) {
-      console.error('Worker RSVP error:', error);
-      return c.json({ error: error.message }, 500);
+      return c.json(buildErrorResponse('RSVP_SUBMIT_FAILED', 'Unable to submit RSVP.'), 500);
     }
 
-    return c.json({ success: true, data }, 201);
-  } catch (e) {
-    return c.json({ error: 'Failed to submit RSVP' }, 500);
+    return c.json(buildSuccessResponse(data), 201);
+  } catch {
+    return c.json(buildErrorResponse('RSVP_SUBMIT_FAILED', 'Failed to submit RSVP.'), 500);
   }
 });
 
 // RSVP VIP Guest Update Route
 app.patch('/api/rsvps/:id/vip', async (c) => {
-  const id = c.req.param('id');
-  const { is_vip, guest_category } = await c.req.json();
-
-  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-  const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY;
-  const supabase = createClient(supabaseUrl, serviceRoleKey);
-
   try {
-    const { data, error } = await supabase
-      .from('rsvps')
-      .update({
-        is_vip: Boolean(is_vip),
-        guest_category: is_vip ? (guest_category || 'VIP') : null
-      })
-      .eq('id', id)
-      .select()
-      .single();
+    const id = c.req.param('id');
+    const { is_vip, guest_category } = await c.req.json().catch(() => ({} as any));
+    const pinHeader = c.req.header('x-event-pin') || null;
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
 
-    if (error) {
-      return c.json({ error: error.message }, 500);
+    let authUser = null;
+    if (!pinHeader) {
+      const authCheck = await verifyWorkerSessionWithDb(c);
+      if (authCheck.ok) authUser = authCheck.user;
     }
-    return c.json({ success: true, data });
-  } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+
+    const result = await updateRsvpVipAuthorized(supabase, {
+      rsvpId: id,
+      isVip: Boolean(is_vip),
+      guestCategory: guest_category,
+      authUser,
+      pin: pinHeader,
+    });
+
+    if (result.ok === false) {
+      return c.json(buildErrorResponse(result.code, result.error), result.statusCode as any);
+    }
+
+    return c.json(buildSuccessResponse(result.data));
+  } catch {
+    return c.json(buildErrorResponse('RSVP_UPDATE_FAILED', 'Unable to update VIP status.'), 500);
   }
 });
 
 // Message Moderation Status Route
 app.post('/api/messages/:id/status', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const pinHeader = c.req.header('x-event-pin') || null;
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
 
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
-  try {
-    await verify(token, jwtSecret, 'HS256');
-    const id = c.req.param('id');
-    const { status } = await c.req.json();
-
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !serviceRoleKey) return c.json({ error: 'Database config missing' }, 500);
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-    const { error } = await supabase
-      .from('messages')
-      .update({ status })
-      .eq('id', id);
-
-    if (error) throw error;
-    return c.json({ success: true });
-  } catch (err: any) {
-    return c.json({ error: err.message }, 401);
+  let authUser = null;
+  if (!pinHeader) {
+    const authCheck = await verifyWorkerSessionWithDb(c);
+    if (!authCheck.ok) {
+      const errRes = authCheck as { ok: false; statusCode: number; code: string; error: string };
+      return c.json(buildErrorResponse(errRes.code, errRes.error), errRes.statusCode as any);
+    }
+    authUser = authCheck.user;
   }
+
+  const body = await c.req.json().catch(() => ({} as any));
+  const result = await moderateMessageStatus(supabase, {
+    messageId: c.req.param('id'),
+    status: body?.status,
+    authUser,
+    pin: pinHeader,
+  });
+
+  if (result.ok === false) {
+    return c.json(buildErrorResponse(result.code, result.error), result.statusCode as any);
+  }
+
+  return c.json(buildSuccessResponse(result.data, { message: result.data }));
 });
 
 // Message Highlight Classification & Pinned Flags Route
 app.post('/api/messages/:id/highlight', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const pinHeader = c.req.header('x-event-pin') || null;
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
 
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
-  try {
-    await verify(token, jwtSecret, 'HS256');
-    const id = c.req.param('id');
-    const { classification, is_featured, is_pinned, guest_category, ai_highlight_reason, wish_category } = await c.req.json();
-
-    const updateData: any = {};
-    if (classification !== undefined) updateData.classification = classification;
-    if (is_featured !== undefined) updateData.is_featured = is_featured;
-    if (is_pinned !== undefined) updateData.is_pinned = is_pinned;
-    if (guest_category !== undefined) updateData.guest_category = guest_category;
-    if (ai_highlight_reason !== undefined) updateData.ai_highlight_reason = ai_highlight_reason;
-    if (wish_category !== undefined && ['normal', 'funny', 'heartfelt', 'family'].includes(wish_category)) {
-      updateData.wish_category = wish_category;
+  let authUser = null;
+  if (!pinHeader) {
+    const authCheck = await verifyWorkerSessionWithDb(c);
+    if (!authCheck.ok) {
+      const errRes = authCheck as { ok: false; statusCode: number; code: string; error: string };
+      return c.json(buildErrorResponse(errRes.code, errRes.error), errRes.statusCode as any);
     }
-
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !serviceRoleKey) return c.json({ error: 'Database config missing' }, 500);
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-    let { data, error } = await supabase
-      .from('messages')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error && updateData.wish_category !== undefined && /wish_category/i.test(error.message || '')) {
-      delete updateData.wish_category;
-      const retry = await supabase
-        .from('messages')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-      data = retry.data;
-      error = retry.error;
-    }
-
-    if (error) throw error;
-    return c.json({ success: true, message: data });
-  } catch (err: any) {
-    return c.json({ error: err.message }, 500);
+    authUser = authCheck.user;
   }
+
+  const updates = await c.req.json().catch(() => ({} as any));
+  const result = await updateMessageHighlightForProject(supabase, {
+    messageId: c.req.param('id'),
+    updates,
+    authUser,
+    pin: pinHeader,
+  });
+
+  if (result.ok === false) {
+    return c.json(buildErrorResponse(result.code, result.error), result.statusCode as any);
+  }
+
+  return c.json(buildSuccessResponse(result.data, { message: result.data }));
 });
 
 // AI-Powered Message Highlight Analysis Route
 app.post('/api/messages/ai-suggest', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const pinHeader = c.req.header('x-event-pin') || null;
+  const body = await c.req.json().catch(() => ({} as any));
+  const projectId = body?.projectId;
+  if (!projectId) {
+    return c.json(buildErrorResponse('INVALID_PROJECT_ID', 'projectId is required'), 400);
+  }
 
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
 
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
-  try {
-    await verify(token, jwtSecret, 'HS256');
-    const { projectId } = await c.req.json();
-    if (!projectId) return c.json({ error: 'projectId is required' }, 400);
-
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !serviceRoleKey) return c.json({ error: 'Database config missing' }, 500);
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-    const { data: messages, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('project_id', projectId)
-      .eq('status', 'approved');
-
-    if (error) throw error;
-    if (!messages || messages.length === 0) {
-      return c.json({ suggestions: [] });
+  let authUser = null;
+  if (!pinHeader) {
+    const authCheck = await verifyWorkerSessionWithDb(c);
+    if (!authCheck.ok) {
+      const errRes = authCheck as { ok: false; statusCode: number; code: string; error: string };
+      return c.json(buildErrorResponse(errRes.code, errRes.error), errRes.statusCode as any);
     }
+    authUser = authCheck.user;
+  }
 
-    let suggestions: any[] = [];
-    const geminiApiKey = c.env.GEMINI_API_KEY;
+  const msgResult = await listProjectMessages(supabase, {
+    projectId,
+    includeAll: true,
+    limit: 100,
+    authUser,
+    pin: pinHeader,
+  });
+  if (msgResult.ok === false) {
+    return c.json(buildErrorResponse(msgResult.code, msgResult.error), msgResult.statusCode as any);
+  }
 
-    if (geminiApiKey) {
-      try {
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-        const prompt = `You are a wedding reception curator. Analyze the following wedding guest messages.
+  const approvedMessages = msgResult.data.filter((m: any) => !m.status || m.status === 'approved');
+  if (approvedMessages.length === 0) {
+    return c.json(buildSuccessResponse({ suggestions: [] }, { suggestions: [] }));
+  }
+
+  let suggestions: any[] = [];
+  const geminiApiKey = c.env.GEMINI_API_KEY;
+
+  if (geminiApiKey) {
+    try {
+      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+      const prompt = `You are a wedding reception curator. Analyze the following wedding guest messages.
 Identify which messages possess emotional significance, personal memories and stories, meaningful blessings, or deep connections with the couple.
 For each recommended message, specify a concise, elegant reason (1 sentence) why it deserves to be highlighted on the ballroom projector screen.
 Do NOT simply choose messages based on length. Prioritize sentiment, meaningful blessings, and genuine personal warmth.
 
 Messages:
-${JSON.stringify(messages.map((m: any) => ({ id: m.id, name: m.name, message: m.message })))}
+${JSON.stringify(approvedMessages.map((m: any) => ({ id: m.id, name: m.name, message: m.message })))}
 
 Return ONLY a valid JSON array of objects with the following schema:
 [
@@ -1964,107 +2348,103 @@ Return ONLY a valid JSON array of objects with the following schema:
   }
 ]
 `;
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json'
-          }
-        });
-
-        if (response.text) {
-          const parsed = JSON.parse(response.text);
-          if (Array.isArray(parsed)) {
-            suggestions = parsed;
-          }
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json'
         }
-      } catch (aiErr: any) {
-        console.warn('Worker Gemini analysis fallback:', aiErr.message);
+      });
+
+      if (response.text) {
+        const parsed = JSON.parse(response.text);
+        if (Array.isArray(parsed)) {
+          suggestions = parsed;
+        }
       }
+    } catch (aiErr: any) {
+      console.warn('Worker Gemini analysis fallback:', aiErr.message);
     }
-
-    if (suggestions.length === 0) {
-      // Heuristic fallback
-      const blessingKeywords = ['blessed', 'blessing', 'forever', 'eternity', 'lifetime', 'grace', 'unconditional', 'cherish', 'sacred', 'honor'];
-      const storyKeywords = ['remember when', 'growing up', 'first met', 'college', 'childhood', 'years ago', 'since day one', 'first saw you'];
-      const emotionKeywords = ['proud', 'tears', 'crying', 'heart melts', 'radiant', 'soulmate', 'meant to be', 'breathtaking'];
-
-      for (const m of messages) {
-        const text = (m.message || '').toLowerCase();
-        const name = (m.name || '').toLowerCase();
-
-        let reason = '';
-        const hasStory = storyKeywords.some(kw => text.includes(kw));
-        const hasBlessing = blessingKeywords.filter(kw => text.includes(kw)).length >= 2;
-        const hasEmotion = emotionKeywords.some(kw => text.includes(kw));
-        const isVipName = name.includes('mom') || name.includes('dad') || name.includes('grandmother') || name.includes('grandfather') || name.includes('sister') || name.includes('brother') || name.includes('best man') || name.includes('maid of honor');
-
-        if (hasStory) {
-          reason = 'Shares a cherished personal memory and authentic connection with the couple.';
-        } else if (isVipName && (hasBlessing || hasEmotion)) {
-          reason = 'Heartfelt blessings from close family and bridal party.';
-        } else if (hasBlessing) {
-          reason = 'Deep, poetic blessings for a lifetime of unconditional partnership.';
-        } else if (hasEmotion && text.length > 50) {
-          reason = 'Emotionally resonant reflection celebrating the couple’s journey.';
-        }
-
-        if (reason && suggestions.length < 5) {
-          suggestions.push({
-            id: m.id,
-            classification: 'AI_SUGGESTED',
-            reason
-          });
-        }
-      }
-
-      if (suggestions.length === 0 && messages.length > 0) {
-        const sorted = [...messages].sort((a: any, b: any) => (b.message?.length || 0) - (a.message?.length || 0));
-        suggestions.push({
-          id: sorted[0].id,
-          classification: 'AI_SUGGESTED',
-          reason: 'Heartwarming wishes celebrating your wedding day.'
-        });
-      }
-    }
-
-    return c.json({ suggestions });
-  } catch (err: any) {
-    return c.json({ error: err.message }, 500);
   }
+
+  if (suggestions.length === 0) {
+    const blessingKeywords = ['blessed', 'blessing', 'forever', 'eternity', 'lifetime', 'grace', 'unconditional', 'cherish', 'sacred', 'honor'];
+    const storyKeywords = ['remember when', 'growing up', 'first met', 'college', 'childhood', 'years ago', 'since day one', 'first saw you'];
+    const emotionKeywords = ['proud', 'tears', 'crying', 'heart melts', 'radiant', 'soulmate', 'meant to be', 'breathtaking'];
+
+    for (const m of approvedMessages) {
+      const text = (m.message || '').toLowerCase();
+      const name = (m.name || '').toLowerCase();
+
+      let reason = '';
+      const hasStory = storyKeywords.some(kw => text.includes(kw));
+      const hasBlessing = blessingKeywords.filter(kw => text.includes(kw)).length >= 2;
+      const hasEmotion = emotionKeywords.some(kw => text.includes(kw));
+      const isVipName = name.includes('mom') || name.includes('dad') || name.includes('grandmother') || name.includes('grandfather') || name.includes('sister') || name.includes('brother') || name.includes('best man') || name.includes('maid of honor');
+
+      if (hasStory) {
+        reason = 'Shares a cherished personal memory and authentic connection with the couple.';
+      } else if (isVipName && (hasBlessing || hasEmotion)) {
+        reason = 'Heartfelt blessings from close family and bridal party.';
+      } else if (hasBlessing) {
+        reason = 'Deep, poetic blessings for a lifetime of unconditional partnership.';
+      } else if (hasEmotion && text.length > 50) {
+        reason = 'Emotionally resonant reflection celebrating the couple’s journey.';
+      }
+
+      if (reason && suggestions.length < 5) {
+        suggestions.push({
+          id: m.id,
+          classification: 'AI_SUGGESTED',
+          reason
+        });
+      }
+    }
+
+    if (suggestions.length === 0 && approvedMessages.length > 0) {
+      const sorted = [...approvedMessages].sort((a: any, b: any) => (b.message?.length || 0) - (a.message?.length || 0));
+      suggestions.push({
+        id: sorted[0].id,
+        classification: 'AI_SUGGESTED',
+        reason: 'Heartwarming wishes celebrating your wedding day.'
+      });
+    }
+  }
+
+  return c.json(buildSuccessResponse({ suggestions }, { suggestions }));
 });
 
 // Update Event Message Display Configuration Route
 app.post('/api/projects/:id/message-config', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const pinHeader = c.req.header('x-event-pin') || null;
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) return c.json(buildErrorResponse('DATABASE_ERROR', 'Database configuration missing'), 500);
 
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
-  try {
-    await verify(token, jwtSecret, 'HS256');
-    const id = c.req.param('id');
-    const { config } = await c.req.json();
-
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !serviceRoleKey) return c.json({ error: 'Database config missing' }, 500);
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-    const { data, error } = await supabase
-      .from('projects')
-      .update({ message_display_config: config, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return c.json({ success: true, project: data });
-  } catch (err: any) {
-    return c.json({ error: err.message }, 500);
+  let authUser = null;
+  if (!pinHeader) {
+    const authCheck = await verifyWorkerSessionWithDb(c);
+    if (!authCheck.ok) {
+      const errRes = authCheck as { ok: false; statusCode: number; code: string; error: string };
+      return c.json(buildErrorResponse(errRes.code, errRes.error), errRes.statusCode as any);
+    }
+    authUser = authCheck.user;
   }
+
+  const id = c.req.param('id');
+  const { config } = await c.req.json().catch(() => ({} as any));
+
+  const result = await updateProjectForUserOrPin(supabase, {
+    projectId: id,
+    authUser,
+    pin: pinHeader,
+    body: { message_display_config: config },
+  });
+
+  if (result.ok === false) {
+    return c.json(buildErrorResponse(result.code, result.error), result.statusCode as any);
+  }
+
+  return c.json(buildSuccessResponse(result.data, { project: result.data }));
 });
 
 app.get('/api/debug-env', (c) => {
@@ -2072,9 +2452,7 @@ app.get('/api/debug-env', (c) => {
     has_jwt_secret: !!c.env.JWT_SECRET,
     has_google_secret: !!c.env.GOOGLE_CLIENT_SECRET,
     has_stripe_secret: !!c.env.STRIPE_SECRET_KEY,
-    has_supabase_url: !!c.env.SUPABASE_URL,
-    has_vite_supabase_url: !!c.env.VITE_SUPABASE_URL,
-    has_supabase_service_role: !!c.env.SUPABASE_SERVICE_ROLE_KEY,
+    has_database_config: !!(c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL) && !!(c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY),
     app_url: c.env.APP_URL
   });
 });
@@ -2089,489 +2467,199 @@ app.get('/api/pricing', (c) => {
 
 app.get('/api/packages', (c) => c.json({ packages: EVENT_PACKAGES, pricing: EVENT_PRICING }));
 
-// 7. Stripe Checkout Session (USD $5 Pay-Per-Event)
-app.post('/api/create-checkout-session', async (c) => {
-  const { eventId, agencyId, successUrl, cancelUrl } = await c.req.json();
-  const stripeSecret = c.env.STRIPE_SECRET_KEY;
-  const appUrl = c.env.APP_URL || 'https://eventframe.io';
-
-  if (!eventId) {
-    return c.json({ error: 'eventId is required to create a pay-per-event checkout session' }, 400);
+function getWorkerStripeClient(secret?: string | null): Stripe | null {
+  if (!secret || (!secret.startsWith('sk_test_') && !secret.startsWith('sk_live_'))) {
+    return null;
   }
-
-  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-  if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return c.json({ error: 'Supabase configuration missing' }, 500);
-  }
-  const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
-
-  // Authenticate user token if provided
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
-  let authAgencyId: string | null = null;
-
-  if (token) {
-    try {
-      const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
-      const payload = await verify(token, jwtSecret, 'HS256') as any;
-      const userId = payload.id || payload.sub;
-      const { data: userAgency } = await supabase
-        .from('agencies')
-        .select('id')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (userAgency) authAgencyId = userAgency.id;
-    } catch (err) {
-      // Continue with body agencyId
-    }
-  }
-
-  // 1. Fetch event and verify authorization
-  let event: any = null;
-  try {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('id, name, agency_id, payment_status, status, expires_at')
-      .eq('id', eventId)
-      .single();
-
-    if (error || !data) {
-      return c.json({ error: `Event not found: ${eventId}` }, 404);
-    }
-    event = data;
-
-    // Ensure users cannot pay for events belonging to another agency
-    if (authAgencyId && event.agency_id && authAgencyId !== event.agency_id) {
-      return c.json({ error: 'Forbidden: You cannot pay for an event belonging to another organization' }, 403);
-    }
-  } catch (err: any) {
-    return c.json({ error: err.message }, 500);
-  }
-
-  // 2. Authoritatively set event status to pending_payment in database
-  try {
-    await supabase
-      .from('projects')
-      .update({
-        payment_status: 'pending_payment',
-        status: 'pending_payment',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', eventId);
-  } catch (updateErr: any) {
-    console.warn('Could not update pending_payment status:', updateErr.message);
-  }
-
-  const defaultSuccess = `${appUrl}/subscription?success=true&eventId=${eventId}`;
-  const defaultCancel = `${appUrl}/subscription?canceled=true&eventId=${eventId}`;
-  const effectiveSuccess = successUrl || defaultSuccess;
-  const effectiveCancel = cancelUrl || defaultCancel;
-
-  // 3. Strict Check: If Stripe is not configured, preserve pending_payment without simulating payment
-  const isPlaceholderStripe = !stripeSecret || !stripeSecret.startsWith('sk_');
-  if (isPlaceholderStripe) {
-    console.warn('[Stripe Worker] Stripe is not configured with a live key. Event marked as pending_payment. Preserving pending workflow.');
-    return c.json({
-      status: 'pending_payment',
-      pending: true,
-      eventId,
-      amount: EVENT_PRICING.pricePerEvent,
-      currency: EVENT_PRICING.currency,
-      message: 'Payment gateway is in setup mode. Event status has been updated to pending_payment.'
-    });
-  }
-
-  const stripe = new Stripe(stripeSecret, {
+  return new Stripe(secret, {
     httpClient: Stripe.createFetchHttpClient(), // REQUIRED for Cloudflare Workers
   });
+}
+
+// 7. Stripe Checkout Session (USD $5 Pay-Per-Event, strictly authenticated)
+app.post('/api/create-checkout-session', async (c) => {
+  const authCheck = await verifyWorkerSessionWithDb(c);
+  if (authCheck.ok === false) {
+    return c.json({ error: authCheck.error, code: authCheck.code }, authCheck.statusCode as any);
+  }
+
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) {
+    return c.json({ error: 'Supabase configuration missing' }, 500);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const stripeSecret = c.env.STRIPE_SECRET_KEY;
+  const stripe = getWorkerStripeClient(stripeSecret);
+  const appUrl = c.env.APP_URL || 'https://eventframe.io';
 
   try {
-    // 4. Create authoritative Stripe Checkout Session ($5.00 USD)
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: EVENT_PRICING.currency.toLowerCase(),
-            product_data: {
-              name: `EventFrame Event License — ${event.name || 'Wedding Celebration'}`,
-              description: '12 Months Full Event Access · Live Screen Moderation · Full Digital Suite',
-            },
-            unit_amount: EVENT_PRICING.priceInCents, // Authoritative USD $5.00 (500 cents)
-          },
-          quantity: 1,
-        },
-      ],
-      mode: 'payment',
-      success_url: effectiveSuccess.includes('{CHECKOUT_SESSION_ID}') 
-        ? effectiveSuccess 
-        : `${effectiveSuccess}${effectiveSuccess.includes('?') ? '&' : '?'}session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: effectiveCancel,
-      metadata: {
-        eventId,
-        agencyId: event.agency_id || agencyId || '',
-        amount: EVENT_PRICING.priceInCents.toString(),
-        billingModel: EVENT_PRICING.billingModel
-      },
+    const result = await createPayPerEventCheckout({
+      supabase,
+      stripe,
+      stripeSecretKey: stripeSecret,
+      appUrl,
+      authUser: authCheck.user,
+      body,
     });
-
-    return c.json({ url: session.url, sessionId: session.id, status: 'pending_payment' });
+    return c.json(result.body, result.statusCode as any);
   } catch (error: any) {
-    console.error('Stripe error in worker:', error);
-    return c.json({ error: error.message }, 500);
+    return c.json({ error: error?.message || 'Failed to create checkout session' }, 500);
   }
 });
 
-// 8. Stripe Webhook
+// 8. Stripe Webhook (Idempotent, Verified, Non-swallowing)
 app.post('/api/webhook', async (c) => {
   const stripeSecret = c.env.STRIPE_SECRET_KEY;
   const webhookSecret = c.env.STRIPE_WEBHOOK_SECRET;
+  const stripe = getWorkerStripeClient(stripeSecret);
 
-  if (!stripeSecret || !webhookSecret) {
-    console.warn('Webhook received but Stripe secrets missing');
-    return c.text('Secrets missing', 200);
+  if (!stripe || !webhookSecret) {
+    console.error('[Worker Webhook] Missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET');
+    return c.json(
+      { error: 'Stripe webhook endpoint is not configured on the server.', retryable: true },
+      503
+    );
   }
-
-  const stripe = new Stripe(stripeSecret, {
-    httpClient: Stripe.createFetchHttpClient(),
-  });
 
   const signature = c.req.header('stripe-signature');
-  const body = await c.req.text();
+  if (!signature) {
+    return c.json({ error: 'Missing stripe-signature header' }, 400);
+  }
 
-  let event;
+  const rawBody = await c.req.text();
+  let event: Stripe.Event;
   try {
-    event = await stripe.webhooks.constructEventAsync(body, signature || '', webhookSecret);
+    event = await stripe.webhooks.constructEventAsync(rawBody, signature, webhookSecret);
   } catch (err: any) {
-    console.error(`Webhook Verification Error: ${err.message}`);
-    return c.text(`Webhook Error: ${err.message}`, 400);
+    console.error(`[Worker Webhook] Signature Verification Error: ${err.message}`);
+    return c.json({ error: `Webhook signature verification failed: ${err.message}` }, 400);
   }
 
-  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-  if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.warn('Webhook received but Supabase config missing');
-    return c.text('Supabase config missing', 200);
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) {
+    console.error('[Worker Webhook] Supabase configuration missing');
+    return c.json({ error: 'Database configuration missing', retryable: true }, 500);
   }
 
-  const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
-
-  // Handle the event
-  switch (event.type) {
-    case 'checkout.session.completed': {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const eventId = session.metadata?.eventId;
-      const packageId = session.metadata?.packageId || 'standard';
-      const agencyId = session.metadata?.agencyId;
-      const subscriptionId = session.subscription as string;
-      const customerId = session.customer as string;
-
-      // 1. Pay-per-event activation
-      if (eventId) {
-        try {
-          await activateEventPurchase(supabase, {
-            eventId,
-            packageId,
-            customerId,
-            agencyId,
-            transactionId: session.id,
-            amountPaidCents: session.amount_total || undefined,
-            provider: 'stripe'
-          });
-          console.log(`[Worker Webhook] Event ${eventId} activated with package ${packageId}`);
-        } catch (err: any) {
-          console.error(`[Worker Webhook] Activation error for ${eventId}:`, err);
-        }
-      } 
-      // 2. Legacy agency subscription fallback
-      else if (agencyId) {
-        const updateData: any = {
-          subscription_status: 'active',
-          stripe_customer_id: customerId,
-          plan_id: session.metadata?.planId
-        };
-        
-        if (subscriptionId) {
-          updateData.subscription_id = subscriptionId;
-        }
-
-        await supabase
-          .from('agencies')
-          .update(updateData)
-          .eq('id', agencyId);
-        
-        console.log(`[Worker Webhook] Agency/Couple ${agencyId} confirmed`);
-      }
-      break;
-    }
-    case 'customer.subscription.deleted': {
-      const subscription = event.data.object as Stripe.Subscription;
-      await supabase
-        .from('agencies')
-        .update({ subscription_status: 'canceled' })
-        .eq('subscription_id', subscription.id);
-      break;
-    }
-    case 'charge.refunded': {
-      const charge = event.data.object as Stripe.Charge;
-      const paymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
-      try {
-        const eventId = charge.metadata?.eventId;
-        if (paymentIntentId) {
-          await supabase
-            .from('event_payments')
-            .update({ payment_status: 'refunded' })
-            .eq('provider_transaction_id', paymentIntentId);
-        }
-        if (eventId) {
-          await supabase
-            .from('projects')
-            .update({ payment_status: 'refunded', status: 'cancelled', updated_at: new Date().toISOString() })
-            .eq('id', eventId);
-        }
-        await recordPlatformActivity(supabase, {
-          action: 'PAYMENT_REFUNDED',
-          targetEventId: eventId || null,
-          referenceId: paymentIntentId || charge.id,
-          summary: `Payment refunded ($${((charge.amount_refunded || charge.amount || 0) / 100).toFixed(2)})`,
-          metadata: { amountRefundedCents: charge.amount_refunded || charge.amount || 0 },
-        });
-      } catch (refundErr: any) {
-        console.warn('[Worker Webhook] Refund note:', refundErr?.message || refundErr);
-      }
-      break;
-    }
+  try {
+    const result = await processStripeWebhookEvent({ supabase, stripe, event });
+    return c.json(result.body, result.statusCode as any);
+  } catch (err: any) {
+    console.error('[Worker Webhook] Unhandled processing error:', err?.message || err);
+    return c.json(
+      { error: err?.message || 'Internal webhook processing error', retryable: true },
+      500
+    );
   }
-
-  return c.json({ received: true });
 });
 
-// 9. Strict Session Verification Route (Only verified payments can activate)
+// 9. Strict Session Verification Route (Authenticated + Stripe API Verified)
 app.post('/api/events/:id/verify-session', async (c) => {
-  const id = c.req.param('id');
-  const { sessionId } = await c.req.json().catch(() => ({}));
-
-  if (!sessionId) {
-    return c.json({ 
-      success: false, 
-      error: 'Payment session ID is required for verification. Events cannot be marked paid without verified payment confirmation.' 
-    }, 400);
+  const authCheck = await verifyWorkerSessionWithDb(c);
+  if (authCheck.ok === false) {
+    return c.json(
+      { success: false, error: authCheck.error, code: authCheck.code },
+      authCheck.statusCode as any
+    );
   }
 
-  const stripeSecret = c.env.STRIPE_SECRET_KEY;
-  if (!stripeSecret || !stripeSecret.startsWith('sk_')) {
-    return c.json({ 
-      success: false, 
-      status: 'pending_payment',
-      error: 'Payment provider is not configured. Event remains in pending_payment status until verified.' 
-    }, 400);
-  }
-
-  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-  if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) {
     return c.json({ error: 'Supabase configuration missing' }, 500);
   }
-  const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
+
+  const { sessionId } = await c.req.json().catch(() => ({}));
+  const stripeSecret = c.env.STRIPE_SECRET_KEY;
+  const stripe = getWorkerStripeClient(stripeSecret);
 
   try {
-    const stripe = new Stripe(stripeSecret, {
-      httpClient: Stripe.createFetchHttpClient(),
+    const result = await verifyAndCompleteCheckoutSession({
+      supabase,
+      stripe,
+      stripeSecretKey: stripeSecret,
+      authUser: authCheck.user,
+      eventId: c.req.param('id'),
+      sessionId,
     });
-
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-
-    // Verify payment was actually paid
-    if (session.payment_status !== 'paid') {
-      return c.json({ 
-        success: false, 
-        status: 'pending_payment',
-        error: `Stripe session payment not completed (status: ${session.payment_status})` 
-      }, 400);
-    }
-
-    // Verify Session matches target Event ID (Prevent Event A payment activating Event B)
-    if (session.metadata?.eventId !== id) {
-      return c.json({ 
-        success: false, 
-        error: 'Security violation: Payment session does not match this event.' 
-      }, 403);
-    }
-
-    // Verify payment amount matches authoritative price ($5.00 USD / 500 cents)
-    if (session.amount_total !== null && session.amount_total < EVENT_PRICING.priceInCents) {
-      return c.json({ 
-        success: false, 
-        error: 'Payment amount mismatch: Insufficient payment recorded.' 
-      }, 400);
-    }
-
-    // Authoritative activation
-    const result = await activateEventPurchase(supabase, {
-      eventId: id,
-      packageId: 'standard',
-      customerId: (session.customer as string) || 'customer',
-      agencyId: session.metadata?.agencyId,
-      transactionId: session.id,
-      amountPaidCents: session.amount_total || EVENT_PRICING.priceInCents,
-      provider: 'stripe'
-    });
-
-    return c.json(result);
+    return c.json(result.body, result.statusCode as any);
   } catch (error: any) {
-    console.error('Worker verification error:', error);
-    return c.json({ error: error.message }, 500);
+    return c.json({ success: false, error: error?.message || 'Verification failed' }, 500);
   }
 });
 
-// 10. Development / Testing Mock Activation Route
-app.post('/api/events/:id/activate-mock', async (c) => {
-  const id = c.req.param('id');
-  const { packageId = 'standard' } = await c.req.json().catch(() => ({}));
+// 9b. Cancel Pending Checkout Order Route
+app.post('/api/billing/orders/:orderId/cancel', async (c) => {
+  const authCheck = await verifyWorkerSessionWithDb(c);
+  if (authCheck.ok === false) {
+    return c.json({ error: authCheck.error, code: authCheck.code }, authCheck.statusCode as any);
+  }
 
-  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-  if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) {
     return c.json({ error: 'Supabase configuration missing' }, 500);
   }
-  const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const result = await activateEventPurchase(supabase, {
-      eventId: id,
-      packageId,
-      customerId: 'demo_user',
-      transactionId: `mock_${Date.now()}`,
-      provider: 'mock'
+    const result = await cancelCheckoutOrder({
+      supabase,
+      authUser: authCheck.user,
+      orderId: c.req.param('orderId'),
     });
-
-    return c.json(result);
+    return c.json(result.body, result.statusCode as any);
   } catch (error: any) {
-    console.error('Worker mock activation error:', error);
-    return c.json({ error: error.message }, 500);
+    return c.json({ error: error?.message || 'Failed to cancel checkout order' }, 500);
   }
+});
+
+// 10. Payment Bypass Lockdown (Disabled in production)
+app.post('/api/events/:id/activate-mock', (c) => {
+  return c.json(
+    {
+      error: 'Mock payment activation is disabled in production. All activations require verified Stripe Checkout payment.',
+      code: 'MOCK_ACTIVATION_DISABLED',
+    },
+    403
+  );
 });
 
 // 11. Billing Events List Route
 app.get('/api/billing/events', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const authCheck = await verifyWorkerSessionWithDb(c);
+  if (authCheck.ok === false) {
+    return c.json({ error: authCheck.error, code: authCheck.code }, authCheck.statusCode as any);
+  }
 
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
-  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-  if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) {
     return c.json({ error: 'Supabase configuration missing' }, 500);
   }
-  const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const payload = await verify(token, jwtSecret, 'HS256') as any;
-    const userId = payload.id || payload.sub;
-
-    const { data: agency } = await supabase
-      .from('agencies')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (!agency) return c.json({ events: [], agency: null });
-
-    const { data: projects, error } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('agency_id', agency.id)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-
-    const now = new Date();
-    const enrichedEvents = (projects || []).map((project: any) => {
-      const active = isEventActive(project, agency);
-      const daysRemaining = getDaysRemaining(project.expires_at);
-      const isExpired = project.expires_at ? new Date(project.expires_at) < now : false;
-
-      // Determine explicit lifecycle status
-      let displayStatus = 'draft';
-      if (active) {
-        displayStatus = 'active';
-      } else if (isExpired && project.payment_status === 'paid') {
-        displayStatus = 'expired';
-      } else if (project.payment_status === 'pending_payment') {
-        displayStatus = 'pending_payment';
-      } else if (project.payment_status === 'cancelled') {
-        displayStatus = 'cancelled';
-      } else if (project.payment_status === 'failed') {
-        displayStatus = 'failed';
-      }
-
-      return {
-        ...project,
-        displayStatus,
-        isActive: active,
-        daysRemaining,
-        amountPaid: project.payment_status === 'paid' ? EVENT_PRICING.pricePerEvent : 0,
-        pricePerEvent: EVENT_PRICING.pricePerEvent,
-        currency: EVENT_PRICING.currency,
-        validityMonths: EVENT_PRICING.validityMonths,
-        isGrandfathered: agency.is_demo === true || agency.subscription_status === 'active'
-      };
-    });
-
-    const metrics = {
-      totalEvents: enrichedEvents.length,
-      activeEvents: enrichedEvents.filter((e: any) => e.isActive).length,
-      pendingPaymentEvents: enrichedEvents.filter((e: any) => e.displayStatus === 'pending_payment').length,
-      expiredEvents: enrichedEvents.filter((e: any) => e.displayStatus === 'expired').length,
-      totalPaidAmount: enrichedEvents.reduce((acc: number, e: any) => acc + (e.amountPaid || 0), 0)
-    };
-
-    return c.json({ events: enrichedEvents, agency, metrics, pricing: EVENT_PRICING });
+    const data = await getBillingEventsForUser(supabase, authCheck.user);
+    return c.json(data);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    return c.json({ error: error?.message || 'Failed to load billing events' }, 500);
   }
 });
 
 // 12. Billing Order History Route
 app.get('/api/billing/history', async (c) => {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const authCheck = await verifyWorkerSessionWithDb(c);
+  if (authCheck.ok === false) {
+    return c.json({ error: authCheck.error, code: authCheck.code }, authCheck.statusCode as any);
+  }
 
-  if (!token) return c.json({ error: 'Not authenticated' }, 401);
-
-  const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
-  const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-  if (!supabaseUrl || !c.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) {
     return c.json({ error: 'Supabase configuration missing' }, 500);
   }
-  const supabase = createClient(supabaseUrl, c.env.SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    const payload = await verify(token, jwtSecret, 'HS256') as any;
-    const userId = payload.id || payload.sub;
-
-    const { data: agency } = await supabase
-      .from('agencies')
-      .select('id')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (!agency) return c.json({ orders: [] });
-
-    try {
-      const { data: orders } = await supabase
-        .from('event_orders')
-        .select('*')
-        .eq('agency_id', agency.id)
-        .order('created_at', { ascending: false });
-
-      return c.json({ orders: orders || [] });
-    } catch {
-      return c.json({ orders: [] });
-    }
+    const data = await getBillingHistoryForUser(supabase, authCheck.user);
+    return c.json(data);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    return c.json({ error: error?.message || 'Failed to load billing history' }, 500);
   }
 });
 
@@ -2610,9 +2698,10 @@ async function verifyProjectAccessWorker(c: any, projectId: string) {
     .from('projects')
     .select('*')
     .eq('id', projectId)
+    .limit(1)
     .maybeSingle();
 
-  if (projErr || !project) {
+  if (projErr || !project || project.deleted_at || !project.agency_id) {
     return { authorized: false, error: 'Project not found' };
   }
 
@@ -2620,22 +2709,33 @@ async function verifyProjectAccessWorker(c: any, projectId: string) {
     .from('agencies')
     .select('*')
     .eq('id', project.agency_id)
+    .limit(1)
     .maybeSingle();
+
+  if (!agency || agency.deleted_at) {
+    return { authorized: false, error: 'Invalid or missing agency reference for this project' };
+  }
 
   if (token) {
     try {
       const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
       const payload = await verify(token, jwtSecret, 'HS256') as any;
-      const userId = payload.id || payload.sub;
-      if (agency && agency.user_id === userId) {
-        return { authorized: true, project, agency, supabase };
+      const activeCheck = await resolveAuthenticatedSessionUser(supabase, payload, c.env.SUPER_ADMIN_EMAILS);
+      if (activeCheck.ok) {
+        if (activeCheck.user.role === 'super_admin') {
+          return { authorized: true, project, agency, supabase };
+        }
+        const userOrgs = await resolveUserOrganizations(supabase, activeCheck.user);
+        if (userOrgs.some((org) => String(org.id) === String(agency.id))) {
+          return { authorized: true, project, agency, supabase };
+        }
       }
     } catch (e) {
       // invalid token
     }
   }
 
-  if (pinHeader && project.access_password === pinHeader) {
+  if (pinHeader && project.access_password && project.access_password === pinHeader) {
     return { authorized: true, project, agency, supabase };
   }
 
@@ -3076,13 +3176,16 @@ app.get('/api/events/:slug/website-data', async (c) => {
         try {
           const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
           const decoded = (await verify(sessionToken, jwtSecret, 'HS256')) as any;
-          const { data: agency } = await supabase
-            .from('agencies')
-            .select('id')
-            .eq('user_id', decoded.id || decoded.sub)
-            .maybeSingle();
-          if (agency && agency.id === project.agency_id) {
-            isAuthorizedPreview = true;
+          const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, c.env.SUPER_ADMIN_EMAILS);
+          if (activeCheck.ok) {
+            if (activeCheck.user.role === 'super_admin') {
+              isAuthorizedPreview = true;
+            } else {
+              const userOrgs = await resolveUserOrganizations(supabase, activeCheck.user);
+              if (userOrgs.some((org) => String(org.id) === String(project.agency_id))) {
+                isAuthorizedPreview = true;
+              }
+            }
           }
         } catch {
           // Ignore invalid session token
@@ -3294,28 +3397,9 @@ app.all('*', async (c) => {
   if (c.env.ASSETS) {
     const response = await c.env.ASSETS.fetch(c.req.raw);
 
-    // Revalidate HTML so new frontend releases are immediately picked up
+    // Revalidate HTML so new frontend releases are immediately picked up (zero Supabase env injection)
     const contentType = response.headers.get('content-type') || '';
     if (contentType.includes('text/html')) {
-      let body: BodyInit = response.body as any;
-      const supabaseUrl = c.env.VITE_SUPABASE_URL || c.env.SUPABASE_URL;
-      const supabaseAnonKey = c.env.VITE_SUPABASE_ANON_KEY || c.env.SUPABASE_ANON_KEY;
-
-      // If public Supabase variables exist in Worker runtime environment, inject into HTML <head>
-      if (supabaseUrl && supabaseAnonKey) {
-        try {
-          const html = await response.text();
-          const safeConfig = JSON.stringify({
-            VITE_SUPABASE_URL: supabaseUrl,
-            VITE_SUPABASE_ANON_KEY: supabaseAnonKey,
-          });
-          const injection = `<script>window.__ENV__=Object.assign(window.__ENV__||{},${safeConfig});</script>`;
-          body = html.replace('<head>', `<head>${injection}`);
-        } catch (e) {
-          body = response.body as any;
-        }
-      }
-
       const newHeaders = new Headers(response.headers);
       newHeaders.set('Cache-Control', 'public, max-age=0, must-revalidate');
       newHeaders.set('Pragma', 'no-cache');
@@ -3325,7 +3409,7 @@ app.all('*', async (c) => {
         newHeaders.set('X-Robots-Tag', 'noindex, nofollow');
       }
 
-      return new Response(body, {
+      return new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
         headers: newHeaders

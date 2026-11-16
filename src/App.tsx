@@ -87,24 +87,32 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       if (active) setLoadingWorkspaces(true);
 
       try {
-        const userWorkspaces = await getUserWorkspaces(user.id || user.sub);
+        const userWorkspaces = await getUserWorkspaces();
         if (!active) return;
 
         setWorkspaces(userWorkspaces);
 
         const currentHost = window.location.host;
+        const hostname = window.location.hostname;
         const hostParts = currentHost.split('.');
         const isRootDomain = currentHost === 'eventframe.io' || currentHost === 'www.eventframe.io';
-        const isGenericRoot = hostParts.length <= 2 && !currentHost.includes('localhost');
+        const isPreviewOrLocal =
+          hostname === 'localhost' ||
+          hostname === '127.0.0.1' ||
+          hostname.endsWith('.run.app') ||
+          hostname.endsWith('.pages.dev') ||
+          hostname.endsWith('.workers.dev') ||
+          hostname.endsWith('.vercel.app') ||
+          hostname.endsWith('.netlify.app');
+        const isGenericRoot = hostParts.length <= 2 && !isPreviewOrLocal;
         const isRoot = isRootDomain || isGenericRoot;
-        const isRunApp = currentHost.includes('.run.app');
 
-        if (isRoot && !isRunApp && userWorkspaces.length === 0 && location.pathname !== '/onboarding') {
+        if (isRoot && !isPreviewOrLocal && userWorkspaces.length === 0 && location.pathname !== '/onboarding') {
           window.location.replace('/onboarding');
           return;
         }
 
-        if (isRunApp) {
+        if (isPreviewOrLocal) {
           return;
         }
 
@@ -180,7 +188,7 @@ export function AppRoutes() {
         <Route path="/editor/:projectId" element={<AuthGuard><InvitationEditor /></AuthGuard>} />
         <Route path="/website-studio/:projectId" element={<AuthGuard><WebsiteStudio /></AuthGuard>} />
         <Route path="/website-studio" element={<AuthGuard><WebsiteStudio /></AuthGuard>} />
-        <Route path="/subscription" element={<Subscription />} />
+        <Route path="/subscription" element={<AuthGuard><Subscription /></AuthGuard>} />
 
         {/* Super Admin Console (/developer) - strictly protected server-side & client-side */}
         <Route

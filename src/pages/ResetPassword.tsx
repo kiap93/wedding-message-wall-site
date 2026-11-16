@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { API_BASE } from '../lib/config';
+import { extractApiErrorMessage } from '../lib/auth';
 import AuthLayout from '../layouts/AuthLayout';
 import Button from '../design-system/components/Button';
 import Input from '../design-system/components/Input';
@@ -42,19 +43,20 @@ export default function ResetPassword() {
     try {
       const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'EventFrame' },
+        credentials: 'include',
         body: JSON.stringify({ token, password }),
       });
-      
+
       const data = await response.json();
-      
+
       if (response.ok) {
         setStatus('success');
         setMessage('Password reset successfully. Redirecting you to sign in...');
         setTimeout(() => navigate('/login'), 2500);
       } else {
         setStatus('error');
-        setMessage(data.error || 'Failed to reset password. The link may have expired.');
+        setMessage(extractApiErrorMessage(data, 'Failed to reset password. The link may have expired.'));
       }
     } catch (err) {
       setStatus('error');

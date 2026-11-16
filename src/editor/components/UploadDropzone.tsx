@@ -1,6 +1,7 @@
 import React, { useState, useRef, DragEvent, ChangeEvent } from 'react';
 import { Upload, Image as ImageIcon, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { API_BASE } from '../../lib/config';
+import { getAuthToken, getCsrfToken, extractApiErrorMessage } from '../../lib/auth';
 
 interface UploadDropzoneProps {
   eventId?: string;
@@ -78,7 +79,7 @@ export const UploadDropzone: React.FC<UploadDropzoneProps> = ({
           } else {
             try {
               const res = JSON.parse(xhr.responseText);
-              reject(new Error(res.error || `Upload failed with status ${xhr.status}`));
+              reject(new Error(extractApiErrorMessage(res, `Upload failed with status ${xhr.status}`)));
             } catch (e) {
               reject(new Error(`Upload failed with status ${xhr.status}`));
             }
@@ -89,9 +90,18 @@ export const UploadDropzone: React.FC<UploadDropzoneProps> = ({
           reject(new Error('Network request failed. Please verify connection.'));
         });
 
-        // Open and configure cross-origin settings if needed
+        // Open and configure auth + CSRF headers
         xhr.open('POST', `${API_BASE}/api/upload`);
-        xhr.withCredentials = true; // send auth cookies
+        xhr.withCredentials = true;
+        xhr.setRequestHeader('X-Requested-With', 'EventFrame');
+        const token = getAuthToken();
+        if (token) {
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        }
+        const csrfToken = getCsrfToken();
+        if (csrfToken) {
+          xhr.setRequestHeader('X-CSRF-Token', csrfToken);
+        }
         xhr.send(formData);
       });
 

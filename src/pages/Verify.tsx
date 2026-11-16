@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { CheckCircle2, XCircle, Loader2, ArrowRight } from 'lucide-react';
 import { API_BASE } from '../lib/config';
+import { setAuthToken, setCsrfTokenMemory, extractApiErrorMessage, unwrapApiData } from '../lib/auth';
 import AuthLayout from '../layouts/AuthLayout';
 import Button from '../design-system/components/Button';
 
@@ -21,13 +22,19 @@ export default function Verify() {
 
     const verifyToken = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/auth/verify?token=${token}`, {
+        const response = await fetch(`${API_BASE}/api/auth/verify?token=${encodeURIComponent(token)}`, {
           method: 'POST',
+          headers: { 'X-Requested-With': 'EventFrame' },
+          credentials: 'include',
         });
-        const data = await response.json();
+        const raw = await response.json().catch(() => null);
+        const data = unwrapApiData<any>(raw) || {};
+        const verifiedToken = data.token || raw?.token;
+        const csrfToken = data.csrfToken || raw?.csrfToken;
 
-        if (response.ok && data.token) {
-          localStorage.setItem('wedding_session_token', data.token);
+        if (response.ok && verifiedToken) {
+          setAuthToken(verifiedToken);
+          if (csrfToken) setCsrfTokenMemory(csrfToken);
           setStatus('success');
           setMessage('Email confirmed successfully. Redirecting you to your workspace...');
           setTimeout(() => {
@@ -35,9 +42,9 @@ export default function Verify() {
           }, 1800);
         } else {
           setStatus('error');
-          setMessage(data.error || 'Verification link expired or already used.');
+          setMessage(extractApiErrorMessage(raw, 'Verification link expired or already used.'));
         }
-      } catch (err) {
+      } catch {
         setStatus('error');
         setMessage('A network error occurred while verifying your email.');
       }

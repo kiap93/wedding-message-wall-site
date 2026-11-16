@@ -71,11 +71,11 @@ export const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const normalized = String(status || '').toLowerCase();
   let classes = 'bg-[#F7F7F5] text-[#555555] border-[#E0E0DC]';
 
-  if (['active', 'succeeded', 'paid', 'published', 'completed'].includes(normalized)) {
+  if (['active', 'succeeded', 'paid', 'published', 'completed', 'processed', 'verified'].includes(normalized)) {
     classes = 'bg-[#F0FDF4] text-[#15803D] border-[#BBF7D0]';
-  } else if (['suspended', 'failed', 'error'].includes(normalized)) {
+  } else if (['suspended', 'failed', 'error', 'checkout_failed'].includes(normalized)) {
     classes = 'bg-[#FEF2F2] text-[#B91C1C] border-[#FECACA]';
-  } else if (['pending', 'pending_payment', 'expired', 'refunded'].includes(normalized)) {
+  } else if (['pending', 'pending_payment', 'expired', 'refunded', 'partially_refunded', 'awaiting_async_payment', 'processing'].includes(normalized)) {
     classes = 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]';
   } else if (['super_admin'].includes(normalized)) {
     classes = 'bg-[#252525] text-white border-[#252525]';

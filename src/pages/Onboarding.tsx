@@ -1,12 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout, Globe, ArrowRight, CheckCircle2, Building2, Heart, ArrowLeft } from 'lucide-react';
-import { getSupabase } from '../lib/supabase';
 import { API_BASE } from '../lib/config';
-import { authenticatedFetch } from '../lib/auth';
+import { authenticatedFetch, extractApiErrorMessage } from '../lib/auth';
 import { useUser } from '../lib/UserContext';
 import Button from '../design-system/components/Button';
 import Input from '../design-system/components/Input';
+
+function isPreviewOrLocalDomain(hostname: string) {
+  const host = hostname.toLowerCase();
+  return (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host.endsWith('.run.app') ||
+    host.endsWith('.pages.dev') ||
+    host.endsWith('.workers.dev') ||
+    host.endsWith('.vercel.app') ||
+    host.endsWith('.netlify.app')
+  );
+}
 
 export default function Onboarding() {
   const { user } = useUser();
@@ -23,23 +35,18 @@ export default function Onboarding() {
     const checkExisting = async () => {
       if (!user) return;
       try {
-        const supabase = getSupabase();
-        const userId = user.id || user.sub;
-        
-        const { data: existingAgency } = await supabase
-          .from('agencies')
-          .select('id, slug, user_role')
-          .eq('user_id', userId)
-          .maybeSingle();
+        const res = await authenticatedFetch(`${API_BASE}/api/agencies/me`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const existingAgency = data?.primaryAgency;
 
         if (existingAgency) {
           const protocol = window.location.protocol;
           const hostParts = window.location.host.split('.');
-          const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-          const baseDomain = isLocalhost ? 'localhost:3000' : (hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.'));
+          const baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
           const token = localStorage.getItem('wedding_session_token');
 
-          if (existingAgency.user_role === 'agency') {
+          if (existingAgency.user_role === 'agency' && !isPreviewOrLocalDomain(window.location.hostname)) {
             window.location.replace(`${protocol}//${existingAgency.slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
           } else {
             window.location.replace('/workspace');
@@ -80,19 +87,18 @@ export default function Onboarding() {
       });
 
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Failed to complete onboarding');
+        const errData = await response.json().catch(() => ({} as any));
+        throw new Error(extractApiErrorMessage(errData, 'Failed to complete onboarding'));
       }
 
       const { createdProjectId } = await response.json();
 
       const protocol = window.location.protocol;
       const hostParts = window.location.host.split('.');
-      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
       const token = localStorage.getItem('wedding_session_token');
       
-      if (role === 'agency') {
+      if (role === 'agency' && !isPreviewOrLocalDomain(window.location.hostname)) {
         window.location.replace(`${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
       } else {
         window.location.replace(`/workspace${createdProjectId ? `?project=${createdProjectId}` : ''}`);

@@ -17,7 +17,7 @@ import { DanmakuPillCard, DanmakuStage } from '../components/display/DanmakuStag
 import { CoupleSpotlightOverlay } from '../components/display/CoupleSpotlightOverlay';
 import { ThemeOverlay } from '../components/ThemeDecorations';
 import { useWorkspace } from '../lib/WorkspaceContext';
-import { getAgencyById } from '../lib/agency';
+import { API_BASE } from '../lib/config';
 import { mergeAndDeduplicateMessages } from '../lib/danmakuEngine';
 import {
   PUBLIC_DEMO_AGENCY,
@@ -28,7 +28,6 @@ import { ResolvedEventTheme, resolveEventTheme } from '../lib/eventTheme';
 import { createGuestMessageProvider } from '../lib/guestMessageProvider';
 import { TranslationProvider } from '../lib/i18n/TranslationContext';
 import { isEventActive } from '../lib/packages';
-import { getSupabase } from '../lib/supabase';
 import { fetchTemplates } from '../lib/templates';
 import {
   ALL_DANMAKU_DIRECTIONS,
@@ -130,27 +129,30 @@ export default function Display() {
     }
   }, [projectId, slug, searchParams, isLoadingWorkspace, workspace?.id]);
 
+  const parseProjectPayload = (rawProject: WeddingEvent): WeddingEvent => {
+    const projectData = { ...rawProject };
+    if (typeof projectData.rsvp_fields === 'string') {
+      try {
+        projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
+      } catch {
+        projectData.rsvp_fields = [];
+      }
+    }
+    return projectData;
+  };
+
   const loadProjectByWorkspace = async (agencyId: string) => {
     try {
-      const supabase = getSupabase();
-      const { data: projects } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('agency_id', agencyId)
-        .order('created_at', { ascending: true })
-        .limit(1);
-
-      if (projects && projects.length > 0) {
-        const projectData = { ...projects[0] };
-        if (typeof projectData.rsvp_fields === 'string') {
-          try {
-            projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
-          } catch {
-            projectData.rsvp_fields = [];
-          }
-        }
-        setProject(projectData);
-        if (!agency) setAgency(workspace);
+      const params = new URLSearchParams({ agencyId });
+      const res = await fetch(`${API_BASE}/api/events/resolve?${params.toString()}`);
+      if (!res.ok) {
+        initDemoMode();
+        return;
+      }
+      const json = await res.json();
+      if (json?.project) {
+        setProject(parseProjectPayload(json.project));
+        setAgency(json.agency || workspace || null);
       } else {
         initDemoMode();
       }
@@ -169,56 +171,21 @@ export default function Display() {
     }
 
     try {
-      const supabase = getSupabase();
-      let projectData: WeddingEvent | null = null;
+      const params = new URLSearchParams();
+      if (id) params.set('id', id);
+      if (slugName) params.set('slug', slugName);
+      if (workspace?.id) params.set('agencyId', workspace.id);
 
-      if (id) {
-        const { data } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
-        projectData = data;
-      } else if (slugName) {
-        let query = supabase.from('projects').select('*').eq('slug', slugName);
-        if (workspace) {
-          query = query.eq('agency_id', workspace.id);
-        }
-        const { data } = await query.maybeSingle();
-        projectData = data;
-
-        if (!projectData && !workspace) {
-          const { data: agencyData } = await supabase
-            .from('agencies')
-            .select('*')
-            .eq('slug', slugName)
-            .maybeSingle();
-
-          if (agencyData) {
-            setAgency(agencyData);
-            const { data: events } = await supabase
-              .from('projects')
-              .select('*')
-              .eq('agency_id', agencyData.id)
-              .order('created_at', { ascending: true })
-              .limit(1);
-
-            if (events && events.length > 0) {
-              projectData = events[0];
-            }
-          }
-        }
+      const res = await fetch(`${API_BASE}/api/events/resolve?${params.toString()}`);
+      if (!res.ok) {
+        initDemoMode();
+        return;
       }
 
-      if (projectData) {
-        if (typeof projectData.rsvp_fields === 'string') {
-          try {
-            projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
-          } catch {
-            projectData.rsvp_fields = [];
-          }
-        }
-        setProject(projectData);
-        if (!agency && projectData.agency_id) {
-          const agencyData = await getAgencyById(projectData.agency_id);
-          setAgency(agencyData);
-        }
+      const json = await res.json();
+      if (json?.project) {
+        setProject(parseProjectPayload(json.project));
+        setAgency(json.agency || workspace || null);
       } else {
         initDemoMode();
       }
@@ -230,14 +197,30 @@ export default function Display() {
     }
   };
 
-  // Subscribe cleanly to live messages + reconnection snapshot reconciliation
+  // Subscribe cleanly to live messages + display config updates + reconnection snapshot reconciliation
   useEffect(() => {
     const targetId = project?.id || projectId || (isDemo ? PUBLIC_DEMO_ROOM_ID : undefined);
     if (!targetId) return;
 
     let isMounted = true;
     const isDemoTarget = isDemo || targetId === PUBLIC_DEMO_ROOM_ID || targetId === 'demo';
-    const provider = createGuestMessageProvider(targetId, isDemoTarget);
+    const provider = createGuestMessageProvider(targetId, isDemoTarget, {
+      onConfigUpdate: (updated) => {
+        if (!isMounted) return;
+        if (updated?.message_display_config || updated?.theme_id) {
+          setProject((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  message_display_config:
+                    updated.message_display_config || prev.message_display_config,
+                  theme_id: updated.theme_id || prev.theme_id,
+                }
+              : prev
+          );
+        }
+      },
+    });
     const maxCap = isPreview ? 5 : 80;
 
     provider
@@ -282,51 +265,6 @@ export default function Display() {
       unsubscribe();
     };
   }, [project?.id, projectId, isPreview, isDemo]);
-
-  // Also subscribe to live project display_config updates in production so Studio changes apply live
-  useEffect(() => {
-    if (isDemo || !project?.id) return;
-    let channel: any = null;
-    try {
-      const supabase = getSupabase();
-      channel = supabase
-        .channel(`project-config-${project.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'projects',
-            filter: `id=eq.${project.id}`,
-          },
-          (payload) => {
-            const updated = payload.new as Partial<WeddingEvent> | undefined;
-            if (updated?.message_display_config) {
-              setProject((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      message_display_config: updated.message_display_config,
-                      theme_id: updated.theme_id || prev.theme_id,
-                    }
-                  : prev
-              );
-            }
-          }
-        )
-        .subscribe();
-    } catch {
-      // Silent fallback if Supabase Realtime unavailable
-    }
-
-    return () => {
-      if (channel) {
-        try {
-          getSupabase().removeChannel(channel);
-        } catch {}
-      }
-    };
-  }, [isDemo, project?.id]);
 
   const targetThemeId =
     isPreviewParam && searchParams.get('template')

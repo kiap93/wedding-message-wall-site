@@ -19,7 +19,8 @@ import { EVENT_PRICING, formatPrice } from '../config/pricing';
 import GuestManagementSuite from '../components/guest-management/GuestManagementSuite';
 import MessageModerator from '../components/MessageModerator';
 import EventOverviewDashboard, { OverviewNavigationTarget } from '../components/overview/EventOverviewDashboard';
-import { getSupabase } from '../lib/supabase';
+import { API_BASE } from '../lib/config';
+import { authenticatedFetch, extractApiErrorMessage, unwrapApiData } from '../lib/auth';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import Button from '../design-system/components/Button';
 import Tabs from '../design-system/components/Tabs';
@@ -31,6 +32,7 @@ export default function CoupleDashboard() {
   const { eventId, slug: urlSlug } = useParams<{ eventId?: string; slug?: string }>();
   const navigate = useNavigate();
   const [event, setEvent] = useState<WeddingEvent | null>(null);
+  const [storedPin, setStoredPin] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -48,12 +50,13 @@ export default function CoupleDashboard() {
         return;
       }
 
-      const { authenticated, timestamp } = JSON.parse(auth);
-      if (!authenticated || Date.now() - timestamp > 24 * 60 * 60 * 1000) {
+      const parsed = JSON.parse(auth);
+      if (!parsed?.authenticated || Date.now() - parsed.timestamp > 24 * 60 * 60 * 1000) {
         localStorage.removeItem(`wedding_auth_${eventId}`);
         navigate('/couple/login');
         return;
       }
+      if (parsed.pin) setStoredPin(parsed.pin);
     }
 
     loadEvent();
@@ -61,61 +64,86 @@ export default function CoupleDashboard() {
 
   async function loadEvent() {
     setIsLoading(true);
-    const supabase = getSupabase();
-    let query = supabase.from('projects').select('*');
-    
-    if (eventId) {
-      query = query.eq('id', eventId);
-    } else if (urlSlug) {
-      query = query.eq('slug', urlSlug);
-      if (workspace) {
-        query = query.eq('agency_id', workspace.id);
-      }
-    } else {
-      setIsLoading(false);
-      return;
-    }
-
-    const { data, error } = await query.single();
-
-    if (data) {
-      if (urlSlug) {
-        const auth = localStorage.getItem(`wedding_auth_${data.id}`);
-        if (!auth) {
-          navigate('/couple/login');
-          return;
-        }
-        const { authenticated, timestamp } = JSON.parse(auth);
-        if (!authenticated || Date.now() - timestamp > 24 * 60 * 60 * 1000) {
-          localStorage.removeItem(`wedding_auth_${data.id}`);
-          navigate('/couple/login');
-          return;
-        }
+    try {
+      const params = new URLSearchParams();
+      if (eventId) {
+        params.set('id', eventId);
+      } else if (urlSlug) {
+        params.set('slug', urlSlug);
+        if (workspace) params.set('agency', workspace.slug);
+      } else {
+        setIsLoading(false);
+        return;
       }
 
-      setEvent(data);
-    } else {
+      let pinForHeader = storedPin;
+      if (eventId && !pinForHeader) {
+        try {
+          const authRaw = localStorage.getItem(`wedding_auth_${eventId}`);
+          if (authRaw) pinForHeader = JSON.parse(authRaw)?.pin || '';
+        } catch {}
+      }
+
+      const res = await fetch(`${API_BASE}/api/events/resolve?${params.toString()}`, {
+        headers: pinForHeader ? { 'X-Event-PIN': pinForHeader } : {},
+      });
+
+      if (!res.ok) {
+        navigate('/couple/login');
+        setIsLoading(false);
+        return;
+      }
+
+      const payload = await res.json();
+      const data = payload?.project;
+
+      if (data) {
+        let resolvedPin = data.access_password || pinForHeader || '';
+        if (urlSlug) {
+          const auth = localStorage.getItem(`wedding_auth_${data.id}`);
+          if (!auth) {
+            navigate('/couple/login');
+            setIsLoading(false);
+            return;
+          }
+          const parsed = JSON.parse(auth);
+          if (!parsed?.authenticated || Date.now() - parsed.timestamp > 24 * 60 * 60 * 1000) {
+            localStorage.removeItem(`wedding_auth_${data.id}`);
+            navigate('/couple/login');
+            setIsLoading(false);
+            return;
+          }
+          if (parsed.pin) resolvedPin = parsed.pin;
+        }
+        setStoredPin(resolvedPin);
+        setEvent({ ...data, access_password: data.access_password || resolvedPin });
+      } else {
+        navigate('/couple/login');
+      }
+    } catch {
       navigate('/couple/login');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }
 
   const handleSaveTheme = async (themeId: TemplateId) => {
     if (!event) return;
     setIsSaving(true);
-    
+
     try {
-      const response = await fetch(`${window.location.origin}/api/projects/${event.id}`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/projects/${event.id}`, {
         method: 'PUT',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'X-Event-PIN': event.access_password || ''
+          'X-Event-PIN': event.access_password || storedPin || '',
         },
-        body: JSON.stringify({ theme_id: themeId })
+        body: JSON.stringify({ theme_id: themeId }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update theme');
+        const err = await response.json().catch(() => null);
+        throw new Error(extractApiErrorMessage(err, 'Failed to update theme'));
       }
 
       setEvent({ ...event, theme_id: themeId });
@@ -132,37 +160,52 @@ export default function CoupleDashboard() {
     if (!file || !event) return;
 
     setIsUploading(true);
-    const supabase = getSupabase();
 
     try {
-      const fileName = `${event.id}-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('wedding-images')
-        .upload(fileName, file);
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('event_id', event.id);
 
-      if (uploadError) throw uploadError;
+      const activePin = event.access_password || storedPin || '';
+      const uploadResponse = await authenticatedFetch(`${API_BASE}/api/upload`, {
+        method: 'POST',
+        headers: activePin ? { 'X-Event-PIN': activePin } : {},
+        body: formData,
+      });
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('wedding-images')
-        .getPublicUrl(uploadData.path);
+      const uploadJson = await uploadResponse.json().catch(() => null);
+      if (!uploadResponse.ok || uploadJson?.success === false) {
+        throw new Error(extractApiErrorMessage(uploadJson, 'Failed to upload photo'));
+      }
 
-      const response = await fetch(`${window.location.origin}/api/projects/${event.id}`, {
+      const uploadedRecord = unwrapApiData<any>(uploadJson);
+      const publicUrl =
+        uploadedRecord?.original_url ||
+        uploadJson?.url ||
+        uploadJson?.publicUrl;
+
+      if (!publicUrl) {
+        throw new Error('Upload succeeded but image URL was not returned.');
+      }
+
+      const response = await authenticatedFetch(`${API_BASE}/api/projects/${event.id}`, {
         method: 'PUT',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'X-Event-PIN': event.access_password || ''
+          'X-Event-PIN': activePin,
         },
-        body: JSON.stringify({ image_url: publicUrl, updated_at: new Date().toISOString() })
+        body: JSON.stringify({ image_url: publicUrl, updated_at: new Date().toISOString() }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update photo');
+        const err = await response.json().catch(() => null);
+        throw new Error(extractApiErrorMessage(err, 'Failed to update photo'));
       }
 
       setEvent({ ...event, image_url: publicUrl });
     } catch (error: any) {
       console.error('Error uploading:', error);
-      alert('Error uploading photo. Make sure the storage is accessible.');
+      alert(error?.message || 'Error uploading photo. Make sure the storage is accessible.');
     } finally {
       setIsUploading(false);
     }
@@ -171,19 +214,20 @@ export default function CoupleDashboard() {
   const removePhoto = async () => {
     if (!event) return;
     setIsSaving(true);
-    
+
     try {
-      const response = await fetch(`${window.location.origin}/api/projects/${event.id}`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/projects/${event.id}`, {
         method: 'PUT',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'X-Event-PIN': event.access_password || ''
+          'X-Event-PIN': event.access_password || storedPin || '',
         },
-        body: JSON.stringify({ image_url: null, updated_at: new Date().toISOString() })
+        body: JSON.stringify({ image_url: null, updated_at: new Date().toISOString() }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to remove photo');
+        const err = await response.json().catch(() => null);
+        throw new Error(extractApiErrorMessage(err, 'Failed to remove photo'));
       }
 
       setEvent({ ...event, image_url: undefined });
@@ -363,8 +407,8 @@ export default function CoupleDashboard() {
               websiteHref={`${window.location.origin}/${event.slug}/website`}
               invitationHref={`${window.location.origin}/${event.slug}/invitation`}
               rsvpHref={`${window.location.origin}/${event.slug}/rsvp`}
-              eventPin={event.access_password}
-              allowInlineModeration={Boolean(localStorage.getItem('wedding_session_token'))}
+              eventPin={event.access_password || storedPin}
+              allowInlineModeration={Boolean(localStorage.getItem('wedding_session_token') || event.access_password || storedPin)}
               onEventUpdated={(updated) => setEvent({ ...event, ...updated } as WeddingEvent)}
               onNavigate={(target: OverviewNavigationTarget) => {
                 if (target === 'edit_event') setActiveTab('aesthetic');
@@ -468,6 +512,7 @@ export default function CoupleDashboard() {
               rsvpFields={event.rsvp_fields}
               defaultTab={guestSuiteSubTab}
               openAddGuestSignal={openAddGuestSignal}
+              eventPin={event.access_password || storedPin}
             />
           )}
 
@@ -476,6 +521,7 @@ export default function CoupleDashboard() {
               projectId={event.id}
               themeId={event.theme_id}
               initialDisplayConfig={event.message_display_config}
+              eventPin={event.access_password || storedPin}
               onConfigSaved={(cfg) =>
                 setEvent((prev) => (prev ? { ...prev, message_display_config: cfg } : prev))
               }

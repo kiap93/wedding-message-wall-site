@@ -3,12 +3,12 @@ import multer from 'multer';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
-import { processAndUploadImage, deleteImageFiles, isR2Configured } from './storage';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { processAndUploadImage, deleteImageFiles } from './storage';
+import { buildErrorResponse, buildSuccessResponse } from './apiResponse';
+import { resolveProjectWithAgency } from './agencyService';
+import { resolveAuthenticatedSessionUser } from './developerAdminService';
+import { resolveUserOrganizations } from './billingService';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 const uploadRouter = express.Router();
@@ -20,7 +20,7 @@ const uploadParser = multer({
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
@@ -30,12 +30,16 @@ const uploadParser = multer({
   },
 });
 
-// Lazy load Supabase Admin
 let supabaseAdminInstance: any = null;
 function getSupabaseDb() {
   if (!supabaseAdminInstance) {
-    const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+    const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const key =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SECRET_KEY ||
+      process.env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      process.env.VITE_SUPABASE_ANON_KEY;
     if (url && key && url !== 'https://your-project.supabase.co') {
       supabaseAdminInstance = createClient(url, key);
     }
@@ -43,10 +47,8 @@ function getSupabaseDb() {
   return supabaseAdminInstance;
 }
 
-// Local local database fallback directory and path
 const localDbPath = path.join(process.cwd(), 'server', 'data', 'local_images.json');
 
-// Ensure local folder exists
 function ensureLocalDbExists() {
   const dir = path.dirname(localDbPath);
   if (!fs.existsSync(dir)) {
@@ -57,13 +59,12 @@ function ensureLocalDbExists() {
   }
 }
 
-// Helpers for reading/writing local backup JSON DB
 function readLocalImages(): any[] {
   ensureLocalDbExists();
   try {
     const data = fs.readFileSync(localDbPath, 'utf-8');
     return JSON.parse(data);
-  } catch (e) {
+  } catch {
     return [];
   }
 }
@@ -73,48 +74,101 @@ function writeLocalImages(images: any[]) {
   fs.writeFileSync(localDbPath, JSON.stringify(images, null, 2));
 }
 
-// Auth Helper
-const getAuthUserId = (req: express.Request): string => {
+async function authorizeUploadRequest(
+  req: express.Request,
+  eventId?: string | null
+): Promise<
+  | { ok: true; actorId: string }
+  | { ok: false; statusCode: number; code: string; message: string }
+> {
   const authHeader = req.headers.authorization;
   const cookies = req.cookies || {};
   const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || cookies.wedding_session;
+  const pinHeader = typeof req.headers['x-event-pin'] === 'string' ? req.headers['x-event-pin'].trim() : '';
+  const db = getSupabaseDb();
 
   if (token) {
     try {
       const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-      return decoded.id || decoded.sub || 'guest_user';
-    } catch (e) {
-      // Return guest for development purposes
-      return 'guest_user';
+      if (db) {
+        const activeCheck = await resolveAuthenticatedSessionUser(db, decoded, process.env.SUPER_ADMIN_EMAILS);
+        if (activeCheck.ok === false) {
+          return {
+            ok: false,
+            statusCode: activeCheck.statusCode,
+            code: activeCheck.code,
+            message: activeCheck.error,
+          };
+        }
+        if (eventId && eventId !== 'default-event' && activeCheck.user.role !== 'super_admin') {
+          const resolved = await resolveProjectWithAgency(db, eventId);
+          if (resolved.ok) {
+            const orgs = await resolveUserOrganizations(db, activeCheck.user);
+            const ownsProject = orgs.some((org) => String(org.id) === String(resolved.data.agency.id));
+            if (!ownsProject) {
+              return {
+                ok: false,
+                statusCode: 403,
+                code: 'FORBIDDEN_AGENCY_ACCESS',
+                message: 'You do not have permission to upload assets to this event.',
+              };
+            }
+          }
+        }
+        return { ok: true, actorId: String(activeCheck.user.id || activeCheck.user.sub || 'user') };
+      }
+      return { ok: true, actorId: String(decoded.id || decoded.sub || 'user') };
+    } catch {
+      // Fall through to PIN verification if present
     }
   }
-  return 'guest_user';
-};
+
+  if (pinHeader && eventId && eventId !== 'default-event' && db) {
+    const resolved = await resolveProjectWithAgency(db, eventId);
+    if (resolved.ok && resolved.data.project.access_password && resolved.data.project.access_password === pinHeader) {
+      return { ok: true, actorId: `couple_${eventId}` };
+    }
+    return {
+      ok: false,
+      statusCode: 403,
+      code: 'INVALID_EVENT_PIN',
+      message: 'Invalid event PIN or unauthorized access.',
+    };
+  }
+
+  return {
+    ok: false,
+    statusCode: 401,
+    code: 'UNAUTHENTICATED',
+    message: 'Authentication or valid event PIN is required.',
+  };
+}
 
 /**
  * POST /api/upload
- * Handles form data uploads, compiles them to WebP, optimizes, pushes to R2, and saves to database.
+ * Handles form data uploads, optimizes to WebP, pushes to R2 or local uploads fallback, and saves metadata.
  */
 uploadRouter.post('/upload', (req, res) => {
   uploadParser.single('image')(req, res, async (err) => {
-    // Graceful error handling for multer limits
     if (err) {
-      console.warn('[UPLOAD-API] Multer parsing failed:', err.message);
-      return res.status(400).json({ error: err.message });
+      return res.status(400).json(buildErrorResponse('INVALID_UPLOAD_FILE', err.message));
     }
 
     try {
       const file = req.file;
       if (!file) {
-        return res.status(400).json({ error: 'No file uploaded.' });
+        return res.status(400).json(buildErrorResponse('MISSING_FILE', 'No file uploaded.'));
       }
 
-      const activeUserId = getAuthUserId(req);
-      const event_id = (req.body.event_id || req.body.projectId || 'default-event') as string;
+      const event_id = String(req.body.event_id || req.body.projectId || 'default-event').trim();
+      const authCheck = await authorizeUploadRequest(req, event_id);
+      if (authCheck.ok === false) {
+        return res
+          .status(authCheck.statusCode)
+          .json(buildErrorResponse(authCheck.code, authCheck.message));
+      }
 
-      console.log(`[UPLOAD-API] File received: "${file.originalname}" size: ${file.size} bytes. User: ${activeUserId}, event_id: ${event_id}`);
-
-      // Perform Sharp compressions and uploads to either R2 or local storage fallback
+      const activeUserId = authCheck.actorId;
       const metadata = await processAndUploadImage(
         file.buffer,
         file.originalname,
@@ -132,57 +186,59 @@ uploadRouter.post('/upload', (req, res) => {
         width: metadata.width,
         height: metadata.height,
         file_size: metadata.file_size,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       };
 
-      // Try saving to Supabase
       const db = getSupabaseDb();
       if (db) {
-        console.log('[UPLOAD-API] Supabase connected. Writing metadata to database table...');
         const { error } = await db.from('uploaded_images').insert([dbRecord]);
         if (error) {
-          console.error('[UPLOAD-API] Supabase database transaction failed:', error.message);
-          // If table doesn't exist, we fallback to local JSON to stay robust
           if (error.code === '42P01') {
-            console.log('[UPLOAD-API] Table uploaded_images not found. Writing to local JSON storage fallback...');
             const localDb = readLocalImages();
             localDb.push(dbRecord);
             writeLocalImages(localDb);
           } else {
-            return res.status(500).json({ error: 'Database transaction failed: ' + error.message });
+            return res
+              .status(500)
+              .json(buildErrorResponse('UPLOAD_METADATA_SAVE_FAILED', 'Unable to save uploaded image metadata.'));
           }
         }
       } else {
-        console.log('[UPLOAD-API] Supabase inactive. Writing image metadata to local JSON backup DB...');
         const localDb = readLocalImages();
         localDb.push(dbRecord);
         writeLocalImages(localDb);
       }
 
-      return res.status(201).json({
-        success: true,
-        message: 'Image fully processed and saved successfully.',
-        data: dbRecord
-      });
-
-    } catch (processError: any) {
-      console.error('[UPLOAD-API] Core process failed:', processError);
-      return res.status(500).json({ error: 'Image optimization process failed: ' + processError.message });
+      return res.status(201).json(
+        buildSuccessResponse(dbRecord, {
+          message: 'Image fully processed and saved successfully.',
+          url: dbRecord.original_url,
+          publicUrl: dbRecord.original_url,
+        })
+      );
+    } catch {
+      return res
+        .status(500)
+        .json(buildErrorResponse('IMAGE_PROCESSING_FAILED', 'Image optimization or upload failed.'));
     }
   });
 });
 
 /**
  * GET /api/images
- * Lists uploaded images for current session
+ * Lists uploaded images for authorized session or couple PIN
  */
 uploadRouter.get('/images', async (req, res) => {
   try {
-    const activeUserId = getAuthUserId(req);
-    const event_id = (req.query.event_id || req.query.projectId) as string;
+    const event_id = (req.query.event_id || req.query.projectId) as string | undefined;
+    const authCheck = await authorizeUploadRequest(req, event_id || null);
+    if (authCheck.ok === false) {
+      return res
+        .status(authCheck.statusCode)
+        .json(buildErrorResponse(authCheck.code, authCheck.message));
+    }
 
-    console.log(`[UPLOAD-API] Fetching images list for user: ${activeUserId} event_id: ${event_id}`);
-
+    const activeUserId = authCheck.actorId;
     const db = getSupabaseDb();
     let imagesList: any[] = [];
 
@@ -197,44 +253,44 @@ uploadRouter.get('/images', async (req, res) => {
       if (!error && data) {
         imagesList = data;
       } else {
-        console.warn('[UPLOAD-API] Supabase query failed or layout missing, fetching local JSON records:', error?.message);
         imagesList = readLocalImages();
       }
     } else {
       imagesList = readLocalImages();
     }
 
-    // Filter local lists if query exists
     if (!db || imagesList.length > 0) {
-      imagesList = imagesList.filter(img => img.user_id === activeUserId);
+      imagesList = imagesList.filter((img) => img.user_id === activeUserId);
       if (event_id) {
-        imagesList = imagesList.filter(img => img.event_id === event_id);
+        imagesList = imagesList.filter((img) => img.event_id === event_id);
       }
-      // Sort descending by created_at
       imagesList.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
 
-    return res.status(200).json({
-      success: true,
-      data: imagesList
-    });
-  } catch (fetchError: any) {
-    console.error('[UPLOAD-API] Error fetching images:', fetchError);
-    return res.status(500).json({ error: 'Failed to query image library: ' + fetchError.message });
+    return res.status(200).json(buildSuccessResponse(imagesList));
+  } catch {
+    return res
+      .status(500)
+      .json(buildErrorResponse('IMAGE_FETCH_FAILED', 'Failed to query image library.'));
   }
 });
 
 /**
  * DELETE /api/images/:id
- * Removes image files from Cloudflare R2 / Disk and sweeps DB records
+ * Removes image files from Cloudflare R2 / Disk and cleans DB records
  */
 uploadRouter.delete('/images/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const activeUserId = getAuthUserId(req);
+    const event_id = (req.query.event_id || req.query.projectId) as string | undefined;
+    const authCheck = await authorizeUploadRequest(req, event_id || null);
+    if (authCheck.ok === false) {
+      return res
+        .status(authCheck.statusCode)
+        .json(buildErrorResponse(authCheck.code, authCheck.message));
+    }
 
-    console.log(`[UPLOAD-API] Received request to delete image id "${id}" from user ${activeUserId}`);
-
+    const activeUserId = authCheck.actorId;
     const db = getSupabaseDb();
     let imageRecord: any = null;
 
@@ -244,52 +300,47 @@ uploadRouter.delete('/images/:id', async (req, res) => {
         .select('*')
         .eq('id', id)
         .eq('user_id', activeUserId)
-        .single();
-      
+        .limit(1)
+        .maybeSingle();
+
       if (!error && data) {
         imageRecord = data;
       }
     }
 
     if (!imageRecord) {
-      // Find from local database backup list
       const localDb = readLocalImages();
-      imageRecord = localDb.find(img => img.id === id && img.user_id === activeUserId);
+      imageRecord = localDb.find((img) => img.id === id && img.user_id === activeUserId);
     }
 
     if (!imageRecord) {
-      return res.status(404).json({ error: 'Image record not found or unauthorized.' });
+      return res
+        .status(404)
+        .json(buildErrorResponse('IMAGE_NOT_FOUND', 'Image record not found or unauthorized.'));
     }
 
-    // 1. Delete physical files from Cloudflare R2 or local disk storage
     await deleteImageFiles(
       imageRecord.original_url,
       imageRecord.medium_url,
       imageRecord.thumbnail_url
     );
 
-    // 2. Remove record from DB
     if (db) {
-      const { error: dbError } = await db.from('uploaded_images').delete().eq('id', id);
-      if (dbError) {
-        console.warn('[UPLOAD-API] Failed cleaning Supabase image metadata, falling back to local JSON clean:', dbError.message);
-      }
+      await db.from('uploaded_images').delete().eq('id', id);
     }
 
-    // Always clean from local JSON DB list as well
     const localDb = readLocalImages();
-    const updatedLocalDb = localDb.filter(img => img.id !== id);
-    writeLocalImages(updatedLocalDb);
+    writeLocalImages(localDb.filter((img) => img.id !== id));
 
-    return res.status(200).json({
-      success: true,
-      message: 'Image and files completely deleted.'
-    });
-
-  } catch (deleteError: any) {
-    console.error('[UPLOAD-API] Deletion exception raised:', deleteError);
-    return res.status(500).json({ error: 'Failed deleting resources: ' + deleteError.message });
+    return res.status(200).json(
+      buildSuccessResponse({ id }, { message: 'Image and files completely deleted.' })
+    );
+  } catch {
+    return res
+      .status(500)
+      .json(buildErrorResponse('IMAGE_DELETE_FAILED', 'Failed deleting uploaded image resources.'));
   }
 });
 
 export default uploadRouter;
+

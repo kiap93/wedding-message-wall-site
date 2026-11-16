@@ -151,16 +151,31 @@ export interface PaymentRow {
   id: string;
   transactionId: string;
   orderId: string | null;
+  orderType: string | null;
   organizationId: string | null;
   organizationName: string;
+  customerId: string | null;
+  customerEmail: string | null;
+  customerName: string | null;
   eventId: string | null;
   eventName: string;
   eventSlug: string | null;
   amountCents: number;
   amountUsd: number;
   currency: string;
-  status: 'succeeded' | 'pending' | 'failed' | 'refunded' | 'cancelled';
+  status: 'succeeded' | 'pending' | 'failed' | 'refunded' | 'partially_refunded' | 'cancelled';
   provider: string;
+  stripeSessionId: string | null;
+  stripePaymentIntentId: string | null;
+  stripeChargeId: string | null;
+  stripeRefundId: string | null;
+  refundStatus: 'none' | 'partial' | 'full';
+  refundAmountCents: number;
+  refundedAt: string | null;
+  webhookEventId: string | null;
+  webhookStatus: string | null;
+  webhookErrorDetails: string | null;
+  failureReason: string | null;
   paidAt: string | null;
   createdAt: string;
   isTest: boolean;
@@ -278,11 +293,37 @@ export const developerApi = {
           pendingCount: number;
           failedCount: number;
           refundedCount: number;
+          partiallyRefundedCount?: number;
           cancelledCount: number;
           refundedAmountCents: number;
         };
       }
     >(`/api/developer/payments${buildQuery(params)}`),
+
+  issuePaymentRefund: (id: string, payload: { amountCents?: number; reason?: string } = {}) =>
+    devFetch<{
+      success: boolean;
+      refundId: string;
+      amountRefundedCents: number;
+      cumulativeRefundedCents: number;
+      refundStatus: 'full' | 'partial';
+      entitlementRevoked?: boolean;
+    }>(`/api/developer/payments/${encodeURIComponent(id)}/refund`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  retryPaymentWebhook: (id: string) =>
+    devFetch<{
+      received?: boolean;
+      activated?: boolean;
+      retriedWebhookId?: string;
+      eventType?: string;
+      error?: string;
+    }>(`/api/developer/payments/${encodeURIComponent(id)}/retry-webhook`, {
+      method: 'POST',
+    }),
 
   getActivityLogs: (params: Record<string, any> = {}) =>
     devFetch<PaginatedApiResponse<ActivityLogRow>>(`/api/developer/activity-logs${buildQuery(params)}`),

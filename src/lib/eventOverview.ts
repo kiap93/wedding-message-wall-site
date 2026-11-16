@@ -1,6 +1,5 @@
 import { API_BASE } from './config';
-import { authenticatedFetch } from './auth';
-import { getSupabase } from './supabase';
+import { authenticatedFetch, extractApiErrorMessage, unwrapApiData } from './auth';
 import {
   Guest,
   Message,
@@ -595,7 +594,7 @@ export async function fetchEventOverviewBundle(params: {
   }).then(async (res) => {
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || 'Unable to load guest list');
+      throw new Error(extractApiErrorMessage(body, 'Unable to load guest list'));
     }
     const data = await res.json();
     return (data.guests || []) as Guest[];
@@ -606,7 +605,7 @@ export async function fetchEventOverviewBundle(params: {
   }).then(async (res) => {
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || 'Unable to load seating tables');
+      throw new Error(extractApiErrorMessage(body, 'Unable to load seating tables'));
     }
     const data = await res.json();
     return (data.tables || []) as SeatingTable[];
@@ -617,26 +616,30 @@ export async function fetchEventOverviewBundle(params: {
   }).then(async (res) => {
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || 'Unable to load floor plan');
+      throw new Error(extractApiErrorMessage(body, 'Unable to load floor plan'));
     }
     const data = await res.json();
     return (data.layout || null) as VenueLayout | null;
   });
 
-  const messagesPromise = (async (): Promise<Message[]> => {
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('timestamp', { ascending: false })
-      .limit(100);
-
-    if (error) {
-      throw new Error(error.message || 'Unable to load wish wall messages');
+  const messagesParams = new URLSearchParams({
+    projectId,
+    includeAll: 'true',
+    limit: '100',
+  });
+  const messagesPromise = authenticatedFetch(`${API_BASE}/api/messages?${messagesParams.toString()}`, {
+    headers,
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(extractApiErrorMessage(body, 'Unable to load wish wall messages'));
     }
-    return (data || []) as Message[];
-  })();
+    const json = await res.json().catch(() => null);
+    const unwrapped = unwrapApiData<any>(json);
+    if (Array.isArray(unwrapped)) return unwrapped as Message[];
+    if (Array.isArray(json?.messages)) return json.messages as Message[];
+    return [] as Message[];
+  });
 
   const [guestsRes, tablesRes, layoutRes, messagesRes] = await Promise.allSettled([
     guestsPromise,

@@ -37,7 +37,6 @@ import RSVPForm from '../components/RSVPForm';
 import MessageModerator from '../components/MessageModerator';
 import { API_BASE } from '../lib/config';
 import { authenticatedFetch, removeAuthToken } from '../lib/auth';
-import { getSupabase } from '../lib/supabase';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { useUser } from '../lib/UserContext';
 import { fetchTemplates } from '../lib/templates';
@@ -111,25 +110,30 @@ export default function Workspace() {
         setAgency(workspace);
         fetchEvents(workspace.id, workspace.user_role, targetProjectId);
       } else {
-        const supabase = getSupabase();
-        const userId = user.id || user.sub;
-        const { data: userAgencies, error } = await supabase
-          .from('agencies')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: true });
+        try {
+          const response = await authenticatedFetch(`${API_BASE}/api/agencies/me`);
+          if (response.status === 401 || response.status === 403) {
+            return;
+          }
+          if (!response.ok) {
+            console.error('Error fetching user agencies:', response.status);
+            setIsLoadingEvents(false);
+            return;
+          }
 
-        if (error) {
-          console.error('Error fetching user agencies:', error);
-          return;
-        }
+          const payload = await response.json();
+          const userAgencies = Array.isArray(payload?.agencies) ? payload.agencies : [];
 
-        if (userAgencies && userAgencies.length > 0) {
-          const primaryWorkspace = userAgencies[0];
-          setAgency(primaryWorkspace);
-          fetchEvents(primaryWorkspace.id, primaryWorkspace.user_role, targetProjectId);
-        } else {
-          navigate('/onboarding');
+          if (userAgencies.length > 0) {
+            const primaryWorkspace = userAgencies[0];
+            setAgency(primaryWorkspace);
+            fetchEvents(primaryWorkspace.id, primaryWorkspace.user_role, targetProjectId);
+          } else {
+            navigate('/onboarding');
+          }
+        } catch (err) {
+          console.error('Error fetching user agencies:', err);
+          setIsLoadingEvents(false);
         }
       }
     };
@@ -139,41 +143,43 @@ export default function Workspace() {
 
   const fetchEvents = async (agencyId: string, role?: string, targetProjectId?: string | null) => {
     setIsLoadingEvents(true);
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('agency_id', agencyId)
-      .order('created_at', { ascending: false });
+    try {
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/projects?agency_id=${encodeURIComponent(agencyId)}`
+      );
+      if (!response.ok) {
+        console.error('Error fetching events:', response.status);
+      } else {
+        const payload = await response.json();
+        const eventList = (payload?.data || []).map((event: any) => ({
+          ...event,
+          rsvp_fields: typeof event.rsvp_fields === 'string'
+            ? JSON.parse(event.rsvp_fields)
+            : (Array.isArray(event.rsvp_fields) ? event.rsvp_fields : null)
+        }));
+        setEvents(eventList);
 
-    if (error) {
-      console.error('Error fetching events:', error);
-    } else {
-      const eventList = (data || []).map(event => ({
-        ...event,
-        rsvp_fields: typeof event.rsvp_fields === 'string' 
-          ? JSON.parse(event.rsvp_fields) 
-          : (Array.isArray(event.rsvp_fields) ? event.rsvp_fields : null)
-      }));
-      setEvents(eventList);
-      
-      if (targetProjectId) {
-        const targetEvent = eventList.find(e => e.id === targetProjectId);
-        if (targetEvent) {
-          setEditingEvent(targetEvent);
+        if (targetProjectId) {
+          const targetEvent = eventList.find((e: any) => e.id === targetProjectId);
+          if (targetEvent) {
+            setEditingEvent(targetEvent);
+            setActiveEditorTab('overview');
+            setGuestSuiteSubTab('guests');
+            setView('editor');
+          }
+        } else if (role === 'couple' && eventList.length > 0 && view === 'list' && !editingEvent) {
+          const firstEvent = eventList[0];
+          setEditingEvent(firstEvent);
           setActiveEditorTab('overview');
           setGuestSuiteSubTab('guests');
           setView('editor');
         }
-      } else if (role === 'couple' && eventList.length > 0 && view === 'list' && !editingEvent) {
-        const firstEvent = eventList[0];
-        setEditingEvent(firstEvent);
-        setActiveEditorTab('overview');
-        setGuestSuiteSubTab('guests');
-        setView('editor');
       }
+    } catch (error) {
+      console.error('Error fetching events:', error);
+    } finally {
+      setIsLoadingEvents(false);
     }
-    setIsLoadingEvents(false);
   };
 
   const handleSaveAgency = async (agencyData: Partial<Agency>) => {
@@ -209,19 +215,20 @@ export default function Workspace() {
       const newSlug = agencyData.slug;
       if (newSlug && newSlug !== agency?.slug) {
         const protocol = window.location.protocol;
+        const hostname = window.location.hostname;
         const hostParts = window.location.host.split('.');
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        
-        let baseDomain;
-        if (isLocalhost) {
-          baseDomain = window.location.host;
-        } else {
-          baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
-        }
+        const isPreviewOrLocal =
+          hostname === 'localhost' ||
+          hostname === '127.0.0.1' ||
+          hostname.endsWith('.run.app') ||
+          hostname.endsWith('.pages.dev') ||
+          hostname.endsWith('.workers.dev') ||
+          hostname.endsWith('.vercel.app') ||
+          hostname.endsWith('.netlify.app');
 
-        const token = localStorage.getItem('wedding_session_token');
-        
-        if (!isLocalhost || hostParts.length > 1) {
+        if (!isPreviewOrLocal) {
+          const baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
+          const token = localStorage.getItem('wedding_session_token');
           window.location.replace(`${protocol}//${newSlug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
         } else {
           window.location.reload();

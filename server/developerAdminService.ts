@@ -72,16 +72,31 @@ export interface PlatformPaymentRecord {
   id: string;
   transactionId: string;
   orderId: string | null;
+  orderType: string | null;
   organizationId: string | null;
   organizationName: string;
+  customerId: string | null;
+  customerEmail: string | null;
+  customerName: string | null;
   eventId: string | null;
   eventName: string;
   eventSlug: string | null;
   amountCents: number;
   amountUsd: number;
   currency: string;
-  status: 'succeeded' | 'pending' | 'failed' | 'refunded' | 'cancelled';
+  status: 'succeeded' | 'pending' | 'failed' | 'refunded' | 'partially_refunded' | 'cancelled';
   provider: string;
+  stripeSessionId: string | null;
+  stripePaymentIntentId: string | null;
+  stripeChargeId: string | null;
+  stripeRefundId: string | null;
+  refundStatus: 'none' | 'partial' | 'full';
+  refundAmountCents: number;
+  refundedAt: string | null;
+  webhookEventId: string | null;
+  webhookStatus: string | null;
+  webhookErrorDetails: string | null;
+  failureReason: string | null;
   paidAt: string | null;
   createdAt: string;
   isTest: boolean;
@@ -351,15 +366,26 @@ export async function resolveAuthenticatedSessionUser(
     resolvedRole = 'super_admin';
   } else if (dbRole === 'agency_owner' || dbRole === 'agency_member') {
     resolvedRole = dbRole as PlatformUserRole;
-  } else if (supabase && userId) {
+  } else if (supabase && (userId || email)) {
     try {
       const { data: ownedAgency } = await supabase
         .from('agencies')
         .select('id')
         .eq('user_id', userId)
+        .limit(1)
         .maybeSingle();
       if (ownedAgency) {
         resolvedRole = 'agency_owner';
+      } else if (email) {
+        const { data: byEmailAgency } = await supabase
+          .from('agencies')
+          .select('id')
+          .ilike('owner_email', email)
+          .limit(1)
+          .maybeSingle();
+        if (byEmailAgency) {
+          resolvedRole = 'agency_owner';
+        }
       }
     } catch {
       // Ignore agency lookup failure
@@ -574,7 +600,9 @@ export function computePaymentLedgerAndMetrics(
   rawPayments: any[],
   rawOrders: any[],
   rawProjects: any[],
-  rawAgencies: any[]
+  rawAgencies: any[],
+  rawUsers: any[] = [],
+  rawWebhooks: any[] = []
 ): {
   records: PlatformPaymentRecord[];
   summary: {
@@ -584,6 +612,7 @@ export function computePaymentLedgerAndMetrics(
     pendingCount: number;
     failedCount: number;
     refundedCount: number;
+    partiallyRefundedCount: number;
     cancelledCount: number;
     refundedAmountCents: number;
   };
@@ -603,17 +632,41 @@ export function computePaymentLedgerAndMetrics(
     if (o?.id) orderMap.set(String(o.id), o);
   }
 
+  const userMap = new Map<string, any>();
+  for (const u of rawUsers || []) {
+    if (u?.id) userMap.set(String(u.id), u);
+    if (u?.external_user_id) userMap.set(String(u.external_user_id), u);
+    if (u?.email) userMap.set(normalizeEmail(u.email), u);
+  }
+
+  const webhookById = new Map<string, any>();
+  const latestWebhookByOrder = new Map<string, any>();
+  for (const w of rawWebhooks || []) {
+    if (w?.id) webhookById.set(String(w.id), w);
+    if (w?.related_order_id && !latestWebhookByOrder.has(String(w.related_order_id))) {
+      latestWebhookByOrder.set(String(w.related_order_id), w);
+    }
+  }
+
   const records: PlatformPaymentRecord[] = [];
   const coveredOrderIds = new Set<string>();
   const coveredTxIds = new Set<string>();
 
-  const normalizePayStatus = (rawStatus: unknown, linkedProject?: any): PlatformPaymentRecord['status'] => {
+  const normalizePayStatus = (
+    rawStatus: unknown,
+    rawRefundStatus?: unknown,
+    linkedProject?: any
+  ): PlatformPaymentRecord['status'] => {
     const s = String(rawStatus || 'pending').toLowerCase();
-    if (s === 'refunded' || (linkedProject && String(linkedProject.payment_status || '').toLowerCase() === 'refunded' && s !== 'failed')) {
+    const rs = String(rawRefundStatus || '').toLowerCase();
+    if (s === 'refunded' || rs === 'full' || (linkedProject && String(linkedProject.payment_status || '').toLowerCase() === 'refunded' && s !== 'failed' && rs !== 'partial')) {
       return 'refunded';
     }
+    if (s === 'partially_refunded' || rs === 'partial') {
+      return 'partially_refunded';
+    }
     if (s === 'succeeded' || s === 'paid' || s === 'completed') return 'succeeded';
-    if (s === 'failed') return 'failed';
+    if (s === 'failed' || s === 'checkout_failed') return 'failed';
     if (s === 'cancelled' || s === 'canceled') return 'cancelled';
     return 'pending';
   };
@@ -621,14 +674,42 @@ export function computePaymentLedgerAndMetrics(
   for (const pay of rawPayments || []) {
     const project = pay.event_id ? projectMap.get(String(pay.event_id)) : null;
     const order = pay.order_id ? orderMap.get(String(pay.order_id)) : null;
-    const orgId = order?.agency_id || project?.agency_id || null;
+    const orgId = pay.agency_id || order?.agency_id || project?.agency_id || null;
     const agency = orgId ? agencyMap.get(String(orgId)) : null;
 
     if (pay.order_id) coveredOrderIds.add(String(pay.order_id));
     if (pay.provider_transaction_id) coveredTxIds.add(String(pay.provider_transaction_id));
+    if (pay.stripe_checkout_session_id) coveredTxIds.add(String(pay.stripe_checkout_session_id));
+    if (pay.stripe_payment_intent_id) coveredTxIds.add(String(pay.stripe_payment_intent_id));
 
-    const status = normalizePayStatus(pay.payment_status, project);
+    const status = normalizePayStatus(pay.payment_status, pay.refund_status, project);
     const amountCents = Number.isFinite(Number(pay.amount)) ? Number(pay.amount) : 0;
+    const rawRefundCents = Number.isFinite(Number(pay.refund_amount)) ? Number(pay.refund_amount) : 0;
+    const refundAmountCents = status === 'refunded' && rawRefundCents === 0 ? amountCents : rawRefundCents;
+    const refundStatus: 'none' | 'partial' | 'full' =
+      status === 'refunded'
+        ? 'full'
+        : status === 'partially_refunded'
+          ? 'partial'
+          : (pay.refund_status === 'full' || pay.refund_status === 'partial' ? pay.refund_status : 'none');
+
+    const custId = pay.customer_id || order?.customer_id || null;
+    const matchedCustomer = custId ? userMap.get(String(custId)) || userMap.get(normalizeEmail(custId)) : null;
+    const wh =
+      (pay.webhook_event_id && webhookById.get(String(pay.webhook_event_id))) ||
+      (order?.last_webhook_event_id && webhookById.get(String(order.last_webhook_event_id))) ||
+      (pay.order_id && latestWebhookByOrder.get(String(pay.order_id))) ||
+      null;
+
+    const stripeSessionId =
+      pay.stripe_checkout_session_id ||
+      order?.stripe_session_id ||
+      (String(pay.provider_transaction_id || '').startsWith('cs_') ? String(pay.provider_transaction_id) : null);
+    const stripePaymentIntentId =
+      pay.stripe_payment_intent_id ||
+      order?.stripe_payment_intent_id ||
+      (String(pay.provider_transaction_id || '').startsWith('pi_') ? String(pay.provider_transaction_id) : null);
+
     const isTest = Boolean(
       pay.is_test === true ||
       project?.is_test === true ||
@@ -639,10 +720,14 @@ export function computePaymentLedgerAndMetrics(
 
     records.push({
       id: String(pay.id || pay.provider_transaction_id || `pay_${records.length}`),
-      transactionId: String(pay.provider_transaction_id || pay.id || ''),
+      transactionId: String(pay.provider_transaction_id || stripePaymentIntentId || stripeSessionId || pay.id || ''),
       orderId: pay.order_id ? String(pay.order_id) : null,
+      orderType: order?.order_type ? String(order.order_type) : null,
       organizationId: orgId ? String(orgId) : null,
       organizationName: agency?.name || (orgId ? `Organization ${String(orgId).slice(0, 8)}` : 'Unknown Organization'),
+      customerId: custId ? String(custId) : null,
+      customerEmail: matchedCustomer?.email || agency?.owner_email || null,
+      customerName: matchedCustomer?.full_name || null,
       eventId: pay.event_id ? String(pay.event_id) : null,
       eventName: project?.name || (pay.event_id ? `Event ${String(pay.event_id).slice(0, 8)}` : 'Unknown Event'),
       eventSlug: project?.slug || null,
@@ -651,6 +736,17 @@ export function computePaymentLedgerAndMetrics(
       currency: String(pay.currency || 'usd').toUpperCase(),
       status,
       provider: String(pay.provider || 'stripe'),
+      stripeSessionId,
+      stripePaymentIntentId,
+      stripeChargeId: pay.stripe_charge_id ? String(pay.stripe_charge_id) : null,
+      stripeRefundId: pay.stripe_refund_id ? String(pay.stripe_refund_id) : null,
+      refundStatus,
+      refundAmountCents,
+      refundedAt: pay.refunded_at || order?.refunded_at || null,
+      webhookEventId: wh?.id || pay.webhook_event_id || order?.last_webhook_event_id || null,
+      webhookStatus: wh?.processing_status || pay.webhook_status || order?.webhook_status || null,
+      webhookErrorDetails: wh?.error_details || null,
+      failureReason: pay.failure_message || order?.failure_reason || null,
       paidAt: pay.paid_at || null,
       createdAt: pay.created_at || pay.paid_at || new Date().toISOString(),
       isTest,
@@ -660,15 +756,24 @@ export function computePaymentLedgerAndMetrics(
   for (const ord of rawOrders || []) {
     const ordId = String(ord.id || '');
     const txId = ord.stripe_session_id ? String(ord.stripe_session_id) : '';
-    if ((ordId && coveredOrderIds.has(ordId)) || (txId && coveredTxIds.has(txId))) {
+    const piId = ord.stripe_payment_intent_id ? String(ord.stripe_payment_intent_id) : '';
+    if ((ordId && coveredOrderIds.has(ordId)) || (txId && coveredTxIds.has(txId)) || (piId && coveredTxIds.has(piId))) {
       continue;
     }
 
     const project = ord.event_id ? projectMap.get(String(ord.event_id)) : null;
     const orgId = ord.agency_id || project?.agency_id || null;
     const agency = orgId ? agencyMap.get(String(orgId)) : null;
-    const status = normalizePayStatus(ord.order_status, project);
+    const status = normalizePayStatus(ord.order_status, ord.refund_status, project);
     const amountCents = Number.isFinite(Number(ord.amount)) ? Number(ord.amount) : 0;
+    const refundAmountCents = Number.isFinite(Number(ord.refund_amount)) ? Number(ord.refund_amount) : 0;
+    const custId = ord.customer_id || null;
+    const matchedCustomer = custId ? userMap.get(String(custId)) || userMap.get(normalizeEmail(custId)) : null;
+    const wh =
+      (ord.last_webhook_event_id && webhookById.get(String(ord.last_webhook_event_id))) ||
+      (ordId && latestWebhookByOrder.get(ordId)) ||
+      null;
+
     const isTest = Boolean(
       ord.is_test === true ||
       project?.is_test === true ||
@@ -677,10 +782,14 @@ export function computePaymentLedgerAndMetrics(
 
     records.push({
       id: ordId || `ord_${records.length}`,
-      transactionId: txId || ordId,
+      transactionId: piId || txId || ordId,
       orderId: ordId || null,
+      orderType: ord.order_type ? String(ord.order_type) : null,
       organizationId: orgId ? String(orgId) : null,
       organizationName: agency?.name || (orgId ? `Organization ${String(orgId).slice(0, 8)}` : 'Unknown Organization'),
+      customerId: custId ? String(custId) : null,
+      customerEmail: matchedCustomer?.email || agency?.owner_email || null,
+      customerName: matchedCustomer?.full_name || null,
       eventId: ord.event_id ? String(ord.event_id) : null,
       eventName: project?.name || (ord.event_id ? `Event ${String(ord.event_id).slice(0, 8)}` : 'Unknown Event'),
       eventSlug: project?.slug || null,
@@ -689,7 +798,18 @@ export function computePaymentLedgerAndMetrics(
       currency: String(ord.currency || 'usd').toUpperCase(),
       status,
       provider: 'stripe',
-      paidAt: status === 'succeeded' ? (ord.updated_at || ord.created_at || null) : null,
+      stripeSessionId: txId || null,
+      stripePaymentIntentId: piId || null,
+      stripeChargeId: null,
+      stripeRefundId: null,
+      refundStatus: status === 'refunded' ? 'full' : status === 'partially_refunded' ? 'partial' : 'none',
+      refundAmountCents,
+      refundedAt: ord.refunded_at || null,
+      webhookEventId: wh?.id || ord.last_webhook_event_id || null,
+      webhookStatus: wh?.processing_status || ord.webhook_status || null,
+      webhookErrorDetails: wh?.error_details || null,
+      failureReason: ord.failure_reason || null,
+      paidAt: status === 'succeeded' ? (ord.completed_at || ord.updated_at || ord.created_at || null) : null,
       createdAt: ord.created_at || new Date().toISOString(),
       isTest,
     });
@@ -697,12 +817,14 @@ export function computePaymentLedgerAndMetrics(
 
   records.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  // Revenue totals strictly include ONLY non-test, non-refunded, succeeded transactions
+  // Revenue totals strictly include ONLY non-test, net collected revenue
+  // (succeeded full amount + net remaining amount on partially_refunded; excludes refunded, pending, failed, cancelled)
   let totalRevenueCents = 0;
   let completedCount = 0;
   let pendingCount = 0;
   let failedCount = 0;
   let refundedCount = 0;
+  let partiallyRefundedCount = 0;
   let cancelledCount = 0;
   let refundedAmountCents = 0;
 
@@ -711,13 +833,19 @@ export function computePaymentLedgerAndMetrics(
     if (r.status === 'succeeded') {
       totalRevenueCents += r.amountCents;
       completedCount += 1;
+    } else if (r.status === 'partially_refunded') {
+      const refundedPortion = Math.min(r.amountCents, Math.max(0, r.refundAmountCents || 0));
+      totalRevenueCents += Math.max(0, r.amountCents - refundedPortion);
+      completedCount += 1;
+      partiallyRefundedCount += 1;
+      refundedAmountCents += refundedPortion;
     } else if (r.status === 'pending') {
       pendingCount += 1;
     } else if (r.status === 'failed') {
       failedCount += 1;
     } else if (r.status === 'refunded') {
       refundedCount += 1;
-      refundedAmountCents += r.amountCents;
+      refundedAmountCents += r.refundAmountCents > 0 ? r.refundAmountCents : r.amountCents;
     } else if (r.status === 'cancelled') {
       cancelledCount += 1;
     }
@@ -732,6 +860,7 @@ export function computePaymentLedgerAndMetrics(
       pendingCount,
       failedCount,
       refundedCount,
+      partiallyRefundedCount,
       cancelledCount,
       refundedAmountCents,
     },
@@ -884,13 +1013,14 @@ interface PlatformSnapshot {
 }
 
 async function loadPlatformSnapshot(supabase: any, now: Date = new Date()): Promise<PlatformSnapshot> {
-  const [rawUsersRaw, rawAgencies, rawProjects, rawOrders, rawPayments, rawLogs] = await Promise.all([
+  const [rawUsersRaw, rawAgencies, rawProjects, rawOrders, rawPayments, rawLogs, rawWebhooks] = await Promise.all([
     safeFetchTable(supabase, 'users_auth', 'created_at'),
     safeFetchTable(supabase, 'agencies', 'created_at'),
     safeFetchTable(supabase, 'projects', 'created_at'),
     safeFetchTable(supabase, 'event_orders', 'created_at'),
     safeFetchTable(supabase, 'event_payments', 'created_at'),
     safeFetchTable(supabase, 'platform_activity_logs', 'created_at'),
+    safeFetchTable(supabase, 'stripe_webhook_events', 'received_at'),
   ]);
 
   // Immediately strip password hashes from every user row
@@ -936,11 +1066,22 @@ async function loadPlatformSnapshot(supabase: any, now: Date = new Date()): Prom
     eventsByOrgId.get(aid)!.push(p);
   }
 
-  const paymentData = computePaymentLedgerAndMetrics(rawPayments, rawOrders, rawProjects, rawAgencies);
+  const paymentData = computePaymentLedgerAndMetrics(
+    rawPayments,
+    rawOrders,
+    rawProjects,
+    rawAgencies,
+    rawUsers,
+    rawWebhooks
+  );
   const revenueByOrgId = new Map<string, number>();
   for (const pay of paymentData.records) {
-    if (!pay.isTest && pay.status === 'succeeded' && pay.organizationId) {
-      revenueByOrgId.set(pay.organizationId, (revenueByOrgId.get(pay.organizationId) || 0) + pay.amountCents);
+    if (!pay.isTest && (pay.status === 'succeeded' || pay.status === 'partially_refunded') && pay.organizationId) {
+      const netCents = Math.max(
+        0,
+        pay.amountCents - (pay.status === 'partially_refunded' ? pay.refundAmountCents || 0 : 0)
+      );
+      revenueByOrgId.set(pay.organizationId, (revenueByOrgId.get(pay.organizationId) || 0) + netCents);
     }
   }
 
@@ -1729,6 +1870,11 @@ export async function listPlatformPayments(
     list = list.filter(
       (p) =>
         p.transactionId.toLowerCase().includes(q) ||
+        (p.orderId || '').toLowerCase().includes(q) ||
+        (p.stripeSessionId || '').toLowerCase().includes(q) ||
+        (p.stripePaymentIntentId || '').toLowerCase().includes(q) ||
+        (p.customerEmail || '').toLowerCase().includes(q) ||
+        (p.customerName || '').toLowerCase().includes(q) ||
         p.organizationName.toLowerCase().includes(q) ||
         p.eventName.toLowerCase().includes(q) ||
         (p.eventSlug || '').toLowerCase().includes(q)

@@ -1,5 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import type Stripe from 'stripe';
 import {
   getDeveloperOverview,
   listOrganizations,
@@ -18,11 +19,17 @@ import {
   requireSuperAdminSession,
   resolveAuthenticatedSessionUser,
 } from './developerAdminService';
+import {
+  issueAdminStripeRefund,
+  retryStripeWebhookByIdOrPayment,
+} from './billingService';
 
 export interface DeveloperRouterDeps {
   getSupabase: () => any;
   getJwtSecret: () => string;
   getSuperAdminEmails?: () => string | undefined;
+  getStripe?: () => Stripe | null;
+  getStripeSecretKey?: () => string | undefined;
 }
 
 export function extractBearerOrCookieToken(req: express.Request): string | null {
@@ -320,6 +327,51 @@ export function createDeveloperRouter(deps: DeveloperRouterDeps): express.Router
       res.json({ success: true, ...result });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to load platform payments' });
+    }
+  });
+
+  // 11b. Issue Full or Partial Stripe Refund (Super Admin only)
+  router.post('/payments/:id/refund', async (req, res) => {
+    try {
+      const supabase = (req as any).supabaseAdmin;
+      const admin = (req as any).superAdmin;
+      const stripe = deps.getStripe ? deps.getStripe() : null;
+      const stripeSecretKey = deps.getStripeSecretKey ? deps.getStripeSecretKey() : process.env.STRIPE_SECRET_KEY;
+      const { amountCents, reason } = req.body || {};
+
+      const result = await issueAdminStripeRefund({
+        supabase,
+        stripe,
+        stripeSecretKey,
+        paymentId: req.params.id,
+        amountCents: amountCents !== undefined ? Number(amountCents) : undefined,
+        reason,
+        adminUser: { id: String(admin.id), email: String(admin.email) },
+      });
+
+      return res.status(result.statusCode).json(result.body);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Failed to execute Stripe refund' });
+    }
+  });
+
+  // 11c. Retry Stored Stripe Webhook Event (Super Admin only)
+  router.post('/payments/:id/retry-webhook', async (req, res) => {
+    try {
+      const supabase = (req as any).supabaseAdmin;
+      const admin = (req as any).superAdmin;
+      const stripe = deps.getStripe ? deps.getStripe() : null;
+
+      const result = await retryStripeWebhookByIdOrPayment({
+        supabase,
+        stripe,
+        targetId: req.params.id,
+        adminUser: { id: String(admin.id), email: String(admin.email) },
+      });
+
+      return res.status(result.statusCode).json(result.body);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Failed to retry Stripe webhook' });
     }
   });
 

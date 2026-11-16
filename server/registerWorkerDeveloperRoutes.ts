@@ -2,6 +2,7 @@ import type { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { verify } from 'hono/jwt';
 import { createClient } from '@supabase/supabase-js';
+import Stripe from 'stripe';
 import {
   getDeveloperOverview,
   listOrganizations,
@@ -20,6 +21,10 @@ import {
   requireSuperAdminSession,
   resolveAuthenticatedSessionUser,
 } from './developerAdminService';
+import {
+  issueAdminStripeRefund,
+  retryStripeWebhookByIdOrPayment,
+} from './billingService';
 
 export function extractWorkerToken(c: any): string | null {
   const authHeader = c.req.header('Authorization');
@@ -275,6 +280,56 @@ export function registerWorkerDeveloperRoutes(app: Hono<any>) {
       return c.json({ success: true, ...result });
     } catch (err: any) {
       return c.json({ error: err.message || 'Failed to load payments' }, 500);
+    }
+  });
+
+  app.post('/api/developer/payments/:id/refund', async (c) => {
+    try {
+      const supabase = c.get('supabaseAdmin');
+      const admin = c.get('superAdmin');
+      const stripeSecret = c.env?.STRIPE_SECRET_KEY;
+      const stripe =
+        stripeSecret && (stripeSecret.startsWith('sk_test_') || stripeSecret.startsWith('sk_live_'))
+          ? new Stripe(stripeSecret, { httpClient: Stripe.createFetchHttpClient() })
+          : null;
+      const body = await c.req.json().catch(() => ({}));
+
+      const result = await issueAdminStripeRefund({
+        supabase,
+        stripe,
+        stripeSecretKey: stripeSecret,
+        paymentId: c.req.param('id'),
+        amountCents: body?.amountCents !== undefined ? Number(body.amountCents) : undefined,
+        reason: body?.reason,
+        adminUser: { id: String(admin.id), email: String(admin.email) },
+      });
+
+      return c.json(result.body, result.statusCode as any);
+    } catch (err: any) {
+      return c.json({ error: err?.message || 'Failed to execute Stripe refund' }, 500);
+    }
+  });
+
+  app.post('/api/developer/payments/:id/retry-webhook', async (c) => {
+    try {
+      const supabase = c.get('supabaseAdmin');
+      const admin = c.get('superAdmin');
+      const stripeSecret = c.env?.STRIPE_SECRET_KEY;
+      const stripe =
+        stripeSecret && (stripeSecret.startsWith('sk_test_') || stripeSecret.startsWith('sk_live_'))
+          ? new Stripe(stripeSecret, { httpClient: Stripe.createFetchHttpClient() })
+          : null;
+
+      const result = await retryStripeWebhookByIdOrPayment({
+        supabase,
+        stripe,
+        targetId: c.req.param('id'),
+        adminUser: { id: String(admin.id), email: String(admin.email) },
+      });
+
+      return c.json(result.body, result.statusCode as any);
+    } catch (err: any) {
+      return c.json({ error: err?.message || 'Failed to retry Stripe webhook' }, 500);
     }
   });
 

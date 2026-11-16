@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { API_BASE } from '../lib/config';
+import { extractApiErrorMessage } from '../lib/auth';
 import { useUser } from '../lib/UserContext';
 import AuthLayout from '../layouts/AuthLayout';
 import Button from '../design-system/components/Button';
@@ -48,11 +49,12 @@ export default function Login() {
     const currentOrigin = window.location.origin;
     
     fetch(`${API_BASE}/api/auth/google?origin=${encodeURIComponent(currentOrigin)}`, {
-      headers: { 'Accept': 'application/json' }
+      headers: { 'Accept': 'application/json', 'X-Requested-With': 'EventFrame' },
+      credentials: 'include',
     })
       .then(async response => {
         const data = await response.json();
-        if (!response.ok) throw new Error(data.message || data.error || 'Failed to initialize Google login');
+        if (!response.ok) throw new Error(extractApiErrorMessage(data, 'Failed to initialize Google login'));
         if (data.url) {
           window.location.href = data.url;
         } else {
@@ -104,11 +106,13 @@ export default function Login() {
       const endpoint = mode === 'forgot-password' ? '/api/auth/forgot-password' : '/api/auth/email';
       const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'EventFrame' },
+        credentials: 'include',
         body: JSON.stringify({ email, password, mode }),
       });
 
       const data = await response.json();
+      const errMsg = extractApiErrorMessage(data, '');
 
       if (response.ok) {
         if (data.success) {
@@ -121,13 +125,13 @@ export default function Login() {
           }
           setError(null);
         } else {
-          setError(data.error || 'Authentication failed.');
+          setError(errMsg || 'Authentication failed.');
         }
       } else {
-        if (data.error?.includes('already exists')) {
+        if (errMsg.includes('already exists')) {
           setError('This email is already registered. If you have not verified it, try signing up again.');
         } else {
-          setError(data.error || (mode === 'signup' ? 'Failed to create account.' : 'Invalid credentials.'));
+          setError(errMsg || (mode === 'signup' ? 'Failed to create account.' : 'Invalid credentials.'));
         }
       }
     } catch (err) {

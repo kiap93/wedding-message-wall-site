@@ -8,9 +8,10 @@ import Button from '../design-system/components/Button';
 interface RSVPManagerProps {
   projectId: string;
   rsvpFields?: RSVPField[];
+  eventPin?: string;
 }
 
-export default function RSVPManager({ projectId, rsvpFields }: RSVPManagerProps) {
+export default function RSVPManager({ projectId, rsvpFields, eventPin }: RSVPManagerProps) {
   const [rsvps, setRsvps] = useState<RSVP[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,11 +40,11 @@ export default function RSVPManager({ projectId, rsvpFields }: RSVPManagerProps)
 
   useEffect(() => {
     loadRSVPs();
-  }, [projectId]);
+  }, [projectId, eventPin]);
 
   async function loadRSVPs() {
     setIsLoading(true);
-    const data = await fetchRSVPs(projectId);
+    const data = await fetchRSVPs(projectId, eventPin);
     const parsedData = (data || []).map(rsvp => ({
       ...rsvp,
       responses: typeof rsvp.responses === 'string' 
@@ -107,7 +108,7 @@ export default function RSVPManager({ projectId, rsvpFields }: RSVPManagerProps)
     }));
 
     try {
-      await updateRSVPVIP(rsvp.id, nextIsVip, effectiveCategory);
+      await updateRSVPVIP(rsvp.id, nextIsVip, effectiveCategory, eventPin);
     } catch (err) {
       console.error('Failed to toggle VIP status:', err);
       // Revert if failed

@@ -1,20 +1,18 @@
 /**
- * Guest Message Provider Abstraction
- * 
- * Enforces strict separation between Production and Public Demo data flows:
- * - PublicDemoGuestMessageProvider: Operates strictly in temporary server memory via /api/demo/messages.
- *   Never touches Supabase or production database tables.
- * - ProductionGuestMessageProvider: Operates on real Supabase tables for authorized production events.
+ * Guest Message Provider & Backend Realtime Stream Abstraction
+ *
+ * Enforces strict separation between Production and Public Demo data flows
+ * while routing all database and realtime communication through EventFrame's backend API.
  */
 
-import { Message, WishCategory } from '../types';
+import { Message, MessageDisplayConfig, WishCategory } from '../types';
+import { API_BASE } from './config';
 import { fetchMessages, postMessage as postProductionMessage } from './api';
-import { getSupabase } from './supabase';
 import {
   PUBLIC_DEMO_ROOM_ID,
   fetchDemoMessages,
   postDemoMessage,
-  subscribeToDemoMessages
+  subscribeToDemoMessages,
 } from './demoService';
 
 export interface GuestMessageSubmitOptions {
@@ -36,6 +34,186 @@ export interface GuestMessageProvider {
     message: string,
     options?: GuestMessageSubmitOptions
   ): Promise<any>;
+}
+
+export interface ProjectStreamOptions {
+  projectId: string;
+  includeAll?: boolean;
+  pin?: string;
+  onMessageUpsert?: (msg: Message) => void;
+  onMessageRemove?: (messageId: string) => void;
+  onSnapshot?: (messages: Message[]) => void;
+  onConfigUpdate?: (payload: {
+    message_display_config?: MessageDisplayConfig;
+    theme_id?: string;
+  }) => void;
+}
+
+/**
+ * Shared Server-Sent Events (SSE) subscription against GET /api/messages/stream
+ * with automatic exponential backoff reconnect and snapshot reconciliation.
+ */
+export function subscribeToProjectStream(options: ProjectStreamOptions): () => void {
+  const {
+    projectId,
+    includeAll = false,
+    pin,
+    onMessageUpsert,
+    onMessageRemove,
+    onSnapshot,
+    onConfigUpdate,
+  } = options;
+
+  if (!projectId) {
+    return () => {};
+  }
+
+  let eventSource: EventSource | null = null;
+  let isClosed = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let fallbackPoll: ReturnType<typeof setInterval> | null = null;
+  let reconnectAttempt = 0;
+
+  const reconcileSnapshot = async () => {
+    if (isClosed || !onSnapshot) return;
+    try {
+      const latest = await fetchMessages(projectId, includeAll, pin);
+      if (!isClosed) onSnapshot(latest);
+    } catch {
+      // Silent recovery; next SSE heartbeat or poll will catch up
+    }
+  };
+
+  const buildStreamUrl = () => {
+    const params = new URLSearchParams({
+      projectId,
+      includeAll: includeAll ? 'true' : 'false',
+    });
+    if (pin) {
+      params.set('pin', pin);
+    }
+    return `${API_BASE}/api/messages/stream?${params.toString()}`;
+  };
+
+  const connect = () => {
+    if (isClosed || typeof EventSource === 'undefined') return;
+    try {
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+
+      const source = new EventSource(buildStreamUrl(), { withCredentials: true });
+      eventSource = source;
+
+      source.addEventListener('open', () => {
+        if (isClosed) return;
+        if (reconnectAttempt > 0) {
+          void reconcileSnapshot();
+        }
+        reconnectAttempt = 0;
+      });
+
+      source.addEventListener('snapshot', (event: Event) => {
+        if (isClosed || !onSnapshot) return;
+        try {
+          const parsed = JSON.parse((event as MessageEvent).data);
+          if (Array.isArray(parsed)) {
+            onSnapshot(parsed as Message[]);
+          }
+        } catch {
+          // Ignore malformed frame
+        }
+      });
+
+      source.addEventListener('message:upsert', (event: Event) => {
+        if (isClosed || !onMessageUpsert) return;
+        try {
+          const msg = JSON.parse((event as MessageEvent).data) as Message;
+          if (!msg?.id) return;
+          if (!includeAll && msg.status && msg.status !== 'approved') {
+            onMessageRemove?.(msg.id);
+            return;
+          }
+          onMessageUpsert(msg);
+        } catch {
+          // Ignore malformed frame
+        }
+      });
+
+      source.addEventListener('message:remove', (event: Event) => {
+        if (isClosed) return;
+        try {
+          const payload = JSON.parse((event as MessageEvent).data);
+          if (payload?.id && onMessageRemove) {
+            onMessageRemove(String(payload.id));
+          } else if (onSnapshot) {
+            void reconcileSnapshot();
+          }
+        } catch {
+          // Ignore malformed frame
+        }
+      });
+
+      source.addEventListener('config:update', (event: Event) => {
+        if (isClosed || !onConfigUpdate) return;
+        try {
+          const payload = JSON.parse((event as MessageEvent).data);
+          if (payload && typeof payload === 'object') {
+            onConfigUpdate(payload);
+          }
+        } catch {
+          // Ignore malformed frame
+        }
+      });
+
+      source.onerror = () => {
+        if (isClosed) return;
+        try {
+          source.close();
+        } catch {}
+        if (eventSource === source) {
+          eventSource = null;
+        }
+        if (!reconnectTimer) {
+          const backoff = Math.min(16000, 1500 * Math.pow(2, reconnectAttempt));
+          reconnectAttempt += 1;
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            connect();
+          }, backoff);
+        }
+      };
+    } catch {
+      // Fallback polling still keeps clients synchronized
+    }
+  };
+
+  connect();
+
+  if (onSnapshot) {
+    fallbackPoll = setInterval(() => {
+      void reconcileSnapshot();
+    }, 20000);
+  }
+
+  return () => {
+    isClosed = true;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (fallbackPoll) {
+      clearInterval(fallbackPoll);
+      fallbackPoll = null;
+    }
+    if (eventSource) {
+      try {
+        eventSource.close();
+      } catch {}
+      eventSource = null;
+    }
+  };
 }
 
 export class PublicDemoGuestMessageProvider implements GuestMessageProvider {
@@ -69,9 +247,14 @@ export class PublicDemoGuestMessageProvider implements GuestMessageProvider {
 export class ProductionGuestMessageProvider implements GuestMessageProvider {
   isDemo = false;
   roomIdOrProjectId: string;
+  private onConfigUpdate?: ProjectStreamOptions['onConfigUpdate'];
 
-  constructor(projectId: string) {
+  constructor(
+    projectId: string,
+    options?: { onConfigUpdate?: ProjectStreamOptions['onConfigUpdate'] }
+  ) {
     this.roomIdOrProjectId = projectId;
+    this.onConfigUpdate = options?.onConfigUpdate;
   }
 
   async loadInitialMessages(): Promise<Message[]> {
@@ -82,109 +265,18 @@ export class ProductionGuestMessageProvider implements GuestMessageProvider {
     onNewMessage: (msg: Message) => void,
     onSnapshot?: (messages: Message[]) => void
   ): () => void {
-    let channel: any = null;
-    let isClosed = false;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let fallbackPoll: ReturnType<typeof setInterval> | null = null;
-    let reconnectAttempt = 0;
-
-    const reconcileSnapshot = async () => {
-      if (isClosed || !onSnapshot) return;
-      try {
-        const latest = await fetchMessages(this.roomIdOrProjectId);
-        if (!isClosed) onSnapshot(latest);
-      } catch {
-        // Silent recovery error
-      }
-    };
-
-    const startChannel = () => {
-      if (isClosed) return;
-      try {
-        const supabase = getSupabase();
-        if (channel) {
-          try { supabase.removeChannel(channel); } catch {}
-          channel = null;
-        }
-
-        channel = supabase
-          .channel(`messages-realtime-${this.roomIdOrProjectId}-${Date.now()}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'messages',
-              filter: `project_id=eq.${this.roomIdOrProjectId}`
-            },
-            (payload) => {
-              const eventType = payload.eventType;
-              const newMessage = payload.new as Message | undefined;
-              const oldMessage = payload.old as Partial<Message> | undefined;
-
-              if (eventType === 'DELETE' || (newMessage && newMessage.status && newMessage.status !== 'approved')) {
-                void reconcileSnapshot();
-                return;
-              }
-
-              if (newMessage && newMessage.id && (!newMessage.status || newMessage.status === 'approved')) {
-                onNewMessage(newMessage);
-              } else if (oldMessage?.id) {
-                void reconcileSnapshot();
-              }
-            }
-          )
-          .subscribe((status) => {
-            if (isClosed) return;
-            if (status === 'SUBSCRIBED') {
-              if (reconnectAttempt > 0) {
-                // Catch up cleanly on any messages sent while offline
-                void reconcileSnapshot();
-              }
-              reconnectAttempt = 0;
-            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-              const backoff = Math.min(16000, 1500 * Math.pow(2, reconnectAttempt));
-              reconnectAttempt += 1;
-              if (!reconnectTimer) {
-                reconnectTimer = setTimeout(() => {
-                  reconnectTimer = null;
-                  startChannel();
-                }, backoff);
-              }
-            }
-          });
-      } catch (err) {
-        console.error('[ProductionProvider] Realtime subscription error:', err);
-      }
-    };
-
-    startChannel();
-
-    // Gentle 20s reconciliation heartbeat ensures zero lost or orphaned messages across network blips
-    if (onSnapshot) {
-      fallbackPoll = setInterval(() => {
-        void reconcileSnapshot();
-      }, 20000);
-    }
-
-    return () => {
-      isClosed = true;
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-      if (fallbackPoll) {
-        clearInterval(fallbackPoll);
-        fallbackPoll = null;
-      }
-      if (channel) {
-        try {
-          const supabase = getSupabase();
-          supabase.removeChannel(channel);
-        } catch {}
-        channel = null;
-      }
-    };
+    return subscribeToProjectStream({
+      projectId: this.roomIdOrProjectId,
+      includeAll: false,
+      onMessageUpsert: onNewMessage,
+      onSnapshot,
+      onMessageRemove: onSnapshot
+        ? () => {
+            void fetchMessages(this.roomIdOrProjectId).then((latest) => onSnapshot(latest));
+          }
+        : undefined,
+      onConfigUpdate: this.onConfigUpdate,
+    });
   }
 
   async submitMessage(
@@ -208,10 +300,17 @@ export class ProductionGuestMessageProvider implements GuestMessageProvider {
  */
 export function createGuestMessageProvider(
   projectId?: string | null,
-  isExplicitDemo?: boolean
+  isExplicitDemo?: boolean,
+  options?: { onConfigUpdate?: ProjectStreamOptions['onConfigUpdate'] }
 ): GuestMessageProvider {
-  if (isExplicitDemo || !projectId || projectId === PUBLIC_DEMO_ROOM_ID || projectId === 'demo' || projectId === 'demo-project') {
+  if (
+    isExplicitDemo ||
+    !projectId ||
+    projectId === PUBLIC_DEMO_ROOM_ID ||
+    projectId === 'demo' ||
+    projectId === 'demo-project'
+  ) {
     return new PublicDemoGuestMessageProvider(PUBLIC_DEMO_ROOM_ID);
   }
-  return new ProductionGuestMessageProvider(projectId);
+  return new ProductionGuestMessageProvider(projectId, options);
 }

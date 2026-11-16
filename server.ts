@@ -13,7 +13,15 @@ import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { GoogleGenAI } from "@google/genai";
 import uploadRouter from './server/uploadRouter';
-import { activateEventPurchase } from './server/billingService';
+import {
+  activateEventPurchase,
+  createPayPerEventCheckout,
+  verifyAndCompleteCheckoutSession,
+  cancelCheckoutOrder,
+  processStripeWebhookEvent,
+  getBillingEventsForUser,
+  getBillingHistoryForUser,
+} from './server/billingService';
 import { EVENT_PRICING, formatPrice } from './src/config/pricing';
 import { EVENT_PACKAGES, getPackageById, isEventActive, getDaysRemaining } from './src/lib/packages';
 import { buildSitemapXml } from './src/seo/sitemap';
@@ -82,6 +90,43 @@ import {
   findDbUserForIdentity,
   resolveAuthenticatedSessionUser,
 } from './server/developerAdminService';
+import { resolveUserOrganizations } from './server/billingService';
+import {
+  findAgencyBySlugOrHost,
+  findAgenciesForUser,
+  sanitizePublicAgency,
+  onboardWorkspaceForUser,
+  createAgencyForUser,
+  updateAgencyForUser,
+  listProjectsForUser,
+  getProjectForAuthorizedUser,
+  createProjectForUser,
+  updateProjectForUserOrPin,
+  deleteProjectForUser,
+  resolvePublicEvent,
+  verifyCouplePinLogin,
+} from './server/agencyService';
+import {
+  buildSuccessResponse,
+  buildErrorResponse,
+  generateCsrfToken,
+  validateCookieMutationCsrf,
+} from './server/apiResponse';
+import {
+  listProjectMessages,
+  createGuestMessage,
+  moderateMessageStatus,
+  updateMessageHighlightForProject,
+  listProjectRsvps,
+  updateRsvpVipAuthorized,
+  getPublicEventCounts,
+} from './server/messageAndRsvpService';
+import {
+  registerProjectSseClient,
+  registerProjectWsClient,
+  broadcastProjectMessageUpsert,
+  broadcastProjectConfigUpdate,
+} from './server/realtimeBus';
 
 dotenv.config();
 
@@ -106,25 +151,95 @@ const transporter = (GMAIL_USER && GMAIL_PASS) ? nodemailer.createTransport({
   },
 }) : null;
 
-const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
+const stripe =
+  STRIPE_SECRET_KEY && (STRIPE_SECRET_KEY.startsWith('sk_test_') || STRIPE_SECRET_KEY.startsWith('sk_live_'))
+    ? new Stripe(STRIPE_SECRET_KEY)
+    : null;
 
 let _supabaseAdmin: any = null;
 function getSupabaseAdmin() {
   if (!_supabaseAdmin) {
-    const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+    const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const key =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SECRET_KEY ||
+      process.env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      process.env.VITE_SUPABASE_ANON_KEY;
     if (!url && !key) {
-      throw new Error('Supabase configuration completely missing. Please set VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the Settings menu.');
+      throw new Error('Backend database configuration is missing.');
     }
     if (!url) {
-      throw new Error('Supabase URL (VITE_SUPABASE_URL or SUPABASE_URL) is missing in environment.');
+      throw new Error('Backend Supabase URL is missing in server environment.');
     }
     if (!key) {
-      throw new Error('Supabase Key (SUPABASE_SERVICE_ROLE_KEY or VITE_SUPABASE_ANON_KEY) is missing in environment.');
+      throw new Error('Backend Supabase key is missing in server environment.');
     }
     _supabaseAdmin = createClient(url, key);
   }
   return _supabaseAdmin;
+}
+
+function isRequestHttps(req: express.Request): boolean {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').toLowerCase();
+  return req.secure || forwardedProto === 'https' || APP_URL.startsWith('https://');
+}
+
+function buildCookieDomain(req: express.Request): string | undefined {
+  const host = String(req.headers['host'] || '').split(':')[0].toLowerCase();
+  if (host.endsWith('eventframe.io')) {
+    return '.eventframe.io';
+  }
+  return undefined;
+}
+
+function buildSessionCookieOptions(req: express.Request): express.CookieOptions {
+  const https = isRequestHttps(req);
+  const domain = buildCookieDomain(req);
+  return {
+    httpOnly: true,
+    secure: https,
+    sameSite: https ? 'none' : 'lax',
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    ...(domain ? { domain } : {}),
+  };
+}
+
+function buildCsrfCookieOptions(req: express.Request): express.CookieOptions {
+  const https = isRequestHttps(req);
+  const domain = buildCookieDomain(req);
+  return {
+    httpOnly: false,
+    secure: https,
+    sameSite: https ? 'none' : 'lax',
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    ...(domain ? { domain } : {}),
+  };
+}
+
+function issueSessionCookies(req: express.Request, res: express.Response, sessionToken: string): string {
+  const existingCsrf = typeof req.cookies?.wedding_csrf === 'string' && req.cookies.wedding_csrf.length >= 16
+    ? req.cookies.wedding_csrf
+    : null;
+  const csrfToken = existingCsrf || generateCsrfToken();
+  res.cookie('wedding_session', sessionToken, buildSessionCookieOptions(req));
+  res.cookie('wedding_csrf', csrfToken, buildCsrfCookieOptions(req));
+  return csrfToken;
+}
+
+function clearSessionCookies(req: express.Request, res: express.Response) {
+  const https = isRequestHttps(req);
+  const domain = buildCookieDomain(req);
+  const clearOpts: express.CookieOptions = {
+    path: '/',
+    secure: https,
+    sameSite: https ? 'none' : 'lax',
+    ...(domain ? { domain } : {}),
+  };
+  res.clearCookie('wedding_session', { ...clearOpts, httpOnly: true });
+  res.clearCookie('wedding_csrf', { ...clearOpts, httpOnly: false });
 }
 
 const oauth2Client = new OAuth2Client(
@@ -147,110 +262,37 @@ async function startServer() {
   // Webhook needs raw body - MUST be before express.json()
   app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     if (!stripe || !STRIPE_WEBHOOK_SECRET) {
-      console.warn('Stripe not configured, skipping webhook');
-      return res.status(200).send('Stripe not configured');
+      console.error('[Stripe Webhook] Missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET');
+      return res.status(503).json({
+        error: 'Stripe webhook endpoint is not configured on the server.',
+        retryable: true,
+      });
     }
 
     const sig = req.headers['stripe-signature'];
-    let event;
+    if (!sig || Array.isArray(sig)) {
+      return res.status(400).json({ error: 'Missing Stripe-Signature header' });
+    }
+
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+    } catch (err: any) {
+      console.error(`[Stripe Webhook] Signature Verification Error: ${err.message}`);
+      return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
+    }
 
     try {
-      event = stripe.webhooks.constructEvent(req.body, sig!, STRIPE_WEBHOOK_SECRET);
+      const supabase = getSupabaseAdmin();
+      const result = await processStripeWebhookEvent({ supabase, stripe, event });
+      return res.status(result.statusCode).json(result.body);
     } catch (err: any) {
-      console.error(`Webhook Error: ${err.message}`);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
+      console.error('[Stripe Webhook] Unhandled processing error:', err?.message || err);
+      return res.status(500).json({
+        error: err?.message || 'Internal webhook processing error',
+        retryable: true,
+      });
     }
-
-    // Handle the event
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session;
-        const eventId = session.metadata?.eventId;
-        const packageId = session.metadata?.packageId || 'standard';
-        const agencyId = session.metadata?.agencyId;
-        const subscriptionId = session.subscription as string;
-        const customerId = session.customer as string;
-
-        // 1. Pay-per-event activation (Primary commercial model)
-        if (eventId) {
-          try {
-            await activateEventPurchase(getSupabaseAdmin(), {
-              eventId,
-              packageId,
-              customerId,
-              agencyId,
-              transactionId: session.id,
-              amountPaidCents: session.amount_total || undefined,
-              provider: 'stripe'
-            });
-            console.log(`[Stripe Webhook] Event ${eventId} activated with package ${packageId} for 12 months!`);
-          } catch (err: any) {
-            console.error(`[Stripe Webhook] Error activating event ${eventId}:`, err.message);
-          }
-        } 
-        // 2. Legacy agency subscription fallback
-        else if (agencyId) {
-          const updateData: any = {
-            subscription_status: 'active',
-            stripe_customer_id: customerId,
-            plan_id: session.metadata?.planId
-          };
-          
-          if (subscriptionId) {
-            updateData.subscription_id = subscriptionId;
-          }
-
-          await getSupabaseAdmin()
-            .from('agencies')
-            .update(updateData)
-            .eq('id', agencyId);
-          console.log(`[Stripe Webhook] Legacy Agency/Couple ${agencyId} updated to active`);
-        }
-        break;
-      }
-      case 'customer.subscription.deleted': {
-        const subscription = event.data.object as Stripe.Subscription;
-        await getSupabaseAdmin()
-          .from('agencies')
-          .update({ subscription_status: 'canceled' })
-          .eq('subscription_id', subscription.id);
-        break;
-      }
-      case 'charge.refunded': {
-        const charge = event.data.object as Stripe.Charge;
-        const paymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
-        try {
-          const supabase = getSupabaseAdmin();
-          if (paymentIntentId || charge.metadata?.eventId) {
-            const eventId = charge.metadata?.eventId;
-            if (paymentIntentId) {
-              await supabase
-                .from('event_payments')
-                .update({ payment_status: 'refunded' })
-                .eq('provider_transaction_id', paymentIntentId);
-            }
-            if (eventId) {
-              await supabase
-                .from('projects')
-                .update({ payment_status: 'refunded', status: 'cancelled', updated_at: new Date().toISOString() })
-                .eq('id', eventId);
-            }
-            await recordPlatformActivity(supabase, {
-              action: 'PAYMENT_REFUNDED',
-              targetEventId: eventId || null,
-              referenceId: paymentIntentId || charge.id,
-              summary: `Payment refunded ($${((charge.amount_refunded || charge.amount || 0) / 100).toFixed(2)})`,
-              metadata: { amountRefundedCents: charge.amount_refunded || charge.amount || 0 },
-            });
-          }
-        } catch (refundErr: any) {
-          console.warn('[Stripe Webhook] Refund processing note:', refundErr?.message || refundErr);
-        }
-        break;
-      }
-    }
-
-    res.json({ received: true });
   });
 
   app.use(cookieParser());
@@ -258,7 +300,7 @@ async function startServer() {
     origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token', 'X-Event-PIN']
   }));
 
   // Headers for all responses
@@ -281,9 +323,33 @@ async function startServer() {
     next();
   });
 
+  // Serve locally uploaded wedding media safely when R2 is not configured
+  app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
+
   app.use(express.json());
 
   const apiRouter = express.Router();
+
+  // CSRF defense for cookie-authenticated mutations
+  apiRouter.use((req, res, next) => {
+    const authHeader = String(req.headers.authorization || '');
+    const csrfCheck = validateCookieMutationCsrf({
+      method: req.method,
+      path: `/api${req.path}`,
+      hasSessionCookie: Boolean(req.cookies?.wedding_session),
+      hasBearerToken: authHeader.startsWith('Bearer '),
+      hasEventPin: Boolean(req.headers['x-event-pin']),
+      csrfCookie: req.cookies?.wedding_csrf || null,
+      csrfHeader: typeof req.headers['x-csrf-token'] === 'string' ? req.headers['x-csrf-token'] : null,
+      origin: typeof req.headers.origin === 'string' ? req.headers.origin : null,
+      host: typeof req.headers.host === 'string' ? req.headers.host : null,
+      requestedWith: typeof req.headers['x-requested-with'] === 'string' ? req.headers['x-requested-with'] : null,
+    });
+    if (csrfCheck.ok === false) {
+      return res.status(csrfCheck.statusCode).json(buildErrorResponse(csrfCheck.code, csrfCheck.message));
+    }
+    next();
+  });
 
   // Mount image upload system router
   apiRouter.use(uploadRouter);
@@ -372,15 +438,136 @@ async function startServer() {
     res.json(getDemoRoomStats(room));
   });
 
-  // Strict Protection: Rejection of demo messages trying to hit production persistence
-  apiRouter.post('/messages', async (req, res, next) => {
-    const { project_id } = req.body || {};
-    if (project_id === PUBLIC_DEMO_ROOM_ID || project_id === 'demo' || project_id === 'demo-project') {
-      return res.status(400).json({
-        error: 'Demo messages cannot be persisted to production database. Use /api/demo/messages endpoint.'
+  // --- Centralized Backend Messages, Moderation & Live SSE Stream ---
+  apiRouter.get('/messages', async (req, res) => {
+    try {
+      const projectId = String(req.query.projectId || req.query.project_id || '').trim();
+      const includeAll = req.query.includeAll === 'true' || req.query.include_all === 'true';
+      const limit = Number(req.query.limit) || 100;
+      const pinHeader = typeof req.headers['x-event-pin'] === 'string'
+        ? req.headers['x-event-pin']
+        : (typeof req.query.pin === 'string' ? req.query.pin : null);
+
+      const supabase = getSupabaseAdmin();
+      let authUser = null;
+      if (includeAll && !pinHeader) {
+        const authCheck = await verifySessionWithDb(req, {
+          getSupabase: getSupabaseAdmin,
+          getJwtSecret: () => JWT_SECRET,
+          getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+        });
+        if (authCheck.ok) {
+          authUser = authCheck.user;
+        }
+      }
+
+      const result = await listProjectMessages(supabase, {
+        projectId,
+        includeAll,
+        limit,
+        authUser,
+        pin: pinHeader,
       });
+
+      if (result.ok === false) {
+        return res.status(result.statusCode).json(buildErrorResponse(result.code, result.error));
+      }
+
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      return res.json(buildSuccessResponse(result.data, { messages: result.data }));
+    } catch {
+      return res.status(500).json(buildErrorResponse('MESSAGES_LOAD_FAILED', 'Unable to load guest messages.'));
     }
-    next();
+  });
+
+  apiRouter.get('/messages/stream', async (req, res) => {
+    try {
+      const projectId = String(req.query.projectId || req.query.project_id || '').trim();
+      if (!projectId) {
+        return res.status(400).json(buildErrorResponse('INVALID_PROJECT_ID', 'projectId is required.'));
+      }
+
+      const includeAll = req.query.includeAll === 'true';
+      const pinParam = typeof req.headers['x-event-pin'] === 'string'
+        ? req.headers['x-event-pin']
+        : (typeof req.query.pin === 'string' ? req.query.pin : null);
+
+      const supabase = getSupabaseAdmin();
+      let authUser = null;
+      if (includeAll && !pinParam) {
+        const authCheck = await verifySessionWithDb(req, {
+          getSupabase: getSupabaseAdmin,
+          getJwtSecret: () => JWT_SECRET,
+          getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+        });
+        if (authCheck.ok) {
+          authUser = authCheck.user;
+        }
+      }
+
+      const initialResult = await listProjectMessages(supabase, {
+        projectId,
+        includeAll,
+        limit: 100,
+        authUser,
+        pin: pinParam,
+      });
+
+      if (initialResult.ok === false) {
+        return res.status(initialResult.statusCode).json(buildErrorResponse(initialResult.code, initialResult.error));
+      }
+
+      const resolved = await resolvePublicEvent(supabase, { id: projectId, pin: pinParam || undefined });
+      const initialConfig = resolved.ok ? {
+        message_display_config: resolved.data.project?.message_display_config || null,
+        theme_id: resolved.data.project?.theme_id || null,
+      } : null;
+
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Connection', 'keep-alive');
+      if (typeof (res as any).flushHeaders === 'function') {
+        (res as any).flushHeaders();
+      }
+
+      const cleanup = registerProjectSseClient(res, projectId, includeAll, initialResult.data, initialConfig);
+      req.on('close', () => cleanup());
+    } catch {
+      return res.status(500).json(buildErrorResponse('STREAM_INIT_FAILED', 'Unable to start real-time stream.'));
+    }
+  });
+
+  apiRouter.post('/messages', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const projectId = body.project_id || body.projectId;
+      if (projectId === PUBLIC_DEMO_ROOM_ID || projectId === 'demo' || projectId === 'demo-project') {
+        return res.status(400).json(
+          buildErrorResponse(
+            'DEMO_ISOLATION',
+            'Demo messages cannot be persisted to production database. Use /api/demo/messages endpoint.'
+          )
+        );
+      }
+
+      const supabase = getSupabaseAdmin();
+      const result = await createGuestMessage(supabase, {
+        projectId,
+        name: body.name,
+        message: body.message,
+        wishCategory: body.wishCategory,
+        wish_category: body.wish_category,
+      });
+
+      if (result.ok === false) {
+        return res.status(result.statusCode).json(buildErrorResponse(result.code, result.error));
+      }
+
+      broadcastProjectMessageUpsert(String(projectId), result.data);
+      return res.status(201).json(buildSuccessResponse(result.data, { message: result.data }));
+    } catch {
+      return res.status(500).json(buildErrorResponse('MESSAGE_SUBMIT_FAILED', 'Failed to submit guest message.'));
+    }
   });
 
   // --- Auth Routes ---
@@ -489,20 +676,7 @@ async function startServer() {
       }
 
       const token = jwt.sign(user, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
-
-      const cookieOptions: any = {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      };
-
-      const currentHost = req.headers['host'] || '';
-      if (currentHost.endsWith('eventframe.io')) {
-        cookieOptions.domain = '.eventframe.io';
-      }
-
-      res.cookie('wedding_session', token, cookieOptions);
+      issueSessionCookies(req, res, token);
 
       // Use JS replace to ensure history cleanup and popup support
       const redirectUrl = targetOrigin.endsWith('/') ? `${targetOrigin}workspace?token=${token}` : `${targetOrigin}/workspace?token=${token}`;
@@ -581,17 +755,66 @@ async function startServer() {
       if (!check.ok) {
         const errRes = check as { ok: false; statusCode: number; error: string; code: string; suspendedReason?: string | null };
         return res.status(errRes.statusCode).json({
-          error: errRes.error,
+          ...buildErrorResponse(errRes.code, errRes.error),
           code: errRes.code,
           ...(errRes.suspendedReason ? { suspendedReason: errRes.suspendedReason } : {}),
         });
       }
 
+      const freshToken = jwt.sign(
+        {
+          id: check.user.id,
+          sub: check.user.sub,
+          email: check.user.email,
+          name: check.user.name,
+          picture: check.user.picture,
+        },
+        JWT_SECRET,
+        { algorithm: 'HS256', expiresIn: '7d' }
+      );
+      const csrfToken = issueSessionCookies(req, res, freshToken);
+
       console.log(`[AUTH-ME] [${rid}] Verified ${check.user.email} (${check.user.role}) in ${Date.now() - start}ms`);
-      res.json({ user: check.user });
-    } catch (error: any) {
-      console.error(`[AUTH-ME] [${rid}] Error: ${error.message} after ${Date.now() - start}ms`);
-      res.status(401).json({ error: 'Invalid session', details: error.message });
+      return res.json(buildSuccessResponse(check.user, { user: check.user, csrfToken }));
+    } catch {
+      return res.status(401).json(buildErrorResponse('UNAUTHENTICATED', 'Invalid session'));
+    }
+  });
+
+  apiRouter.post('/auth/refresh', async (req, res) => {
+    try {
+      const check = await verifySessionWithDb(req, {
+        getSupabase: getSupabaseAdmin,
+        getJwtSecret: () => JWT_SECRET,
+        getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+      });
+
+      if (!check.ok) {
+        const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+        return res.status(errRes.statusCode).json(buildErrorResponse(errRes.code, errRes.error));
+      }
+
+      const refreshedToken = jwt.sign(
+        {
+          id: check.user.id,
+          sub: check.user.sub,
+          email: check.user.email,
+          name: check.user.name,
+          picture: check.user.picture,
+        },
+        JWT_SECRET,
+        { algorithm: 'HS256', expiresIn: '7d' }
+      );
+      const csrfToken = issueSessionCookies(req, res, refreshedToken);
+
+      return res.json(
+        buildSuccessResponse(
+          { user: check.user, token: refreshedToken, csrfToken },
+          { user: check.user, token: refreshedToken, csrfToken }
+        )
+      );
+    } catch {
+      return res.status(401).json(buildErrorResponse('UNAUTHENTICATED', 'Session expired. Please sign in again.'));
     }
   });
 
@@ -889,22 +1112,9 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
       const user = sessionResolution.ok ? sessionResolution.user : baseUser;
 
       const sessionToken = jwt.sign(baseUser, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
+      const csrfToken = issueSessionCookies(req, res, sessionToken);
 
-      const cookieOptions: any = {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      };
-
-      const currentHost = req.headers['host'] || '';
-      if (currentHost.endsWith('eventframe.io')) {
-        cookieOptions.domain = '.eventframe.io';
-      }
-
-      res.cookie('wedding_session', sessionToken, cookieOptions);
-
-      res.json({ success: true, user, token: sessionToken });
+      res.json(buildSuccessResponse({ user, token: sessionToken, csrfToken }, { user, token: sessionToken, csrfToken }));
     } catch (error: any) {
       console.error('Token verification failed:', error.message);
       res.status(401).json({ error: 'Invalid or expired link' });
@@ -921,7 +1131,8 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
         .from('users_auth')
         .select('*')
         .eq('email', email)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
       // We always return success to prevent email enumeration, 
       // but only send the email if the user exists.
@@ -1021,380 +1232,407 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
   });
 
   apiRouter.post('/auth/logout', (req, res) => {
-    res.clearCookie('wedding_session');
-    res.json({ success: true });
+    clearSessionCookies(req, res);
+    res.json(buildSuccessResponse({ loggedOut: true }));
+  });
+
+  // --- Public & Authenticated Agency / Event Resolution Routes ---
+  apiRouter.get('/agencies/resolve', async (req, res) => {
+    try {
+      const slug = typeof req.query.slug === 'string' ? req.query.slug : undefined;
+      const id = typeof req.query.id === 'string' ? req.query.id : undefined;
+      const host = typeof req.query.host === 'string' ? req.query.host : (req.headers.host || undefined);
+
+      const supabase = getSupabaseAdmin();
+      const result = await findAgencyBySlugOrHost(supabase, { slug, id, host });
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({
+          ...buildErrorResponse(result.code, result.error),
+          found: false,
+          agency: null,
+          code: result.code,
+        });
+      }
+
+      const publicAgency = sanitizePublicAgency(result.data);
+      return res.json(buildSuccessResponse(publicAgency, { found: true, agency: publicAgency }));
+    } catch (error: any) {
+      console.error('[Agencies Resolve] Unexpected error:', error?.message || error);
+      return res.status(500).json(buildErrorResponse('DATABASE_ERROR', 'Unable to resolve agency workspace'));
+    }
+  });
+
+  apiRouter.get('/agencies/me', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    if (!token) return res.status(401).json(buildErrorResponse('UNAUTHENTICATED', 'Not authenticated'));
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      const supabase = getSupabaseAdmin();
+      const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
+      if (!activeCheck.ok) {
+        const errRes = activeCheck as { ok: false; statusCode: number; error: string; code: string };
+        return res.status(errRes.statusCode).json(buildErrorResponse(errRes.code, errRes.error));
+      }
+
+      const result = await findAgenciesForUser(supabase, activeCheck.user);
+      if (result.ok === false) {
+        return res.status(result.statusCode).json(buildErrorResponse(result.code, result.error));
+      }
+
+      return res.json(
+        buildSuccessResponse(result.data, {
+          agencies: result.data.agencies,
+          primaryAgency: result.data.primaryAgency,
+          requiresOnboarding: result.data.requiresOnboarding,
+        })
+      );
+    } catch {
+      return res.status(401).json(buildErrorResponse('UNAUTHENTICATED', 'Invalid session'));
+    }
+  });
+
+  apiRouter.get('/agencies/:slug', async (req, res) => {
+    try {
+      const slug = req.params.slug;
+      const supabase = getSupabaseAdmin();
+      const result = await findAgencyBySlugOrHost(supabase, { slug });
+      if (result.ok === false) {
+        return res
+          .status(result.statusCode === 500 ? 500 : 404)
+          .json(buildErrorResponse(result.code || 'AGENCY_NOT_FOUND', result.error || 'Agency not found'));
+      }
+
+      const publicAgency = sanitizePublicAgency(result.data);
+      return res.json(buildSuccessResponse(publicAgency, { agency: publicAgency }));
+    } catch {
+      return res.status(500).json(buildErrorResponse('DATABASE_ERROR', 'Unable to look up agency.'));
+    }
+  });
+
+  apiRouter.get('/events/resolve', async (req, res) => {
+    try {
+      const id = typeof req.query.id === 'string' ? req.query.id : undefined;
+      const slug = typeof req.query.slug === 'string' ? req.query.slug : undefined;
+      const agencySlug = typeof req.query.agency === 'string' ? req.query.agency : undefined;
+      const agencyId = typeof req.query.agencyId === 'string' ? req.query.agencyId : undefined;
+      const host = typeof req.query.host === 'string' ? req.query.host : undefined;
+      const pinHeader = typeof req.headers['x-event-pin'] === 'string' ? req.headers['x-event-pin'] : undefined;
+
+      const supabase = getSupabaseAdmin();
+      const result = await resolvePublicEvent(supabase, {
+        id,
+        slug,
+        agencySlug,
+        agencyId,
+        host,
+        pin: pinHeader,
+      });
+
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({
+          ...buildErrorResponse(result.code, result.error),
+          found: false,
+          code: result.code,
+        });
+      }
+
+      const stats = await getPublicEventCounts(supabase, String(result.data.project.id));
+      return res.json(
+        buildSuccessResponse(
+          { project: result.data.project, agency: result.data.agency, stats },
+          {
+            found: true,
+            project: result.data.project,
+            agency: result.data.agency,
+            stats,
+          }
+        )
+      );
+    } catch (error: any) {
+      console.error('[Events Resolve] Unexpected error:', error?.message || error);
+      return res.status(500).json(buildErrorResponse('DATABASE_ERROR', 'Unable to load wedding event'));
+    }
+  });
+
+  apiRouter.post('/couple/login', async (req, res) => {
+    try {
+      const { agencySlug, slug, password } = req.body || {};
+      const supabase = getSupabaseAdmin();
+      const result = await verifyCouplePinLogin(supabase, { agencySlug, slug, password });
+
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({
+          success: false,
+          code: result.code,
+          error: result.error,
+        });
+      }
+
+      return res.json({
+        success: true,
+        project: result.data.project,
+        agency: result.data.agency,
+      });
+    } catch (error: any) {
+      console.error('[Couple Login] Unexpected error:', error?.message || error);
+      return res.status(500).json({ error: 'Unable to sign in to wedding dashboard', code: 'DATABASE_ERROR' });
+    }
   });
 
   // --- Project Routes ---
+  apiRouter.get('/projects', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      const supabase = getSupabaseAdmin();
+      const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
+      if (!activeCheck.ok) {
+        const errRes = activeCheck as { ok: false; statusCode: number; error: string; code: string };
+        return res.status(errRes.statusCode).json({ error: errRes.error, code: errRes.code });
+      }
+
+      const agencyId = typeof req.query.agency_id === 'string' ? req.query.agency_id : undefined;
+      const result = await listProjectsForUser(supabase, activeCheck.user, agencyId);
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({ error: result.error, code: result.code });
+      }
+
+      return res.json({ success: true, data: result.data });
+    } catch (error: any) {
+      return res.status(401).json({ error: 'Invalid session', code: 'UNAUTHENTICATED' });
+    }
+  });
+
+  apiRouter.get('/projects/:id', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      const supabase = getSupabaseAdmin();
+      const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
+      if (!activeCheck.ok) {
+        const errRes = activeCheck as { ok: false; statusCode: number; error: string; code: string };
+        return res.status(errRes.statusCode).json({ error: errRes.error, code: errRes.code });
+      }
+
+      const result = await getProjectForAuthorizedUser(supabase, activeCheck.user, req.params.id);
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({ error: result.error, code: result.code });
+      }
+
+      return res.json({ success: true, data: result.data.project, agency: result.data.agency });
+    } catch (error: any) {
+      return res.status(401).json({ error: 'Invalid session', code: 'UNAUTHENTICATED' });
+    }
+  });
+
   apiRouter.put('/projects/:id', async (req, res) => {
     const authHeader = req.headers.authorization;
-    const pinHeader = req.headers['x-event-pin'];
+    const pinHeader = typeof req.headers['x-event-pin'] === 'string' ? req.headers['x-event-pin'] : null;
     const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    // Valid if we have a token OR a PIN
-    if (!token && !pinHeader) return res.status(401).json({ error: 'Not authenticated' });
+
+    if (!token && !pinHeader) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
       const { id } = req.params;
-      const projectData = req.body;
-      let authorized = false;
-
       const supabase = getSupabaseAdmin();
+      let authUser = null;
 
       if (token) {
         const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-        // Verify the project belongs to the user's agency
-        const { data: agency } = await supabase
-          .from('agencies')
-          .select('id')
-          .eq('user_id', decoded.id || decoded.sub)
-          .single();
-        
-        if (agency) {
-          const { data: project } = await supabase
-            .from('projects')
-            .select('id')
-            .eq('id', id)
-            .eq('agency_id', agency.id)
-            .single();
-          if (project) authorized = true;
+        const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
+        if (!activeCheck.ok) {
+          const errRes = activeCheck as { ok: false; statusCode: number; error: string; code: string };
+          return res.status(errRes.statusCode).json({ error: errRes.error, code: errRes.code });
         }
-      } else if (pinHeader) {
-        // Authenticate via PIN for this specific project
-        const { data: project } = await supabase
-          .from('projects')
-          .select('id, access_password')
-          .eq('id', id)
-          .single();
-        
-        if (project && project.access_password === pinHeader) {
-          authorized = true;
-        }
-      }
-      
-      if (!authorized) return res.status(403).json({ error: 'Unauthorized' });
-
-      // Exclude sensitive/immutable fields
-      const { id: _, agency_id, created_at, ...updateData } = projectData;
-
-      // Update the project
-      const { data, error: updateError } = await supabase
-        .from('projects')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (updateError) {
-        console.error('Project update error:', updateError);
-        return res.status(500).json({ error: updateError.message });
+        authUser = activeCheck.user;
       }
 
-      res.json({ success: true, data });
+      const result = await updateProjectForUserOrPin(supabase, {
+        projectId: id,
+        authUser,
+        pin: pinHeader,
+        body: req.body,
+      });
+
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({ error: result.error, code: result.code });
+      }
+
+      return res.json({ success: true, data: result.data });
     } catch (error: any) {
       if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError' || error.message?.includes('JWT')) {
-        console.error('Session verification failed:', error.message);
-        return res.status(401).json({ error: 'Invalid session', details: error.message });
+        return res.status(401).json({ error: 'Invalid session', code: 'UNAUTHENTICATED' });
       }
       console.error('Internal server error during project update:', error.message);
-      res.status(500).json({ error: 'Internal server error', details: error.message });
+      return res.status(500).json({ error: 'Internal server error', code: 'DATABASE_ERROR' });
     }
   });
 
   apiRouter.post('/projects', async (req, res) => {
     const authHeader = req.headers.authorization;
     const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-      const activeCheck = await resolveAuthenticatedSessionUser(getSupabaseAdmin(), decoded, process.env.SUPER_ADMIN_EMAILS);
+      const supabase = getSupabaseAdmin();
+      const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
       if (!activeCheck.ok) {
-        const errRes = activeCheck as { ok: false; statusCode: number; error: string };
-        return res.status(errRes.statusCode).json({ error: errRes.error });
-      }
-      const projectData = req.body;
-
-      // Verify the agency belongs to the user
-      const { data: agency } = await getSupabaseAdmin()
-        .from('agencies')
-        .select('id, name')
-        .eq('user_id', decoded.id || decoded.sub)
-        .single();
-      
-      if (!agency) return res.status(403).json({ error: 'Agency not found' });
-
-      // Ensure the project is linked to this user's agency with pay-per-event defaults
-      const newProject = {
-        status: 'draft',
-        payment_status: 'unpaid',
-        package_id: 'standard',
-        ...projectData,
-        agency_id: agency.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      // Remove id if it's empty/null to let database generate it
-      if (!newProject.id) delete newProject.id;
-
-      const { data, error: insertError } = await getSupabaseAdmin()
-        .from('projects')
-        .insert([newProject])
-        .select()
-        .single();
-
-      if (insertError) {
-        console.error('Project creation error:', insertError);
-        return res.status(500).json({ error: insertError.message });
+        const errRes = activeCheck as { ok: false; statusCode: number; error: string; code: string };
+        return res.status(errRes.statusCode).json({ error: errRes.error, code: errRes.code });
       }
 
-      await recordPlatformActivity(getSupabaseAdmin(), {
-        actorId: decoded.id || decoded.sub,
-        actorEmail: decoded.email || null,
+      const result = await createProjectForUser(supabase, activeCheck.user, req.body);
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({ error: result.error, code: result.code });
+      }
+
+      const { project: data, agency } = result.data;
+      await recordPlatformActivity(supabase, {
+        actorId: activeCheck.user.id,
+        actorEmail: activeCheck.user.email || null,
         actorRole: activeCheck.user.role,
         action: 'EVENT_CREATED',
-        organizationId: agency.id,
+        organizationId: String(agency.id),
         targetEventId: data?.id ? String(data.id) : null,
-        summary: `Event "${data?.name || newProject.name || 'Untitled'}" created under ${agency.name}`,
+        summary: `Event "${data?.name || 'Untitled'}" created under ${agency.name}`,
       });
 
-      res.status(201).json({ success: true, data });
+      return res.status(201).json({ success: true, data });
     } catch (error: any) {
       if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError' || error.message?.includes('JWT')) {
-        return res.status(401).json({ error: 'Invalid session', details: error.message });
+        return res.status(401).json({ error: 'Invalid session', code: 'UNAUTHENTICATED' });
       }
       console.error('Internal server error during project creation:', error.message);
-      res.status(500).json({ error: 'Internal server error', details: error.message });
+      return res.status(500).json({ error: 'Internal server error', code: 'DATABASE_ERROR' });
     }
   });
 
   apiRouter.delete('/projects/:id', async (req, res) => {
     const authHeader = req.headers.authorization;
     const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-      const { id } = req.params;
-
-      // Verify the agency belongs to the user
-      const { data: agency } = await getSupabaseAdmin()
-        .from('agencies')
-        .select('id')
-        .eq('user_id', decoded.id || decoded.sub)
-        .single();
-      
-      if (!agency) return res.status(403).json({ error: 'Agency not found' });
-
-      // Delete the project ensuring it belongs to the agency
-      const { error: deleteError } = await getSupabaseAdmin()
-        .from('projects')
-        .delete()
-        .eq('id', id)
-        .eq('agency_id', agency.id);
-
-      if (deleteError) {
-        console.error('Project deletion error:', deleteError);
-        return res.status(500).json({ error: deleteError.message });
+      const supabase = getSupabaseAdmin();
+      const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
+      if (!activeCheck.ok) {
+        const errRes = activeCheck as { ok: false; statusCode: number; error: string; code: string };
+        return res.status(errRes.statusCode).json({ error: errRes.error, code: errRes.code });
       }
 
-      res.json({ success: true });
+      const result = await deleteProjectForUser(supabase, {
+        projectId: req.params.id,
+        authUser: activeCheck.user,
+      });
+
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({ error: result.error, code: result.code });
+      }
+
+      return res.json({ success: true });
     } catch (error: any) {
       if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError' || error.message?.includes('JWT')) {
-        return res.status(401).json({ error: 'Invalid session', details: error.message });
+        return res.status(401).json({ error: 'Invalid session', code: 'UNAUTHENTICATED' });
       }
-      res.status(500).json({ error: 'Internal server error', details: error.message });
+      return res.status(500).json({ error: 'Internal server error', code: 'DATABASE_ERROR' });
     }
   });
 
   apiRouter.post('/agencies', async (req, res) => {
     const authHeader = req.headers.authorization;
     const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-      const agencyData = req.body;
-
-      const payload = {
-        ...agencyData,
-        user_id: decoded.id || decoded.sub,
-        created_at: new Date().toISOString()
-      };
-
-      const { data, error } = await getSupabaseAdmin()
-        .from('agencies')
-        .insert([payload])
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Agency creation error:', error);
-        return res.status(500).json({ error: error.message });
+      const supabase = getSupabaseAdmin();
+      const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
+      if (!activeCheck.ok) {
+        const errRes = activeCheck as { ok: false; statusCode: number; error: string; code: string };
+        return res.status(errRes.statusCode).json({ error: errRes.error, code: errRes.code });
       }
 
-      res.status(201).json({ success: true, data });
+      const result = await createAgencyForUser(supabase, activeCheck.user, req.body);
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({ error: result.error, code: result.code });
+      }
+
+      return res.status(result.statusCode).json({
+        success: true,
+        reused: Boolean(result.reused),
+        data: result.data,
+      });
     } catch (error: any) {
-      res.status(401).json({ error: 'Invalid session', details: error.message });
+      return res.status(401).json({ error: 'Invalid session', code: 'UNAUTHENTICATED' });
     }
   });
 
   apiRouter.put('/agencies/:id', async (req, res) => {
     const authHeader = req.headers.authorization;
     const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-      const { id } = req.params;
-      const agencyData = req.body;
-
-      // Ensure user owns this agency
-      const { data: existing } = await getSupabaseAdmin()
-        .from('agencies')
-        .select('id')
-        .eq('id', id)
-        .eq('user_id', decoded.id || decoded.sub)
-        .single();
-
-      if (!existing) return res.status(403).json({ error: 'Agency not found or unauthorized' });
-
-      const { id: _, user_id: __, created_at: ___, ...updateData } = agencyData;
-
-      const { data, error } = await getSupabaseAdmin()
-        .from('agencies')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Agency update error:', error);
-        return res.status(500).json({ error: error.message });
+      const supabase = getSupabaseAdmin();
+      const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
+      if (!activeCheck.ok) {
+        const errRes = activeCheck as { ok: false; statusCode: number; error: string; code: string };
+        return res.status(errRes.statusCode).json({ error: errRes.error, code: errRes.code });
       }
 
-      res.json({ success: true, data });
+      const result = await updateAgencyForUser(supabase, activeCheck.user, req.params.id, req.body);
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({ error: result.error, code: result.code });
+      }
+
+      return res.json({ success: true, data: result.data });
     } catch (error: any) {
-      res.status(401).json({ error: 'Invalid session', details: error.message });
+      return res.status(401).json({ error: 'Invalid session', code: 'UNAUTHENTICATED' });
     }
   });
 
   apiRouter.post('/onboard', async (req, res) => {
     const authHeader = req.headers.authorization;
     const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-      const activeCheck = await resolveAuthenticatedSessionUser(getSupabaseAdmin(), decoded, process.env.SUPER_ADMIN_EMAILS);
-      if (!activeCheck.ok) {
-        const errRes = activeCheck as { ok: false; statusCode: number; error: string };
-        return res.status(errRes.statusCode).json({ error: errRes.error });
-      }
-      const { role, name, groomName, brideName, slug } = req.body;
-      const userId = decoded.id || decoded.sub;
-
       const supabase = getSupabaseAdmin();
-
-      // 1. Check if slug exists
-      const { data: existing } = await supabase
-        .from('agencies')
-        .select('id')
-        .eq('slug', slug)
-        .maybeSingle();
-        
-      if (existing) {
-        return res.status(400).json({ error: 'This subdomain is already taken' });
+      const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
+      if (!activeCheck.ok) {
+        const errRes = activeCheck as { ok: false; statusCode: number; error: string; code: string };
+        return res.status(errRes.statusCode).json({ error: errRes.error, code: errRes.code });
       }
 
-      // 2. Create agency
-      const orgName = role === 'couple' ? `${groomName} & ${brideName}` : name;
-      let { data: agency, error: agencyError } = await supabase
-        .from('agencies')
-        .insert([{
-          name: orgName,
-          slug,
-          user_id: userId,
-          user_role: role,
-          owner_email: decoded.email || null,
-          created_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
-
-      if (agencyError && /owner_email/i.test(agencyError.message || '')) {
-        const fallback = await supabase
-          .from('agencies')
-          .insert([{
-            name: orgName,
-            slug,
-            user_id: userId,
-            user_role: role,
-            created_at: new Date().toISOString()
-          }])
-          .select()
-          .single();
-        agency = fallback.data;
-        agencyError = fallback.error;
+      const result = await onboardWorkspaceForUser(supabase, activeCheck.user, req.body || {});
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({ error: result.error, code: result.code });
       }
-      
-      if (agencyError) throw agencyError;
 
-      await recordPlatformActivity(supabase, {
-        actorId: userId,
-        actorEmail: decoded.email || null,
-        actorRole: role === 'couple' ? 'user' : 'agency_owner',
-        action: 'ORGANIZATION_CREATED',
-        organizationId: agency?.id ? String(agency.id) : null,
-        summary: `Organization "${orgName}" (${slug}) created`,
-        metadata: { slug, userRole: role },
+      return res.status(result.statusCode).json({
+        success: true,
+        reused: Boolean(result.reused),
+        agency: result.data.agency,
+        createdProjectId: result.data.createdProjectId,
       });
-
-      let createdProjectId = null;
-
-      // 3. If couple, create initial project and samples
-      if (role === 'couple' && agency) {
-        const { data: project, error: projectError } = await supabase
-          .from('projects')
-          .insert([{
-            agency_id: agency.id,
-            name: `${groomName} & ${brideName}'s Wedding`,
-            groom_name: groomName,
-            bride_name: brideName,
-            slug: slug,
-            theme_id: 'garden',
-            wedding_date: new Date(Date.now() + 15552000000).toISOString().split('T')[0],
-            location: 'To Be Announced',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }])
-          .select()
-          .single();
-        
-        if (projectError) throw projectError;
-        if (project) {
-          createdProjectId = project.id;
-          await recordPlatformActivity(supabase, {
-            actorId: userId,
-            actorEmail: decoded.email || null,
-            action: 'EVENT_CREATED',
-            organizationId: agency.id,
-            targetEventId: String(project.id),
-            summary: `Event "${project.name}" created during couple onboarding`,
-          });
-        }
-      }
-
-      res.status(201).json({ success: true, agency, createdProjectId });
     } catch (error: any) {
+      if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError' || error.message?.includes('JWT')) {
+        return res.status(401).json({ error: 'Invalid session', code: 'UNAUTHENTICATED' });
+      }
       console.error('Onboarding error:', error);
-      res.status(500).json({ error: error.message || 'Internal server error during onboarding' });
+      return res.status(500).json({ error: 'Internal server error during onboarding', code: 'DATABASE_ERROR' });
     }
   });
 
@@ -1615,6 +1853,33 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
   });
 
   // --- RSVP Routes ---
+  apiRouter.get('/projects/:id/rsvps', async (req, res) => {
+    try {
+      const projectId = req.params.id;
+      const pinHeader = typeof req.headers['x-event-pin'] === 'string' ? req.headers['x-event-pin'] : null;
+      const supabase = getSupabaseAdmin();
+      let authUser = null;
+
+      if (!pinHeader) {
+        const authCheck = await verifySessionWithDb(req, {
+          getSupabase: getSupabaseAdmin,
+          getJwtSecret: () => JWT_SECRET,
+          getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+        });
+        if (authCheck.ok) authUser = authCheck.user;
+      }
+
+      const result = await listProjectRsvps(supabase, { projectId, authUser, pin: pinHeader });
+      if (result.ok === false) {
+        return res.status(result.statusCode).json(buildErrorResponse(result.code, result.error));
+      }
+
+      return res.json(buildSuccessResponse(result.data, { rsvps: result.data }));
+    } catch {
+      return res.status(500).json(buildErrorResponse('RSVP_FETCH_FAILED', 'Unable to load RSVPs.'));
+    }
+  });
+
   apiRouter.post('/rsvps', async (req, res) => {
     try {
       const rsvpData = req.body;
@@ -1622,7 +1887,7 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
       try {
         const { data, error } = await getSupabaseAdmin()
           .from('rsvps')
-          .insert([{ 
+          .insert([{
             ...rsvpData,
             created_at: new Date().toISOString()
           }])
@@ -1630,7 +1895,7 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
           .single();
 
         if (error) {
-          console.warn('RSVP submission Supabase insert warning (continuing with sync):', error.message);
+          console.warn('RSVP submission warning:', error.message);
         } else {
           insertedData = data;
         }
@@ -1638,7 +1903,6 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
         console.warn('RSVP DB insert error:', dbErr.message);
       }
 
-      // Synchronize into Guest Management & Seating
       try {
         const payloadToSync = insertedData || {
           ...rsvpData,
@@ -1650,145 +1914,163 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
         console.warn('Guest sync error from RSVP:', syncErr.message);
       }
 
-      res.status(201).json({ success: true, data: insertedData || rsvpData });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message || 'Internal server error' });
+      res.status(201).json(buildSuccessResponse(insertedData || rsvpData));
+    } catch {
+      res.status(500).json(buildErrorResponse('RSVP_SUBMIT_FAILED', 'Unable to submit RSVP.'));
     }
   });
 
   apiRouter.patch('/rsvps/:id/vip', async (req, res) => {
     try {
       const { id } = req.params;
-      const { is_vip, guest_category } = req.body;
-      const { data, error } = await getSupabaseAdmin()
-        .from('rsvps')
-        .update({
-          is_vip: Boolean(is_vip),
-          guest_category: is_vip ? (guest_category || 'VIP') : null
-        })
-        .eq('id', id)
-        .select()
-        .single();
+      const { is_vip, guest_category } = req.body || {};
+      const pinHeader = typeof req.headers['x-event-pin'] === 'string' ? req.headers['x-event-pin'] : null;
+      const supabase = getSupabaseAdmin();
+      let authUser = null;
 
-      if (error) {
-        return res.status(500).json({ error: error.message });
+      if (!pinHeader) {
+        const authCheck = await verifySessionWithDb(req, {
+          getSupabase: getSupabaseAdmin,
+          getJwtSecret: () => JWT_SECRET,
+          getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+        });
+        if (authCheck.ok) authUser = authCheck.user;
       }
 
-      res.json({ success: true, data });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      const result = await updateRsvpVipAuthorized(supabase, {
+        rsvpId: id,
+        isVip: Boolean(is_vip),
+        guestCategory: guest_category,
+        authUser,
+        pin: pinHeader,
+      });
+
+      if (result.ok === false) {
+        return res.status(result.statusCode).json(buildErrorResponse(result.code, result.error));
+      }
+
+      return res.json(buildSuccessResponse(result.data));
+    } catch {
+      return res.status(500).json(buildErrorResponse('RSVP_UPDATE_FAILED', 'Unable to update VIP status.'));
     }
   });
 
   // --- Moderation & Highlight Routes ---
   apiRouter.post('/messages/:id/status', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const pinHeader = typeof req.headers['x-event-pin'] === 'string' ? req.headers['x-event-pin'] : null;
+    const supabase = getSupabaseAdmin();
+    let authUser = null;
 
-    try {
-      jwt.verify(token, JWT_SECRET);
-      const { id } = req.params;
-      const { status } = req.body;
-
-      const { error } = await getSupabaseAdmin()
-        .from('messages')
-        .update({ status })
-        .eq('id', id);
-
-      if (error) throw error;
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(401).json({ error: 'Invalid session', details: error.message });
+    if (!pinHeader) {
+      const authCheck = await verifySessionWithDb(req, {
+        getSupabase: getSupabaseAdmin,
+        getJwtSecret: () => JWT_SECRET,
+        getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+      });
+      if (authCheck.ok === false) {
+        return res.status(authCheck.statusCode).json(buildErrorResponse(authCheck.code, authCheck.error));
+      }
+      authUser = authCheck.user;
     }
+
+    const result = await moderateMessageStatus(supabase, {
+      messageId: req.params.id,
+      status: req.body?.status,
+      authUser,
+      pin: pinHeader,
+    });
+
+    if (result.ok === false) {
+      return res.status(result.statusCode).json(buildErrorResponse(result.code, result.error));
+    }
+
+    broadcastProjectMessageUpsert(String(result.data.project_id), result.data);
+    return res.json(buildSuccessResponse(result.data, { message: result.data }));
   });
 
-  // Update Message Highlight Classification and Flags
   apiRouter.post('/messages/:id/highlight', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const pinHeader = typeof req.headers['x-event-pin'] === 'string' ? req.headers['x-event-pin'] : null;
+    const supabase = getSupabaseAdmin();
+    let authUser = null;
 
-    try {
-      jwt.verify(token, JWT_SECRET);
-      const { id } = req.params;
-      const { classification, is_featured, is_pinned, guest_category, ai_highlight_reason, wish_category } = req.body;
-
-      const updateData: any = {};
-      if (classification !== undefined) updateData.classification = classification;
-      if (is_featured !== undefined) updateData.is_featured = is_featured;
-      if (is_pinned !== undefined) updateData.is_pinned = is_pinned;
-      if (guest_category !== undefined) updateData.guest_category = guest_category;
-      if (ai_highlight_reason !== undefined) updateData.ai_highlight_reason = ai_highlight_reason;
-      if (wish_category !== undefined && ['normal', 'funny', 'heartfelt', 'family'].includes(wish_category)) {
-        updateData.wish_category = wish_category;
+    if (!pinHeader) {
+      const authCheck = await verifySessionWithDb(req, {
+        getSupabase: getSupabaseAdmin,
+        getJwtSecret: () => JWT_SECRET,
+        getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+      });
+      if (authCheck.ok === false) {
+        return res.status(authCheck.statusCode).json(buildErrorResponse(authCheck.code, authCheck.error));
       }
-
-      let { data, error } = await getSupabaseAdmin()
-        .from('messages')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error && updateData.wish_category !== undefined && /wish_category/i.test(error.message || '')) {
-        delete updateData.wish_category;
-        const retry = await getSupabaseAdmin()
-          .from('messages')
-          .update(updateData)
-          .eq('id', id)
-          .select()
-          .single();
-        data = retry.data;
-        error = retry.error;
-      }
-
-      if (error) throw error;
-      res.json({ success: true, message: data });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      authUser = authCheck.user;
     }
+
+    const result = await updateMessageHighlightForProject(supabase, {
+      messageId: req.params.id,
+      updates: req.body || {},
+      authUser,
+      pin: pinHeader,
+    });
+
+    if (result.ok === false) {
+      return res.status(result.statusCode).json(buildErrorResponse(result.code, result.error));
+    }
+
+    broadcastProjectMessageUpsert(String(result.data.project_id), result.data);
+    return res.json(buildSuccessResponse(result.data, { message: result.data }));
   });
 
   // AI-Powered Message Highlight Analysis
   apiRouter.post('/messages/ai-suggest', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const pinHeader = typeof req.headers['x-event-pin'] === 'string' ? req.headers['x-event-pin'] : null;
+    const { projectId } = req.body || {};
+    if (!projectId) {
+      return res.status(400).json(buildErrorResponse('INVALID_PROJECT_ID', 'projectId is required'));
+    }
 
-    try {
-      jwt.verify(token, JWT_SECRET);
-      const { projectId } = req.body;
-      if (!projectId) return res.status(400).json({ error: 'projectId is required' });
-
-      // Fetch approved messages for this event
-      const { data: messages, error } = await getSupabaseAdmin()
-        .from('messages')
-        .select('*')
-        .eq('project_id', projectId)
-        .eq('status', 'approved');
-
-      if (error) throw error;
-      if (!messages || messages.length === 0) {
-        return res.json({ suggestions: [] });
+    const supabase = getSupabaseAdmin();
+    let authUser = null;
+    if (!pinHeader) {
+      const authCheck = await verifySessionWithDb(req, {
+        getSupabase: getSupabaseAdmin,
+        getJwtSecret: () => JWT_SECRET,
+        getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+      });
+      if (authCheck.ok === false) {
+        return res.status(authCheck.statusCode).json(buildErrorResponse(authCheck.code, authCheck.error));
       }
+      authUser = authCheck.user;
+    }
 
-      let suggestions: any[] = [];
-      const geminiApiKey = process.env.GEMINI_API_KEY;
+    const msgResult = await listProjectMessages(supabase, {
+      projectId,
+      includeAll: true,
+      limit: 100,
+      authUser,
+      pin: pinHeader,
+    });
+    if (msgResult.ok === false) {
+      return res.status(msgResult.statusCode).json(buildErrorResponse(msgResult.code, msgResult.error));
+    }
 
-      if (geminiApiKey) {
-        try {
-          const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-          const prompt = `You are a wedding reception curator. Analyze the following wedding guest messages.
+    const approvedMessages = msgResult.data.filter((m: any) => !m.status || m.status === 'approved');
+    if (approvedMessages.length === 0) {
+      return res.json(buildSuccessResponse({ suggestions: [] }, { suggestions: [] }));
+    }
+
+    let suggestions: any[] = [];
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+
+    if (geminiApiKey) {
+      try {
+        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+        const prompt = `You are a wedding reception curator. Analyze the following wedding guest messages.
 Identify which messages possess emotional significance, personal memories and stories, meaningful blessings, or deep connections with the couple.
 For each recommended message, specify a concise, elegant reason (1 sentence) why it deserves to be highlighted on the ballroom projector screen.
 Do NOT simply choose messages based on length. Prioritize sentiment, meaningful blessings, and genuine personal warmth.
 
 Messages:
-${JSON.stringify(messages.map((m: any) => ({ id: m.id, name: m.name, message: m.message })))}
+${JSON.stringify(approvedMessages.map((m: any) => ({ id: m.id, name: m.name, message: m.message })))}
 
 Return ONLY a valid JSON array of objects with the following schema:
 [
@@ -1799,60 +2081,69 @@ Return ONLY a valid JSON array of objects with the following schema:
   }
 ]
 `;
-          const response = await ai.models.generateContent({
-            model: 'gemini-3.8-flash',
-            contents: prompt,
-            config: {
-              responseMimeType: 'application/json'
-            }
-          });
-
-          if (response.text) {
-            const parsed = JSON.parse(response.text);
-            if (Array.isArray(parsed)) {
-              suggestions = parsed;
-            }
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json'
           }
-        } catch (aiErr: any) {
-          console.warn('Gemini highlight analysis fallback:', aiErr.message);
+        });
+
+        if (response.text) {
+          const parsed = JSON.parse(response.text);
+          if (Array.isArray(parsed)) {
+            suggestions = parsed;
+          }
         }
+      } catch (aiErr: any) {
+        console.warn('Gemini highlight analysis fallback:', aiErr.message);
       }
-
-      // If AI model didn't return suggestions or was unconfigured, use intelligent wedding heuristic analyzer
-      if (suggestions.length === 0) {
-        suggestions = analyzeMessagesHeuristic(messages);
-      }
-
-      res.json({ suggestions });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
     }
+
+    if (suggestions.length === 0) {
+      suggestions = analyzeMessagesHeuristic(approvedMessages);
+    }
+
+    return res.json(buildSuccessResponse({ suggestions }, { suggestions }));
   });
 
   // Update Event Message Display Configuration
   apiRouter.post('/projects/:id/message-config', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const pinHeader = typeof req.headers['x-event-pin'] === 'string' ? req.headers['x-event-pin'] : null;
+    const supabase = getSupabaseAdmin();
+    let authUser = null;
 
-    try {
-      jwt.verify(token, JWT_SECRET);
-      const { id } = req.params;
-      const { config } = req.body;
-
-      const { data, error } = await getSupabaseAdmin()
-        .from('projects')
-        .update({ message_display_config: config, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      res.json({ success: true, project: data });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    if (!pinHeader) {
+      const authCheck = await verifySessionWithDb(req, {
+        getSupabase: getSupabaseAdmin,
+        getJwtSecret: () => JWT_SECRET,
+        getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+      });
+      if (authCheck.ok === false) {
+        return res.status(authCheck.statusCode).json(buildErrorResponse(authCheck.code, authCheck.error));
+      }
+      authUser = authCheck.user;
     }
+
+    const { id } = req.params;
+    const { config } = req.body || {};
+
+    const result = await updateProjectForUserOrPin(supabase, {
+      projectId: id,
+      authUser,
+      pin: pinHeader,
+      body: { message_display_config: config },
+    });
+
+    if (result.ok === false) {
+      return res.status(result.statusCode).json(buildErrorResponse(result.code, result.error));
+    }
+
+    broadcastProjectConfigUpdate(id, {
+      message_display_config: result.data.message_display_config,
+      theme_id: result.data.theme_id,
+    });
+    return res.json(buildSuccessResponse(result.data, { project: result.data }));
   });
 
   // --- Wedding Website Publishing, Lifecycle & SEO Endpoints ---
@@ -1883,29 +2174,43 @@ Return ONLY a valid JSON array of objects with the following schema:
       .from('projects')
       .select('*')
       .eq('id', projectId)
+      .limit(1)
       .maybeSingle();
 
-    if (projErr || !project) return { authorized: false, project: null, agency: null };
+    if (projErr || !project || project.deleted_at || !project.agency_id) {
+      return { authorized: false, project: null, agency: null };
+    }
 
     const { data: agency } = await supabase
       .from('agencies')
       .select('*')
       .eq('id', project.agency_id)
+      .limit(1)
       .maybeSingle();
+
+    if (!agency || agency.deleted_at) {
+      return { authorized: false, project: null, agency: null };
+    }
 
     if (token) {
       try {
         const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-        const userId = decoded.id || decoded.sub;
-        if (agency && agency.user_id === userId) {
-          return { authorized: true, project, agency };
+        const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
+        if (activeCheck.ok) {
+          if (activeCheck.user.role === 'super_admin') {
+            return { authorized: true, project, agency };
+          }
+          const userOrgs = await resolveUserOrganizations(supabase, activeCheck.user);
+          if (userOrgs.some((org) => String(org.id) === String(agency.id))) {
+            return { authorized: true, project, agency };
+          }
         }
       } catch (e) {
         // invalid token
       }
     }
 
-    if (pinHeader && project.access_password === pinHeader) {
+    if (pinHeader && project.access_password && project.access_password === pinHeader) {
       return { authorized: true, project, agency };
     }
 
@@ -2766,13 +3071,17 @@ Return ONLY a valid JSON array of objects with the following schema:
         if (sessionToken) {
           try {
             const decoded = jwt.verify(sessionToken, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-            const { data: agency } = await getSupabaseAdmin()
-              .from('agencies')
-              .select('id')
-              .eq('user_id', decoded.id || decoded.sub)
-              .maybeSingle();
-            if (agency && agency.id === project.agency_id) {
-              isAuthorizedPreview = true;
+            const supabase = getSupabaseAdmin();
+            const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
+            if (activeCheck.ok) {
+              if (activeCheck.user.role === 'super_admin') {
+                isAuthorizedPreview = true;
+              } else {
+                const userOrgs = await resolveUserOrganizations(supabase, activeCheck.user);
+                if (userOrgs.some((org) => String(org.id) === String(project.agency_id))) {
+                  isAuthorizedPreview = true;
+                }
+              }
             }
           } catch (e) {}
         }
@@ -2818,334 +3127,116 @@ Return ONLY a valid JSON array of objects with the following schema:
     res.json({ packages: EVENT_PACKAGES, pricing: EVENT_PRICING });
   });
 
-  // --- Stripe Checkout Route (USD $5 Pay-Per-Event) ---
+  const billingRouterDeps = {
+    getSupabase: getSupabaseAdmin,
+    getJwtSecret: () => JWT_SECRET,
+    getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
+    getStripe: () => stripe,
+    getStripeSecretKey: () => STRIPE_SECRET_KEY,
+  };
+
+  // --- Stripe Checkout Route (USD $5 Pay-Per-Event, strictly authenticated) ---
   apiRouter.post('/create-checkout-session', async (req, res) => {
-    const { eventId, agencyId, successUrl, cancelUrl } = req.body;
-    
-    // Authenticate user if header or cookie is available
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    let authAgency: any = null;
-
-    if (token) {
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-        const userId = decoded.id || decoded.sub;
-        const { data: userAgency } = await getSupabaseAdmin()
-          .from('agencies')
-          .select('id')
-          .eq('user_id', userId)
-          .maybeSingle();
-        authAgency = userAgency;
-      } catch (err) {
-        // Continue with agencyId from body if valid
-      }
+    const authCheck = await verifySessionWithDb(req, billingRouterDeps);
+    if (authCheck.ok === false) {
+      return res.status(authCheck.statusCode).json({ error: authCheck.error, code: authCheck.code });
     }
 
-    if (!eventId) {
-      return res.status(400).json({ error: 'eventId is required to create a pay-per-event checkout session' });
-    }
-
-    // 1. Fetch target event and verify ownership
-    let event: any = null;
     try {
-      const { data, error } = await getSupabaseAdmin()
-        .from('projects')
-        .select('id, name, agency_id, payment_status, status, expires_at')
-        .eq('id', eventId)
-        .single();
-
-      if (error || !data) {
-        return res.status(404).json({ error: `Event not found: ${eventId}` });
-      }
-      event = data;
-
-      // Ensure user cannot pay for events belonging to another agency
-      if (authAgency && event.agency_id && authAgency.id !== event.agency_id) {
-        return res.status(403).json({ error: 'Forbidden: You cannot pay for an event belonging to another organization' });
-      }
-    } catch (err: any) {
-      return res.status(500).json({ error: err.message });
-    }
-
-    // 2. Set event status to pending_payment in database
-    try {
-      await getSupabaseAdmin()
-        .from('projects')
-        .update({
-          payment_status: 'pending_payment',
-          status: 'pending_payment',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', eventId);
-    } catch (updateErr: any) {
-      console.warn('Could not update pending_payment status:', updateErr.message);
-    }
-
-    // Determine redirect URLs
-    const defaultSuccess = `${APP_URL}/subscription?success=true&eventId=${eventId}`;
-    const defaultCancel = `${APP_URL}/subscription?canceled=true&eventId=${eventId}`;
-    const effectiveSuccess = successUrl || defaultSuccess;
-    const effectiveCancel = cancelUrl || defaultCancel;
-
-    // 3. Check payment provider configuration
-    // IMPORTANT: Never simulate payment. If provider is unconfigured, preserve pending_payment status.
-    const isPlaceholderStripe = !stripe || !STRIPE_SECRET_KEY || !STRIPE_SECRET_KEY.startsWith('sk_');
-    if (isPlaceholderStripe) {
-      console.warn('[Stripe] Stripe is not configured with a live key. Event marked as pending_payment. Preserving pending workflow without simulating paid status.');
-      return res.json({ 
-        status: 'pending_payment',
-        pending: true,
-        eventId,
-        amount: EVENT_PRICING.pricePerEvent,
-        currency: EVENT_PRICING.currency,
-        message: 'Payment gateway is in setup mode. Event status has been updated to pending_payment.'
+      const result = await createPayPerEventCheckout({
+        supabase: getSupabaseAdmin(),
+        stripe,
+        stripeSecretKey: STRIPE_SECRET_KEY,
+        appUrl: APP_URL,
+        authUser: authCheck.user,
+        body: req.body || {},
       });
-    }
-
-    try {
-      // 4. Create authoritative Stripe Checkout Session ($5.00 USD)
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price_data: {
-              currency: EVENT_PRICING.currency.toLowerCase(),
-              product_data: {
-                name: `EventFrame Event License — ${event.name || 'Wedding Celebration'}`,
-                description: '12 Months Full Event Access · Live Screen Moderation · Full Digital Suite',
-              },
-              unit_amount: EVENT_PRICING.priceInCents, // Authoritative USD $5.00 (500 cents)
-            },
-            quantity: 1,
-          },
-        ],
-        mode: 'payment',
-        success_url: effectiveSuccess.includes('{CHECKOUT_SESSION_ID}') 
-          ? effectiveSuccess 
-          : `${effectiveSuccess}${effectiveSuccess.includes('?') ? '&' : '?'}session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: effectiveCancel,
-        metadata: {
-          eventId,
-          agencyId: event.agency_id || agencyId || '',
-          amount: EVENT_PRICING.priceInCents.toString(),
-          billingModel: EVENT_PRICING.billingModel
-        },
-      });
-
-      return res.json({ url: session.url, sessionId: session.id, status: 'pending_payment' });
+      return res.status(result.statusCode).json(result.body);
     } catch (error: any) {
-      console.error('Stripe checkout error:', error);
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error?.message || 'Failed to create checkout session' });
     }
   });
 
-  // --- Strict Session Verification Route (Only verified payments can activate) ---
+  // --- Strict Session Verification Route (Authenticated + Stripe Verified) ---
   apiRouter.post('/events/:id/verify-session', async (req, res) => {
-    const { id } = req.params;
-    const { sessionId } = req.body;
-
-    if (!sessionId) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Payment session ID is required for verification. Events cannot be marked paid without verified payment confirmation.' 
-      });
-    }
-
-    if (!stripe || !STRIPE_SECRET_KEY || !STRIPE_SECRET_KEY.startsWith('sk_')) {
-      return res.status(400).json({ 
-        success: false, 
-        status: 'pending_payment',
-        error: 'Payment provider is not configured. Event remains in pending_payment status until verified.' 
+    const authCheck = await verifySessionWithDb(req, billingRouterDeps);
+    if (authCheck.ok === false) {
+      return res.status(authCheck.statusCode).json({
+        success: false,
+        error: authCheck.error,
+        code: authCheck.code,
       });
     }
 
     try {
-      // Retrieve session directly from Stripe API
-      const session = await stripe.checkout.sessions.retrieve(sessionId);
-
-      // Verify payment was actually paid
-      if (session.payment_status !== 'paid') {
-        return res.status(400).json({ 
-          success: false, 
-          status: 'pending_payment',
-          error: `Stripe session payment not completed (status: ${session.payment_status})` 
-        });
-      }
-
-      // Verify that Session matches target Event ID (Prevent Event A payment activating Event B)
-      if (session.metadata?.eventId !== id) {
-        return res.status(403).json({ 
-          success: false, 
-          error: 'Security violation: Payment session does not match this event.' 
-        });
-      }
-
-      // Verify payment amount matches authoritative price ($5.00 USD / 500 cents)
-      if (session.amount_total !== null && session.amount_total < EVENT_PRICING.priceInCents) {
-        return res.status(400).json({ 
-          success: false, 
-          error: 'Payment amount mismatch: Insufficient payment recorded.' 
-        });
-      }
-
-      // Authoritative activation
-      const result = await activateEventPurchase(getSupabaseAdmin(), {
-        eventId: id,
-        packageId: 'standard',
-        customerId: (session.customer as string) || 'customer',
-        agencyId: session.metadata?.agencyId,
-        transactionId: session.id,
-        amountPaidCents: session.amount_total || EVENT_PRICING.priceInCents,
-        provider: 'stripe'
+      const result = await verifyAndCompleteCheckoutSession({
+        supabase: getSupabaseAdmin(),
+        stripe,
+        stripeSecretKey: STRIPE_SECRET_KEY,
+        authUser: authCheck.user,
+        eventId: req.params.id,
+        sessionId: req.body?.sessionId,
       });
-
-      res.json(result);
+      return res.status(result.statusCode).json(result.body);
     } catch (error: any) {
-      console.error('Payment verification error:', error);
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ success: false, error: error?.message || 'Verification failed' });
     }
   });
 
-  // --- Internal / Automated Test Activation Route (Protected for testing suites) ---
-  apiRouter.post('/events/:id/activate-mock', async (req, res) => {
-    const { id } = req.params;
-    const isTestExecution = req.headers['x-test-suite'] === 'true' || process.env.NODE_ENV !== 'production';
-
-    if (!isTestExecution) {
-      return res.status(403).json({ error: 'Mock activation is only permitted during automated test execution.' });
+  // --- Cancel Pending Checkout Order Route ---
+  apiRouter.post('/billing/orders/:orderId/cancel', async (req, res) => {
+    const authCheck = await verifySessionWithDb(req, billingRouterDeps);
+    if (authCheck.ok === false) {
+      return res.status(authCheck.statusCode).json({ error: authCheck.error, code: authCheck.code });
     }
 
     try {
-      const result = await activateEventPurchase(getSupabaseAdmin(), {
-        eventId: id,
-        packageId: 'standard',
-        customerId: 'test_agency',
-        transactionId: `test_tx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        amountPaidCents: EVENT_PRICING.priceInCents,
-        provider: 'test_suite'
+      const result = await cancelCheckoutOrder({
+        supabase: getSupabaseAdmin(),
+        authUser: authCheck.user,
+        orderId: req.params.orderId,
       });
-
-      res.json(result);
+      return res.status(result.statusCode).json(result.body);
     } catch (error: any) {
-      console.error('Test activation error:', error);
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error?.message || 'Failed to cancel checkout order' });
     }
+  });
+
+  // --- Payment Bypass Lockdown (Disabled in production & against header spoofing) ---
+  apiRouter.post('/events/:id/activate-mock', (_req, res) => {
+    return res.status(403).json({
+      error: 'Mock payment activation is disabled. All event activations require verified Stripe Checkout payment.',
+      code: 'MOCK_ACTIVATION_DISABLED',
+    });
   });
 
   // --- Billing Events List Route ---
   apiRouter.get('/billing/events', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const authCheck = await verifySessionWithDb(req, billingRouterDeps);
+    if (authCheck.ok === false) {
+      return res.status(authCheck.statusCode).json({ error: authCheck.error, code: authCheck.code });
+    }
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-      const userId = decoded.id || decoded.sub;
-
-      // Find user agency
-      const { data: agency } = await getSupabaseAdmin()
-        .from('agencies')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (!agency) {
-        return res.json({ events: [], agency: null, metrics: { totalEvents: 0, activeEvents: 0, pendingPaymentEvents: 0, expiredEvents: 0 } });
-      }
-
-      // Fetch projects
-      const { data: projects, error } = await getSupabaseAdmin()
-        .from('projects')
-        .select('*')
-        .eq('agency_id', agency.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      // Enrich projects with payment and validity status
-      const now = Date.now();
-      const enrichedEvents = (projects || []).map((project: any) => {
-        const active = isEventActive(project, agency);
-        const daysRemaining = getDaysRemaining(project.expires_at);
-        const isExpired = project.expires_at && new Date(project.expires_at).getTime() <= now;
-
-        // Determine explicit lifecycle status
-        let displayStatus = 'draft';
-        if (active) {
-          displayStatus = 'active';
-        } else if (isExpired && project.payment_status === 'paid') {
-          displayStatus = 'expired';
-        } else if (project.payment_status === 'pending_payment') {
-          displayStatus = 'pending_payment';
-        } else if (project.payment_status === 'cancelled') {
-          displayStatus = 'cancelled';
-        } else if (project.payment_status === 'failed') {
-          displayStatus = 'failed';
-        }
-
-        return {
-          ...project,
-          displayStatus,
-          isActive: active,
-          daysRemaining,
-          amountPaid: project.payment_status === 'paid' ? EVENT_PRICING.pricePerEvent : 0,
-          pricePerEvent: EVENT_PRICING.pricePerEvent,
-          currency: EVENT_PRICING.currency,
-          validityMonths: EVENT_PRICING.validityMonths,
-          isGrandfathered: agency.is_demo === true || agency.subscription_status === 'active'
-        };
-      });
-
-      const metrics = {
-        totalEvents: enrichedEvents.length,
-        activeEvents: enrichedEvents.filter((e: any) => e.isActive).length,
-        pendingPaymentEvents: enrichedEvents.filter((e: any) => e.displayStatus === 'pending_payment').length,
-        expiredEvents: enrichedEvents.filter((e: any) => e.displayStatus === 'expired').length,
-        totalPaidAmount: enrichedEvents.reduce((acc: number, e: any) => acc + (e.amountPaid || 0), 0)
-      };
-
-      res.json({ events: enrichedEvents, agency, metrics, pricing: EVENT_PRICING });
+      const data = await getBillingEventsForUser(getSupabaseAdmin(), authCheck.user);
+      return res.json(data);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error?.message || 'Failed to load billing events' });
     }
   });
 
   // --- Billing Order History Route ---
   apiRouter.get('/billing/history', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const authCheck = await verifySessionWithDb(req, billingRouterDeps);
+    if (authCheck.ok === false) {
+      return res.status(authCheck.statusCode).json({ error: authCheck.error, code: authCheck.code });
+    }
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-      const userId = decoded.id || decoded.sub;
-
-      const { data: agency } = await getSupabaseAdmin()
-        .from('agencies')
-        .select('id')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (!agency) return res.json({ orders: [] });
-
-      try {
-        const { data: orders, error } = await getSupabaseAdmin()
-          .from('event_orders')
-          .select('*')
-          .eq('agency_id', agency.id)
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          // Table might not exist yet if migration pending
-          return res.json({ orders: [] });
-        }
-        res.json({ orders: orders || [] });
-      } catch {
-        res.json({ orders: [] });
-      }
+      const data = await getBillingHistoryForUser(getSupabaseAdmin(), authCheck.user);
+      return res.json(data);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: error?.message || 'Failed to load billing history' });
     }
   });
 
@@ -3219,11 +3310,7 @@ Return ONLY a valid JSON array of objects with the following schema:
   // Mount Super Admin /api/developer/* router (server-side protected)
   apiRouter.use(
     '/developer',
-    createDeveloperRouter({
-      getSupabase: getSupabaseAdmin,
-      getJwtSecret: () => JWT_SECRET,
-      getSuperAdminEmails: () => process.env.SUPER_ADMIN_EMAILS,
-    })
+    createDeveloperRouter(billingRouterDeps)
   );
 
   // Mount API router
@@ -3286,6 +3373,39 @@ Return ONLY a valid JSON array of objects with the following schema:
         const room = url.searchParams.get('room') || PUBLIC_DEMO_ROOM_ID;
         wss.handleUpgrade(request, socket, head, (ws) => {
           registerWebSocketClient(ws, room);
+        });
+      } else if (url.pathname === '/api/projects-ws') {
+        const projectId = String(url.searchParams.get('projectId') || '').trim();
+        if (!projectId) {
+          socket.destroy();
+          return;
+        }
+        wss.handleUpgrade(request, socket, head, async (ws) => {
+          try {
+            const supabase = getSupabaseAdmin();
+            const msgResult = await listProjectMessages(supabase, {
+              projectId,
+              includeAll: false,
+              limit: 100,
+            });
+            const resolved = await resolvePublicEvent(supabase, { id: projectId });
+            const initialConfig = resolved.ok
+              ? {
+                  message_display_config: resolved.data.project?.message_display_config || null,
+                  theme_id: resolved.data.project?.theme_id || null,
+                }
+              : null;
+            const cleanup = registerProjectWsClient(
+              ws,
+              projectId,
+              false,
+              msgResult.ok ? msgResult.data : [],
+              initialConfig
+            );
+            ws.on('close', cleanup);
+          } catch {
+            ws.close();
+          }
         });
       }
     } catch (e) {

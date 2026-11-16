@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Heart, Lock, User, AlertCircle, Globe } from 'lucide-react';
-import { getSupabase } from '../lib/supabase';
+import { API_BASE } from '../lib/config';
+import { extractApiErrorMessage } from '../lib/auth';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import AuthLayout from '../layouts/AuthLayout';
 import Button from '../design-system/components/Button';
@@ -29,58 +30,54 @@ export default function CoupleLogin() {
     setError(null);
 
     try {
-      const supabase = getSupabase();
-      
-      let query = supabase.from('projects').select('*').eq('slug', slug);
-
-      if (workspace) {
-        query = query.eq('agency_id', workspace.id);
-      } else if (agencySlug) {
-        const { data: agencyData } = await supabase
-          .from('agencies')
-          .select('id')
-          .eq('slug', agencySlug)
-          .single();
-        
-        if (!agencyData) {
-          setError('Agency not found. Please verify the agency name.');
-          setIsLoading(false);
-          return;
-        }
-        query = query.eq('agency_id', agencyData.id);
-      } else {
+      const targetAgencySlug = workspace ? workspace.slug : agencySlug;
+      if (!targetAgencySlug) {
         setError('Please provide your Agency identifier.');
         setIsLoading(false);
         return;
       }
 
-      const { data, error: fetchError } = await query.single();
+      const response = await fetch(`${API_BASE}/api/couple/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'EventFrame' },
+        credentials: 'include',
+        body: JSON.stringify({
+          agencySlug: targetAgencySlug,
+          slug,
+          password,
+        }),
+      });
 
-      if (fetchError || !data) {
-        setError('Event not found for this agency. Please check your wedding slug.');
+      const result = await response.json().catch(() => ({} as any));
+      if (!response.ok || !result?.success || !result?.project) {
+        setError(extractApiErrorMessage(result, 'Incorrect credentials or event not found.'));
         setIsLoading(false);
         return;
       }
 
-      if (data.access_password && data.access_password === password) {
-        localStorage.setItem(`wedding_auth_${data.id}`, JSON.stringify({
-          eventId: data.id,
-          authenticated: true,
-          timestamp: Date.now()
-        }));
-        
-        const hostParts = window.location.host.split('.');
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        
-        if (!workspace && !isLocalhost && hostParts.length <= 2) {
-          const protocol = window.location.protocol;
-          const baseDomain = hostParts.slice(-2).join('.');
-          window.location.replace(`${protocol}//${agencySlug}.${baseDomain}/${data.slug}/dashboard`);
-        } else {
-          navigate(`/${data.slug}/dashboard`, { replace: true });
-        }
+      const data = result.project;
+      localStorage.setItem(`wedding_auth_${data.id}`, JSON.stringify({
+        eventId: data.id,
+        pin: password,
+        authenticated: true,
+        timestamp: Date.now()
+      }));
+
+      const hostParts = window.location.host.split('.');
+      const hostname = window.location.hostname.toLowerCase();
+      const isPreviewOrLocal =
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.endsWith('.run.app') ||
+        hostname.endsWith('.pages.dev') ||
+        hostname.endsWith('.workers.dev');
+
+      if (!workspace && !isPreviewOrLocal && hostParts.length <= 2) {
+        const protocol = window.location.protocol;
+        const baseDomain = hostParts.slice(-2).join('.');
+        window.location.replace(`${protocol}//${targetAgencySlug}.${baseDomain}/${data.slug}/dashboard`);
       } else {
-        setError('Incorrect PIN or password. Please try again.');
+        navigate(`/${data.slug}/dashboard`, { replace: true });
       }
     } catch (err) {
       setError('An error occurred during sign in. Please try again.');

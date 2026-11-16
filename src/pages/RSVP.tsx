@@ -7,8 +7,7 @@ import { WeddingEvent, WeddingTemplate, Agency } from '../types';
 import { resolveEventTheme, ResolvedEventTheme } from '../lib/eventTheme';
 import { ThemeOverlay } from '../components/ThemeDecorations';
 import { QRCodeSVG } from 'qrcode.react';
-import { getSupabase } from '../lib/supabase';
-import { getAgencyById } from '../lib/agency';
+import { API_BASE } from '../lib/config';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { fetchTemplates } from '../lib/templates';
 import { isEventActive } from '../lib/packages';
@@ -51,33 +50,34 @@ export default function RSVPPage() {
     }
   }, [projectId, slug, searchParams, isLoadingWorkspace, workspace?.id]);
 
+  const applyResolvedEvent = async (
+    rawProject: WeddingEvent,
+    resolvedAgency: Agency | null,
+    stats?: { messageCount?: number; rsvpCount?: number }
+  ) => {
+    const projectData = { ...rawProject };
+    if (typeof projectData.rsvp_fields === 'string') {
+      try {
+        projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
+      } catch {
+        projectData.rsvp_fields = [];
+      }
+    }
+    setProject(projectData);
+    setAgency(resolvedAgency || workspace || null);
+    if (stats) {
+      setRsvpCount(Number(stats.rsvpCount) || 0);
+    }
+  };
+
   const loadProjectByWorkspace = async (agencyId: string) => {
     try {
-      const supabase = getSupabase();
-      const { data: projects } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('agency_id', agencyId)
-        .order('created_at', { ascending: true })
-        .limit(1);
-
-      if (projects && projects.length > 0) {
-        const projectData = projects[0];
-        if (typeof projectData.rsvp_fields === 'string') {
-          try {
-            projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
-          } catch (e) {
-            projectData.rsvp_fields = [];
-          }
-        }
-        setProject(projectData);
-        if (!agency) setAgency(workspace);
-
-        const { count: rsvpCountVal } = await supabase
-          .from('rsvps')
-          .select('*', { count: 'exact', head: true })
-          .eq('project_id', projectData.id);
-        setRsvpCount(rsvpCountVal || 0);
+      const params = new URLSearchParams({ agencyId });
+      const res = await fetch(`${API_BASE}/api/events/resolve?${params.toString()}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json?.project) {
+        await applyResolvedEvent(json.project, json.agency || null, json.stats);
       }
     } catch (err) {
       console.error('Error loading workspace project:', err);
@@ -123,47 +123,17 @@ export default function RSVPPage() {
     }
 
     try {
-      const supabase = getSupabase();
-      let projectData: WeddingEvent | null = null;
+      const params = new URLSearchParams();
+      if (id) params.set('id', id);
+      if (slugName) params.set('slug', slugName);
+      if (workspace?.id) params.set('agencyId', workspace.id);
 
-      if (id) {
-        const { data } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
-        projectData = data;
-      } else if (slugName) {
-        let query = supabase.from('projects').select('*').eq('slug', slugName);
-        if (workspace) query = query.eq('agency_id', workspace.id);
-        let { data } = await query.maybeSingle();
-        projectData = data;
-
-        if (!projectData && !workspace) {
-          const { data: agencyData } = await supabase.from('agencies').select('*').eq('slug', slugName).maybeSingle();
-          if (agencyData) {
-            setAgency(agencyData);
-            const { data: events } = await supabase.from('projects').select('*').eq('agency_id', agencyData.id).order('created_at', { ascending: true }).limit(1);
-            if (events && events.length > 0) projectData = events[0];
-          }
+      const res = await fetch(`${API_BASE}/api/events/resolve?${params.toString()}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.project) {
+          await applyResolvedEvent(json.project, json.agency || null, json.stats);
         }
-      }
-
-      if (projectData) {
-        if (typeof projectData.rsvp_fields === 'string') {
-          try {
-            projectData.rsvp_fields = JSON.parse(projectData.rsvp_fields);
-          } catch (e) {
-            projectData.rsvp_fields = [];
-          }
-        }
-        setProject(projectData);
-        if (!agency && projectData.agency_id) {
-          const agencyData = await getAgencyById(projectData.agency_id);
-          setAgency(agencyData);
-        }
-
-        const { count: rsvpCountVal } = await supabase
-          .from('rsvps')
-          .select('*', { count: 'exact', head: true })
-          .eq('project_id', projectData.id);
-        setRsvpCount(rsvpCountVal || 0);
       }
     } catch (err) {
       console.error('Error loading event:', err);

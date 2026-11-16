@@ -17,7 +17,8 @@ import { Sidebar } from '../editor/components/Sidebar';
 import { EditorCanvas } from '../editor/components/EditorCanvas';
 import { PropertiesPanel } from '../editor/components/PropertiesPanel';
 import { useEditorStore } from '../editor/store';
-import { getSupabase } from '../lib/supabase';
+import { authenticatedFetch } from '../lib/auth';
+import { API_BASE } from '../lib/config';
 import { WeddingEvent } from '../types';
 import Button from '../design-system/components/Button';
 
@@ -58,12 +59,10 @@ export default function InvitationEditor() {
       if (!projectId) return;
       setIsLoading(true);
       try {
-        const supabase = getSupabase();
-        const { data } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('id', projectId)
-          .maybeSingle();
+        const res = await authenticatedFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`);
+        if (!res.ok) throw new Error('Failed to load project');
+        const json = await res.json();
+        const data = json?.data;
 
         if (data) {
           setProject(data);
@@ -92,11 +91,10 @@ export default function InvitationEditor() {
     if (!projectId) return;
     setIsSaving(true);
     try {
-      const response = await fetch(`${window.location.origin}/api/projects/${projectId}`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}`, {
         method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('wedding_token') || ''}`
+        headers: {
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           invitation_config: JSON.stringify({ 

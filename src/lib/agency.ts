@@ -1,54 +1,50 @@
-import { getSupabase } from './supabase';
 import { Agency } from '../types';
+import { API_BASE } from './config';
+import { getCurrentSubdomain } from './workspace';
 
 export async function resolveAgency(): Promise<Agency | null> {
-  const supabase = getSupabase();
-  const host = window.location.hostname;
-  
-  // 1. Check for custom domain or subdomain
-  const parts = host.split('.');
-  
-  let agencySlug = null;
-  
-  if (host.includes('.eventframe.')) {
-     // Handle organization.eventframe.io
-     agencySlug = parts[0];
-  } else if (parts.length >= 3 && !host.includes('run.app') && !host.includes('localhost')) {
-     // Handle subdomain.domain.com (if not a cloud run or localhost)
-     agencySlug = parts[0];
-  } else if (parts.length > 2) {
-     agencySlug = parts[0];
-  }
-
-  // Fallback to query param for testing
+  if (typeof window === 'undefined') return null;
+  const host = window.location.hostname.trim().toLowerCase();
   const urlParams = new URLSearchParams(window.location.search);
-  const forcedAgency = urlParams.get('agency');
-  if (forcedAgency) agencySlug = forcedAgency;
+  const forcedAgency = urlParams.get('agency')?.trim().toLowerCase();
+  const agencySlug = forcedAgency || getCurrentSubdomain();
 
-  if (!agencySlug || agencySlug === 'www' || agencySlug === 'app' || agencySlug.includes('ais-')) {
+  if (!agencySlug && (host === 'localhost' || host === '127.0.0.1' || host === 'eventframe.io' || host === 'www.eventframe.io')) {
     return null;
   }
 
-  const { data, error } = await supabase
-    .from('agencies')
-    .select('*')
-    .or(`slug.eq.${agencySlug},domain.eq.${host}`)
-    .single();
+  try {
+    const params = new URLSearchParams();
+    if (agencySlug) params.set('slug', agencySlug);
+    if (host) params.set('host', host);
 
-  if (error) {
+    const response = await fetch(`${API_BASE}/api/agencies/resolve?${params.toString()}`, {
+      credentials: 'include',
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const agency = payload?.agency || payload?.data?.agency || (payload?.data?.id ? payload.data : null);
+    return (payload?.found || payload?.success) && agency ? (agency as Agency) : null;
+  } catch (err) {
+    console.error('Error resolving agency:', err);
     return null;
   }
-
-  return data;
 }
 
 export async function getAgencyById(id: string): Promise<Agency | null> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from('agencies')
-    .select('*')
-    .eq('id', id)
-    .single();
-    
-  return error ? null : data;
+  if (!id || !String(id).trim()) return null;
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/agencies/resolve?id=${encodeURIComponent(id)}`,
+      { credentials: 'include' }
+    );
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const agency = payload?.agency || payload?.data?.agency || (payload?.data?.id ? payload.data : null);
+    return (payload?.found || payload?.success) && agency ? (agency as Agency) : null;
+  } catch (err) {
+    console.error('Error fetching agency by ID:', err);
+    return null;
+  }
 }

@@ -1,31 +1,24 @@
-export function getAuthToken() {
-  return localStorage.getItem('wedding_session_token');
-}
+import {
+  getAuthToken,
+  setAuthToken,
+  removeAuthToken,
+  apiFetch,
+  getCsrfToken,
+  setCsrfTokenMemory,
+  extractApiErrorMessage,
+  unwrapApiData,
+} from './apiClient';
 
-export function setAuthToken(token: string) {
-  localStorage.setItem('wedding_session_token', token);
-}
-
-export function removeAuthToken() {
-  localStorage.removeItem('wedding_session_token');
-}
+export {
+  getAuthToken,
+  setAuthToken,
+  removeAuthToken,
+  getCsrfToken,
+  setCsrfTokenMemory,
+  extractApiErrorMessage,
+  unwrapApiData,
+};
 
 export async function authenticatedFetch(url: string, options: RequestInit = {}) {
-  const token = getAuthToken();
-  const headers: Record<string, string> = {
-    ...options.headers as Record<string, string>,
-  };
-
-  if (token && token !== 'null' && token !== 'undefined') {
-    headers['Authorization'] = `Bearer ${token}`;
-    // console.log(`[auth] Sending request with Bearer token to: ${url}`);
-  } else {
-    // console.log(`[auth] Sending request without Bearer token to: ${url} (Cookie will be used)`);
-  }
-
-  return fetch(url, {
-    ...options,
-    headers,
-    credentials: 'include',
-  });
+  return apiFetch(url, options);
 }

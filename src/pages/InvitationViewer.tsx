@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { Stage, Layer, Text, Image, Rect, Group } from 'react-konva';
 import { useEditorStore, EditorElement } from '../editor/store';
 import { WORLD_WIDTH, getFitScale } from '../editor/utils/coordinates';
-import { getSupabase } from '../lib/supabase';
+import { API_BASE } from '../lib/config';
 import { WeddingEvent } from '../types';
 import useImage from 'use-image';
 import { Loader2 } from 'lucide-react';
@@ -23,12 +23,10 @@ export default function InvitationViewer() {
     async function load() {
       if (!slug) return;
       try {
-        const supabase = getSupabase();
-        const { data } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('slug', slug)
-          .maybeSingle();
+        const res = await fetch(`${API_BASE}/api/events/resolve?slug=${encodeURIComponent(slug)}`);
+        if (!res.ok) return;
+        const json = await res.json();
+        const data = json?.project;
 
         if (data) {
           setProject(data);

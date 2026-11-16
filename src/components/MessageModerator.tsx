@@ -52,7 +52,7 @@ import Button from '../design-system/components/Button';
 import EmptyState from '../design-system/components/EmptyState';
 import { DanmakuPillCard, DanmakuStage } from './display/DanmakuStage';
 import { resolveEventTheme } from '../lib/eventTheme';
-import { getSupabase } from '../lib/supabase';
+import { subscribeToProjectStream } from '../lib/guestMessageProvider';
 
 /**
  * Isolated simulation-only sample wishes for the Display Settings live preview.
@@ -117,6 +117,7 @@ interface MessageModeratorProps {
   projectId: string;
   themeId?: string;
   initialDisplayConfig?: MessageDisplayConfig;
+  eventPin?: string;
   onConfigSaved?: (config: MessageDisplayConfig) => void;
 }
 
@@ -124,6 +125,7 @@ export default function MessageModerator({
   projectId, 
   themeId = 'minimal_luxury',
   initialDisplayConfig,
+  eventPin,
   onConfigSaved
 }: MessageModeratorProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -176,53 +178,42 @@ export default function MessageModerator({
 
   useEffect(() => {
     loadMessages();
-  }, [projectId, filter]);
+  }, [projectId, filter, eventPin]);
 
-  // Realtime subscription so classification and moderation sync live without refresh
+  // Backend SSE stream so classification and moderation sync live without refresh
   useEffect(() => {
     if (!projectId) return;
 
-    let channel: any = null;
-    try {
-      const supabase = getSupabase();
-      channel = supabase
-        .channel(`messages-moderation-${projectId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'messages',
-            filter: `project_id=eq.${projectId}`
-          },
-          (payload) => {
-            const updated = payload.new as Message;
-            if (!updated) return;
-            setMessages((prev) => {
-              const exists = prev.some(m => m.id === updated.id);
-              if (exists) {
-                return prev.map(m => m.id === updated.id ? { ...m, ...updated } : m);
-              }
-              return [updated, ...prev];
-            });
+    const unsubscribe = subscribeToProjectStream({
+      projectId,
+      includeAll: true,
+      pin: eventPin,
+      onMessageUpsert: (updated) => {
+        const msgStatus = updated.status || 'pending';
+        setMessages((prev) => {
+          const exists = prev.some((m) => m.id === updated.id);
+          if (msgStatus !== filter) {
+            return exists ? prev.filter((m) => m.id !== updated.id) : prev;
           }
-        )
-        .subscribe();
-    } catch (e) {
-      console.warn('Realtime subscription not available in moderation panel');
-    }
+          if (exists) {
+            return prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m));
+          }
+          return [updated, ...prev];
+        });
+      },
+      onMessageRemove: (messageId) => {
+        setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      },
+    });
 
     return () => {
-      if (channel) {
-        const supabase = getSupabase();
-        supabase.removeChannel(channel);
-      }
+      unsubscribe();
     };
-  }, [projectId]);
+  }, [projectId, filter, eventPin]);
 
   async function loadMessages() {
     setIsLoading(true);
-    const allMessages = await fetchMessages(projectId, true);
+    const allMessages = await fetchMessages(projectId, true, eventPin);
     setMessages(allMessages.filter(m => (m.status || 'pending') === filter));
     setIsLoading(false);
   }
@@ -230,7 +221,7 @@ export default function MessageModerator({
   const handleStatusUpdate = async (messageId: string, status: 'approved' | 'rejected') => {
     setActionError(null);
     try {
-      await updateMessageStatus(messageId, status);
+      await updateMessageStatus(messageId, status, eventPin);
       setMessages(messages.filter(m => m.id !== messageId));
     } catch (err: any) {
       setActionError(err?.message || 'Failed to update message status');
@@ -248,7 +239,7 @@ export default function MessageModerator({
       await updateMessageHighlight(msg.id, {
         is_featured: nextFeatured,
         classification: nextClassification
-      });
+      }, eventPin);
       setMessages(messages.map(m => m.id === msg.id ? { 
         ...m, 
         is_featured: nextFeatured, 
@@ -263,7 +254,7 @@ export default function MessageModerator({
     setActionError(null);
     const nextPinned = !msg.is_pinned;
     try {
-      await updateMessageHighlight(msg.id, { is_pinned: nextPinned });
+      await updateMessageHighlight(msg.id, { is_pinned: nextPinned }, eventPin);
       setMessages(messages.map(m => m.id === msg.id ? { ...m, is_pinned: nextPinned } : m));
     } catch (err: any) {
       setActionError(err?.message || 'Failed to update pinned status');
@@ -277,7 +268,7 @@ export default function MessageModerator({
       await updateMessageHighlight(msg.id, {
         classification,
         is_featured: isFeatured
-      });
+      }, eventPin);
       setMessages(messages.map(m => m.id === msg.id ? { 
         ...m, 
         classification, 
@@ -292,7 +283,7 @@ export default function MessageModerator({
     setActionError(null);
     setIsAnalyzingAI(true);
     try {
-      const res = await analyzeMessagesWithAI(projectId);
+      const res = await analyzeMessagesWithAI(projectId, eventPin);
       setAiSuggestions(res.suggestions || []);
       setShowAiModal(true);
     } catch (err: any) {
@@ -309,7 +300,7 @@ export default function MessageModerator({
         classification: targetClass,
         ai_highlight_reason: suggestion.reason,
         is_featured: targetClass === 'COUPLE_SELECTED'
-      });
+      }, eventPin);
       setMessages(messages.map(m => m.id === suggestion.id ? { 
         ...m, 
         classification: targetClass,
@@ -327,7 +318,7 @@ export default function MessageModerator({
     setIsSavingConfig(true);
     try {
       const normalized = resolveDisplayConfig(displayConfig);
-      await updateMessageDisplayConfig(projectId, normalized);
+      await updateMessageDisplayConfig(projectId, normalized, eventPin);
       setDisplayConfig(normalized);
       onConfigSaved?.(normalized);
       setConfigSuccess(true);

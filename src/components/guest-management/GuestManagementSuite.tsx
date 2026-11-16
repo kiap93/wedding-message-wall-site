@@ -19,13 +19,15 @@ interface GuestManagementSuiteProps {
   rsvpFields?: RSVPField[];
   defaultTab?: 'guests' | 'rsvp' | 'tables' | 'layout' | 'overview';
   openAddGuestSignal?: number;
+  eventPin?: string;
 }
 
 export default function GuestManagementSuite({ 
   projectId, 
   rsvpFields,
   defaultTab = 'guests',
-  openAddGuestSignal = 0
+  openAddGuestSignal = 0,
+  eventPin
 }: GuestManagementSuiteProps) {
   const [activeTab, setActiveTab] = useState<'guests' | 'rsvp' | 'tables' | 'layout' | 'overview'>(defaultTab);
 
@@ -92,7 +94,7 @@ export default function GuestManagementSuite({
         )}
 
         {activeTab === 'rsvp' && (
-          <RSVPManager projectId={projectId} rsvpFields={rsvpFields} />
+          <RSVPManager projectId={projectId} rsvpFields={rsvpFields} eventPin={eventPin} />
         )}
       </div>
     </div>

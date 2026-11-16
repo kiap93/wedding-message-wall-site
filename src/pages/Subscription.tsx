@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Check, 
-  Shield, 
-  CreditCard, 
-  ArrowRight, 
-  Loader2, 
-  Calendar, 
-  Users, 
-  Sparkles, 
-  Clock, 
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  Check,
+  Shield,
+  CreditCard,
+  ArrowRight,
+  Loader2,
+  Calendar,
+  Users,
+  Sparkles,
+  Clock,
   AlertCircle,
   ExternalLink,
   Receipt,
   RefreshCw,
   Calculator,
-  CheckCircle2
+  XCircle,
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useWorkspace } from '../lib/WorkspaceContext';
@@ -26,10 +26,16 @@ import Button from '../design-system/components/Button';
 import PageHeader from '../design-system/components/PageHeader';
 import Badge from '../design-system/components/Badge';
 import { EVENT_PRICING, formatPrice, calculateEventCost } from '../config/pricing';
-import { getDaysRemaining } from '../lib/packages';
 
 interface EnrichedEvent extends WeddingEvent {
-  displayStatus?: 'draft' | 'pending_payment' | 'active' | 'expired' | 'cancelled' | 'failed';
+  displayStatus?:
+    | 'draft'
+    | 'pending_payment'
+    | 'active'
+    | 'expired'
+    | 'cancelled'
+    | 'failed'
+    | 'refunded';
   isActive?: boolean;
   daysRemaining?: number | null;
   amountPaid?: number;
@@ -56,67 +62,35 @@ export default function Subscription() {
     activeEvents: 0,
     pendingPaymentEvents: 0,
     expiredEvents: 0,
-    totalPaidAmount: 0
+    totalPaidAmount: 0,
   });
   const [orders, setOrders] = useState<any[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
+  const [isVerifyingSession, setIsVerifyingSession] = useState(false);
+  const [isAwaitingWebhook, setIsAwaitingWebhook] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [calcEventsCount, setCalcEventsCount] = useState<number>(3);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const handledCancelOrderRef = useRef<string | null>(null);
+  const handledVerifySessionRef = useRef<string | null>(null);
 
-  // Check for return from checkout
   const isSuccess = searchParams.get('success') === 'true';
   const isCanceled = searchParams.get('canceled') === 'true';
+  const isFailed = searchParams.get('failed') === 'true';
   const returnEventId = searchParams.get('eventId');
   const sessionId = searchParams.get('session_id');
+  const returnOrderId = searchParams.get('orderId');
 
-  useEffect(() => {
-    loadBillingData();
-  }, [workspace, user]);
-
-  useEffect(() => {
-    if (isSuccess && returnEventId) {
-      if (sessionId && sessionId.startsWith('cs_')) {
-        handleVerifyReturn(returnEventId, sessionId);
-      } else {
-        // Returned without Stripe session confirmation
-        setErrorBanner('Checkout completed, awaiting payment verification. If Stripe is in setup mode, the event remains in pending_payment status.');
-        loadBillingData();
-      }
-    } else if (isCanceled) {
-      setErrorBanner('Payment was canceled. Your event remains in draft mode and can be activated anytime.');
-    }
-  }, [isSuccess, returnEventId, sessionId]);
-
-  const handleVerifyReturn = async (eventId: string, session: string) => {
-    try {
-      const response = await authenticatedFetch(`/api/events/${eventId}/verify-session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: session })
-      });
-      const data = await response.json();
-      if (data.success) {
-        setSuccessBanner(data.message || `Payment verified! Your event now has ${EVENT_PRICING.validityMonths} months of full access.`);
-        loadBillingData();
-      } else {
-        setErrorBanner(data.error || 'Payment verification pending. Please refresh in a moment.');
-        loadBillingData();
-      }
-    } catch (err: any) {
-      console.error('Session verification error:', err);
-      setErrorBanner('Verification failed. If payment was processed, your event will update once confirmed by webhook.');
-      loadBillingData();
-    }
-  };
-
-  const loadBillingData = async () => {
+  const loadBillingData = useCallback(async () => {
     setIsLoadingData(true);
     try {
-      // 1. Fetch events with billing info and metrics
       const eventsRes = await authenticatedFetch('/api/billing/events');
+      if (eventsRes.status === 401) {
+        navigate('/login?redirect=/subscription', { replace: true });
+        return null;
+      }
       if (eventsRes.ok) {
         const eventsData = await eventsRes.json();
         const eventList: EnrichedEvent[] = eventsData.events || [];
@@ -124,14 +98,16 @@ export default function Subscription() {
         if (eventsData.metrics) {
           setMetrics(eventsData.metrics);
         }
-        if (eventList.length > 0 && !selectedEventId) {
-          // Default selection to first unpaid or first event
-          const firstUnpaid = eventList.find((e: EnrichedEvent) => !e.isActive);
-          setSelectedEventId(firstUnpaid?.id || eventList[0].id);
+        if (eventList.length > 0) {
+          setSelectedEventId((prev) => {
+            if (prev && eventList.some((e) => e.id === prev)) return prev;
+            if (returnEventId && eventList.some((e) => e.id === returnEventId)) return returnEventId;
+            const firstUnpaid = eventList.find((e) => !e.isActive);
+            return firstUnpaid?.id || eventList[0].id;
+          });
         }
       }
 
-      // 2. Fetch order history
       const ordersRes = await authenticatedFetch('/api/billing/history');
       if (ordersRes.ok) {
         const ordersData = await ordersRes.json();
@@ -142,27 +118,140 @@ export default function Subscription() {
     } finally {
       setIsLoadingData(false);
     }
-  };
+    return true;
+  }, [navigate, returnEventId]);
+
+  useEffect(() => {
+    if (user) {
+      loadBillingData();
+    }
+  }, [workspace?.id, user?.id, loadBillingData]);
+
+  const handleVerifyReturn = useCallback(
+    async (eventId: string, stripeSessionId: string) => {
+      setIsVerifyingSession(true);
+      setErrorBanner(null);
+      try {
+        const response = await authenticatedFetch(`/api/events/${encodeURIComponent(eventId)}/verify-session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: stripeSessionId }),
+        });
+
+        if (response.status === 401) {
+          navigate('/login?redirect=/subscription', { replace: true });
+          return 'auth_required';
+        }
+
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.success) {
+          setIsAwaitingWebhook(false);
+          setSuccessBanner(
+            data.message ||
+              `Payment verified! Your event now has ${EVENT_PRICING.validityMonths} months of full access.`
+          );
+          await loadBillingData();
+          return 'verified';
+        }
+
+        if (response.status === 202 || data.pending) {
+          setIsAwaitingWebhook(true);
+          await loadBillingData();
+          return 'pending';
+        }
+
+        setIsAwaitingWebhook(false);
+        setErrorBanner(data.error || 'Payment verification failed. Contact support@eventframe.io if charged.');
+        await loadBillingData();
+        return 'error';
+      } catch (err: any) {
+        console.error('Session verification error:', err);
+        setIsAwaitingWebhook(true);
+        setErrorBanner('Verification check interrupted. Click Re-check Confirmation to poll latest Stripe status.');
+        await loadBillingData();
+        return 'pending';
+      } finally {
+        setIsVerifyingSession(false);
+      }
+    },
+    [loadBillingData, navigate]
+  );
+
+  // Handle return from Stripe Checkout (?success=true, ?canceled=true, ?failed=true)
+  useEffect(() => {
+    if (!user) return;
+
+    if (isSuccess && returnEventId) {
+      if (sessionId && sessionId.startsWith('cs_')) {
+        if (handledVerifySessionRef.current === sessionId) return;
+        handledVerifySessionRef.current = sessionId;
+
+        let cancelled = false;
+        (async () => {
+          const status = await handleVerifyReturn(returnEventId, sessionId);
+          // Poll up to 5 times if payment confirmation is still asynchronously settling
+          if (status === 'pending' && !cancelled) {
+            for (let attempt = 0; attempt < 5; attempt++) {
+              await new Promise((r) => setTimeout(r, 2500));
+              if (cancelled) break;
+              const nextStatus = await handleVerifyReturn(returnEventId, sessionId);
+              if (nextStatus !== 'pending') break;
+            }
+          }
+        })();
+
+        return () => {
+          cancelled = true;
+        };
+      } else {
+        setErrorBanner('Missing verified Stripe session ID. Only webhook-verified transactions can activate an event.');
+        loadBillingData();
+      }
+    } else if (isCanceled) {
+      setErrorBanner('Payment was cancelled before completion. Any existing active license remains untouched.');
+      if (returnOrderId && handledCancelOrderRef.current !== returnOrderId) {
+        handledCancelOrderRef.current = returnOrderId;
+        authenticatedFetch(`/api/billing/orders/${encodeURIComponent(returnOrderId)}/cancel`, {
+          method: 'POST',
+        })
+          .then(() => loadBillingData())
+          .catch(() => loadBillingData());
+      }
+    } else if (isFailed) {
+      setErrorBanner('Payment did not succeed. Please retry with a valid payment method.');
+    }
+  }, [user, isSuccess, isCanceled, isFailed, returnEventId, sessionId, returnOrderId, handleVerifyReturn, loadBillingData]);
 
   const handleCheckout = async (targetEventId: string) => {
+    if (isProcessingCheckout) return;
     setIsProcessingCheckout(true);
     setErrorBanner(null);
     setSuccessBanner(null);
 
     try {
+      const idempotencyKey =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
       const response = await authenticatedFetch('/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           eventId: targetEventId,
           agencyId: workspace?.id,
+          idempotencyKey,
           successUrl: `${window.location.origin}/subscription?success=true&eventId=${targetEventId}`,
-          cancelUrl: `${window.location.origin}/subscription?canceled=true&eventId=${targetEventId}`
-        })
+          cancelUrl: `${window.location.origin}/subscription?canceled=true&eventId=${targetEventId}`,
+        }),
       });
 
-      const data = await response.json();
+      if (response.status === 401) {
+        navigate('/login?redirect=/subscription', { replace: true });
+        return;
+      }
 
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data.error || 'Failed to initialize checkout session');
       }
@@ -170,13 +259,15 @@ export default function Subscription() {
       if (data.url) {
         window.location.href = data.url;
       } else if (data.pending) {
-        // Preserved pending payment workflow without simulating paid status
-        setSuccessBanner(`Event set to Pending Payment (${formatPrice(EVENT_PRICING.pricePerEvent)}). Payment gateway is currently awaiting configuration.`);
+        setErrorBanner(
+          data.error ||
+            'Payment gateway configuration pending. Order saved; event remains awaiting confirmed Stripe payment.'
+        );
         loadBillingData();
       }
     } catch (err: any) {
       console.error('Checkout error:', err);
-      setErrorBanner(err.message || 'Error redirecting to checkout. Please try again.');
+      setErrorBanner(err.message || 'Error redirecting to Stripe Checkout. Please try again.');
     } finally {
       setIsProcessingCheckout(false);
     }
@@ -193,8 +284,7 @@ export default function Subscription() {
     );
   }
 
-  const selectedEvent = events.find(e => e.id === selectedEventId) || events[0];
-  const isSelectedActive = selectedEvent ? (selectedEvent.isActive || selectedEvent.isGrandfathered) : false;
+  const selectedEvent = events.find((e) => e.id === selectedEventId) || events[0];
   const costCalculation = calculateEventCost(calcEventsCount);
 
   return (
@@ -202,22 +292,46 @@ export default function Subscription() {
       <div className="max-w-6xl mx-auto space-y-10">
         <PageHeader
           title="Event Licenses & Billing"
-          description={`Pay-per-event pricing: exactly ${formatPrice(EVENT_PRICING.pricePerEvent)} per wedding event. Every license includes 12 calendar months of full platform access, live display moderation, and guestbook storage.`}
+          description={`Pay-per-event pricing: ${formatPrice(EVENT_PRICING.pricePerEvent)} USD one-time per wedding event. Every license grants 12 calendar months of full access without recurring subscriptions.`}
           breadcrumbs={[
             { label: 'Workspace', onClick: () => navigate('/workspace') },
             { label: 'Event Billing' },
           ]}
         />
 
-        {/* Success / Alert Banners */}
+        {/* Processing / Awaiting Webhook Confirmation Banner */}
+        {(isVerifyingSession || isAwaitingWebhook) && (
+          <div className="p-4 bg-white border border-[#D5D5D0] rounded-lg text-[#252525] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin text-[#8B806F] shrink-0" />
+              <span>
+                {isVerifyingSession
+                  ? 'Verifying Stripe Checkout session with payment server...'
+                  : 'Payment processing: waiting for asynchronous Stripe webhook confirmation before activating license.'}
+              </span>
+            </div>
+            {returnEventId && sessionId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleVerifyReturn(returnEventId, sessionId)}
+                leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+              >
+                Re-check Confirmation
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Success / Error / Cancelled Banners */}
         {successBanner && (
-          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 flex items-start justify-between gap-3 shadow-subtle">
+          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 flex items-start justify-between gap-3">
             <div className="flex items-center gap-2.5">
               <Check className="w-5 h-5 text-emerald-600 shrink-0" />
               <div className="text-sm font-medium">{successBanner}</div>
             </div>
-            <button 
-              onClick={() => setSuccessBanner(null)} 
+            <button
+              onClick={() => setSuccessBanner(null)}
               className="text-xs text-emerald-700 hover:text-emerald-900 underline shrink-0"
             >
               Dismiss
@@ -226,13 +340,13 @@ export default function Subscription() {
         )}
 
         {errorBanner && (
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 flex items-start justify-between gap-3 shadow-subtle">
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 flex items-start justify-between gap-3">
             <div className="flex items-center gap-2.5">
               <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
               <div className="text-sm">{errorBanner}</div>
             </div>
-            <button 
-              onClick={() => setErrorBanner(null)} 
+            <button
+              onClick={() => setErrorBanner(null)}
               className="text-xs text-amber-700 hover:text-amber-900 underline shrink-0"
             >
               Dismiss
@@ -242,65 +356,67 @@ export default function Subscription() {
 
         {/* Agency Event Metrics Overview Tiles */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="p-5 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle">
+          <div className="p-5 bg-white border border-[#E8E8E5] rounded-lg">
             <div className="text-[11px] font-mono uppercase tracking-wider text-[#777777]">Total Events</div>
-            <div className="text-2xl font-bold font-mono text-[#252525] mt-1">{metrics.totalEvents}</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-[#252525] mt-1">{metrics.totalEvents}</div>
             <p className="text-[11px] text-[#888888] mt-0.5">All registered celebrations</p>
           </div>
 
-          <div className="p-5 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle">
+          <div className="p-5 bg-white border border-[#E8E8E5] rounded-lg">
             <div className="text-[11px] font-mono uppercase tracking-wider text-emerald-700">Active Events</div>
-            <div className="text-2xl font-bold font-mono text-emerald-800 mt-1">{metrics.activeEvents}</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-emerald-800 mt-1">{metrics.activeEvents}</div>
             <p className="text-[11px] text-[#888888] mt-0.5">Licensed & live (12-month access)</p>
           </div>
 
-          <div className="p-5 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle">
+          <div className="p-5 bg-white border border-[#E8E8E5] rounded-lg">
             <div className="text-[11px] font-mono uppercase tracking-wider text-amber-700">Pending Payment</div>
-            <div className="text-2xl font-bold font-mono text-amber-800 mt-1">{metrics.pendingPaymentEvents}</div>
-            <p className="text-[11px] text-[#888888] mt-0.5">Checkout pending confirmation</p>
+            <div className="text-2xl font-bold font-mono tabular-nums text-amber-800 mt-1">{metrics.pendingPaymentEvents}</div>
+            <p className="text-[11px] text-[#888888] mt-0.5">Awaiting Stripe confirmation</p>
           </div>
 
-          <div className="p-5 bg-white border border-[#E8E8E5] rounded-lg shadow-subtle">
+          <div className="p-5 bg-white border border-[#E8E8E5] rounded-lg">
             <div className="text-[11px] font-mono uppercase tracking-wider text-[#777777]">Expired Events</div>
-            <div className="text-2xl font-bold font-mono text-[#777777] mt-1">{metrics.expiredEvents}</div>
+            <div className="text-2xl font-bold font-mono tabular-nums text-[#777777] mt-1">{metrics.expiredEvents}</div>
             <p className="text-[11px] text-[#888888] mt-0.5">Eligible for 12M renewal</p>
           </div>
         </div>
 
-        {/* USD $5 Pay-Per-Event Hero Showcase */}
-        <div className="bg-white border border-[#E8E8E5] rounded-xl p-6 sm:p-8 shadow-card space-y-6">
+        {/* USD $5 Pay-Per-Event Summary */}
+        <div className="bg-white border border-[#E8E8E5] rounded-xl p-6 sm:p-8 space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-[#E8E8E5] pb-6">
             <div className="space-y-2">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold tracking-wide uppercase font-mono">
-                <Sparkles className="w-3.5 h-3.5" />
-                Pay-Per-Event Launch Pricing
+              <div className="text-xs font-semibold tracking-wider uppercase font-mono text-[#8B806F]">
+                Pay-Per-Event Licensing
               </div>
               <h2 className="text-2xl sm:text-3xl font-serif text-[#252525]">
-                One Event. One Payment. {formatPrice(EVENT_PRICING.pricePerEvent)}.
+                One Event. One Payment. {formatPrice(EVENT_PRICING.pricePerEvent)} USD.
               </h2>
               <p className="text-sm text-[#777777] max-w-xl leading-relaxed">
-                No monthly retainers, no credit commitments, and no recurring subscriptions. 
-                Register your agency for free and create draft events at zero cost. Only pay {formatPrice(EVENT_PRICING.pricePerEvent)} when you are ready to publish and go live.
+                Free agency registration with unlimited draft events. Only pay {formatPrice(EVENT_PRICING.pricePerEvent)}{' '}
+                USD per live event—no monthly retainers or automatic recurring charges.
               </p>
             </div>
 
-            <div className="bg-[#FAF9F7] border border-[#E8E8E5] rounded-xl p-5 flex flex-col items-center justify-center min-w-[240px] text-center shadow-subtle">
-              <div className="text-xs uppercase font-mono tracking-wider text-[#8B806F] font-semibold">EVENT LICENSE</div>
+            <div className="bg-[#FAF9F7] border border-[#E8E8E5] rounded-xl p-5 flex flex-col items-center justify-center min-w-[240px] text-center">
+              <div className="text-xs uppercase font-mono tracking-wider text-[#8B806F] font-semibold">
+                EVENT LICENSE
+              </div>
               <div className="flex items-baseline gap-1 mt-1">
-                <span className="text-4xl font-mono font-bold text-[#252525]">{formatPrice(EVENT_PRICING.pricePerEvent)}</span>
-                <span className="text-xs text-[#777777]">/ event</span>
+                <span className="text-4xl font-mono font-bold tabular-nums text-[#252525]">
+                  {formatPrice(EVENT_PRICING.pricePerEvent)}
+                </span>
+                <span className="text-xs text-[#777777]">USD / event</span>
               </div>
-              <div className="text-[11px] font-medium text-emerald-800 bg-emerald-100/70 rounded px-2 py-0.5 mt-2 flex items-center gap-1">
+              <div className="text-[11px] font-medium text-emerald-800 mt-2 flex items-center gap-1">
                 <Clock className="w-3 h-3 text-emerald-700" />
-                12 Months Full Access Included
+                12 Calendar Months Validity
               </div>
-              <div className="text-[11px] text-[#777777] mt-1.5">
-                Renewal: {formatPrice(EVENT_PRICING.pricePerEvent)} per 12 months
+              <div className="text-[11px] text-[#777777] mt-1">
+                Renewal: {formatPrice(EVENT_PRICING.pricePerEvent)} USD per 12 months
               </div>
             </div>
           </div>
 
-          {/* Key Features Included with Every $5 Event */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
             <div className="p-4 bg-[#FAF9F7]/70 rounded-lg border border-[#EFEFEA] space-y-1.5">
               <div className="flex items-center gap-2 text-sm font-semibold text-[#252525]">
@@ -308,7 +424,7 @@ export default function Subscription() {
                 <span>12 Months Validity</span>
               </div>
               <p className="text-xs text-[#777777] leading-relaxed">
-                Full 365 days of active access covering planning, invitations, live wedding day, and photo downloads.
+                Full 12 calendar months covering planning, invitations, live reception display, and downloads.
               </p>
             </div>
 
@@ -318,27 +434,27 @@ export default function Subscription() {
                 <span>Guestbook & Photos</span>
               </div>
               <p className="text-xs text-[#777777] leading-relaxed">
-                Real-time guest uploads, digital wishes, live moderation screen, and instant high-res photo wall.
+                Real-time guest uploads, digital wishes, live Danmaku wall, and high-res photo collection.
               </p>
             </div>
 
             <div className="p-4 bg-[#FAF9F7]/70 rounded-lg border border-[#EFEFEA] space-y-1.5">
               <div className="flex items-center gap-2 text-sm font-semibold text-[#252525]">
                 <Sparkles className="w-4 h-4 text-[#8B806F]" />
-                <span>Custom Art Aesthetic</span>
+                <span>Custom Event Suite</span>
               </div>
               <p className="text-xs text-[#777777] leading-relaxed">
-                Artisan wedding themes, matching RSVP typography, dynamic hero banners, and audio backdrop.
+                Curated wedding templates, multilingual guest pages, interactive RSVP, and seating charts.
               </p>
             </div>
 
             <div className="p-4 bg-[#FAF9F7]/70 rounded-lg border border-[#EFEFEA] space-y-1.5">
               <div className="flex items-center gap-2 text-sm font-semibold text-[#252525]">
                 <Shield className="w-4 h-4 text-[#8B806F]" />
-                <span>Zero Subscription Risk</span>
+                <span>No Subscriptions</span>
               </div>
               <p className="text-xs text-[#777777] leading-relaxed">
-                Free agency account. No credit card required to register. Pay only for events that actually take place.
+                One-time Stripe Checkout per wedding. Early renewals append 12 months on top of remaining days.
               </p>
             </div>
           </div>
@@ -350,13 +466,12 @@ export default function Subscription() {
                 <Calculator className="w-5 h-5 text-[#8B806F]" />
                 <div>
                   <h4 className="text-sm font-semibold text-[#252525]">Multi-Event Pricing Calculator</h4>
-                  <p className="text-xs text-[#777777]">Transparent pricing with no hidden fees or tier surcharges</p>
+                  <p className="text-xs text-[#777777]">Transparent linear USD pricing across events</p>
                 </div>
               </div>
 
-              {/* Quick Select Buttons */}
               <div className="flex items-center gap-1.5">
-                {[1, 2, 3, 5, 10].map(n => (
+                {[1, 2, 3, 5, 10].map((n) => (
                   <button
                     key={n}
                     type="button"
@@ -383,45 +498,51 @@ export default function Subscription() {
                   onChange={(e) => setCalcEventsCount(parseInt(e.target.value, 10) || 1)}
                   className="w-48 sm:w-64 accent-[#8B806F] cursor-pointer"
                 />
-                <span className="text-xs font-mono font-medium text-[#252525] min-w-[70px]">
+                <span className="text-xs font-mono font-medium tabular-nums text-[#252525] min-w-[70px]">
                   {calcEventsCount} {calcEventsCount === 1 ? 'Event' : 'Events'}
                 </span>
               </div>
 
               <div className="flex items-center gap-4 text-right">
                 <div className="text-xs text-[#777777]">
-                  <span>{calcEventsCount} × {formatPrice(EVENT_PRICING.pricePerEvent)} = </span>
-                  <strong className="text-base font-mono font-bold text-[#252525] ml-1">
-                    {formatPrice(costCalculation)}
+                  <span>{calcEventsCount} × {formatPrice(EVENT_PRICING.pricePerEvent)} USD = </span>
+                  <strong className="text-base font-mono font-bold tabular-nums text-[#252525] ml-1">
+                    {formatPrice(costCalculation)} USD
                   </strong>
                 </div>
-                <span className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-mono">
-                  12 Months Each
-                </span>
               </div>
             </div>
           </div>
 
           {/* Quick Activate Bar */}
           {selectedEvent && (
-            <div className="p-5 bg-white border border-[#252525]/20 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+            <div className="p-5 bg-white border border-[#D5D5D0] rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-1">
-                <div className="text-xs text-[#777777] font-mono uppercase tracking-wide">Select Event to Activate</div>
+                <div className="text-xs text-[#777777] font-mono uppercase tracking-wide">
+                  Select Event to Activate or Renew
+                </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <select
                     value={selectedEventId}
                     onChange={(e) => setSelectedEventId(e.target.value)}
                     className="text-sm bg-[#FAF9F7] border border-[#D5D5D0] rounded-md px-3 py-1.5 text-[#252525] font-semibold focus:outline-none focus:ring-1 focus:ring-[#8B806F]"
                   >
-                    {events.map(ev => (
+                    {events.map((ev) => (
                       <option key={ev.id} value={ev.id}>
-                        {ev.name || `${ev.groom_name || 'Groom'} & ${ev.bride_name || 'Bride'}`} ({ev.displayStatus || (ev.isActive ? 'active' : 'draft')})
+                        {ev.name || `${ev.groom_name || 'Groom'} & ${ev.bride_name || 'Bride'}`} (
+                        {ev.displayStatus || (ev.isActive ? 'active' : 'draft')})
                       </option>
                     ))}
                   </select>
 
                   {selectedEvent.isActive ? (
-                    <Badge variant="success" size="sm">Active ({selectedEvent.daysRemaining} days left)</Badge>
+                    <Badge variant="success" size="sm">
+                      Active ({selectedEvent.daysRemaining} days left)
+                    </Badge>
+                  ) : selectedEvent.displayStatus === 'refunded' ? (
+                    <Badge variant="error" size="sm">Refunded (Revoked)</Badge>
+                  ) : selectedEvent.displayStatus === 'failed' ? (
+                    <Badge variant="error" size="sm">Payment Failed</Badge>
                   ) : selectedEvent.displayStatus === 'pending_payment' ? (
                     <Badge variant="warning" size="sm">Pending Payment</Badge>
                   ) : selectedEvent.displayStatus === 'expired' ? (
@@ -431,7 +552,9 @@ export default function Subscription() {
                   )}
                 </div>
                 <div className="text-xs text-[#777777]">
-                  One-time fee: <strong className="text-[#252525] font-mono">{formatPrice(EVENT_PRICING.pricePerEvent)}</strong> · Grants 12 months full platform access
+                  One-time fee:{' '}
+                  <strong className="text-[#252525] font-mono">{formatPrice(EVENT_PRICING.pricePerEvent)} USD</strong>{' '}
+                  · {selectedEvent.isActive ? 'Extends expiry by +12 months' : 'Grants 12 months access upon Stripe verification'}
                 </div>
               </div>
 
@@ -440,12 +563,13 @@ export default function Subscription() {
                   variant="primary"
                   size="md"
                   isLoading={isProcessingCheckout}
+                  disabled={isProcessingCheckout}
                   onClick={() => handleCheckout(selectedEvent.id)}
                   leftIcon={<CreditCard className="w-4 h-4" />}
                   rightIcon={<ArrowRight className="w-4 h-4" />}
                 >
-                  {selectedEvent.isActive 
-                    ? `Renew 12 Months (${formatPrice(EVENT_PRICING.pricePerEvent)})` 
+                  {selectedEvent.isActive
+                    ? `Renew 12 Months (${formatPrice(EVENT_PRICING.pricePerEvent)})`
                     : `Activate Event (${formatPrice(EVENT_PRICING.pricePerEvent)})`}
                 </Button>
               </div>
@@ -454,12 +578,12 @@ export default function Subscription() {
         </div>
 
         {/* Workspace Event Licenses Table */}
-        <div className="bg-white border border-[#E8E8E5] rounded-xl overflow-hidden shadow-subtle space-y-0">
+        <div className="bg-white border border-[#E8E8E5] rounded-xl overflow-hidden">
           <div className="p-6 border-b border-[#E8E8E5] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-base font-semibold text-[#252525]">Your Workspace Event Licenses</h3>
               <p className="text-xs text-[#777777] mt-0.5">
-                Every event license is purchased individually for {formatPrice(EVENT_PRICING.pricePerEvent)} and tracked with its dedicated 12-month window.
+                Each wedding event holds an independent 12-month license window.
               </p>
             </div>
             <Button
@@ -477,13 +601,9 @@ export default function Subscription() {
               <Calendar className="w-8 h-8 text-[#C5BDAC] mx-auto" />
               <div className="text-sm font-semibold text-[#252525]">No wedding events yet</div>
               <p className="text-xs text-[#777777] max-w-sm mx-auto">
-                Create your first wedding event in your workspace for free as a draft. You can activate its 12-month license whenever you're ready to share.
+                Create your first wedding event in your workspace as a free draft, then activate its 12-month license whenever ready.
               </p>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => navigate('/workspace')}
-              >
+              <Button variant="primary" size="sm" onClick={() => navigate('/workspace')}>
                 Create Free Draft Event
               </Button>
             </div>
@@ -511,14 +631,14 @@ export default function Subscription() {
                           <div className="font-semibold text-[#252525]">
                             {ev.name || `${ev.groom_name} & ${ev.bride_name}`}
                           </div>
-                          <div className="text-[11px] text-[#777777] font-mono mt-0.5">
-                            /{ev.slug}
-                          </div>
+                          <div className="text-[11px] text-[#777777] font-mono mt-0.5">/{ev.slug}</div>
                         </td>
 
                         <td className="py-4 px-4">
-                          <div className="font-mono font-medium text-[#252525]">{formatPrice(EVENT_PRICING.pricePerEvent)}</div>
-                          <div className="text-[10px] text-[#777777]">One-time fee</div>
+                          <div className="font-mono font-medium tabular-nums text-[#252525]">
+                            {formatPrice(EVENT_PRICING.pricePerEvent)} USD
+                          </div>
+                          <div className="text-[10px] text-[#777777]">One-time payment</div>
                         </td>
 
                         <td className="py-4 px-4">
@@ -528,11 +648,15 @@ export default function Subscription() {
                             <div className="space-y-0.5">
                               <Badge variant="success" size="sm">Active</Badge>
                               {days !== null && days !== undefined && (
-                                <div className="text-[10px] text-[#555555]">
+                                <div className="text-[10px] text-[#555555] tabular-nums">
                                   {days > 0 ? `${days} days remaining` : 'Expiring today'}
                                 </div>
                               )}
                             </div>
+                          ) : status === 'refunded' ? (
+                            <Badge variant="error" size="sm">Refunded</Badge>
+                          ) : status === 'failed' ? (
+                            <Badge variant="error" size="sm">Failed</Badge>
                           ) : status === 'pending_payment' ? (
                             <Badge variant="warning" size="sm">Pending Payment</Badge>
                           ) : status === 'expired' ? (
@@ -545,46 +669,37 @@ export default function Subscription() {
                         <td className="py-4 px-4 text-[#777777]">
                           {ev.expires_at ? (
                             <div>
-                              <div className="text-[#252525] font-mono text-[11px]">
-                                Until {new Date(ev.expires_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                              <div className="text-[#252525] font-mono text-[11px] tabular-nums">
+                                Expires {new Date(ev.expires_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                               </div>
-                              <div className="text-[10px] text-[#777777]">
-                                Started {ev.activated_at ? new Date(ev.activated_at).toLocaleDateString() : 'N/A'}
+                              <div className="text-[10px] text-[#777777] tabular-nums">
+                                Activated {ev.activated_at ? new Date(ev.activated_at).toLocaleDateString() : 'N/A'}
                               </div>
                             </div>
                           ) : ev.isGrandfathered ? (
                             <div className="text-[11px] text-[#252525]">Active via Legacy Subscription</div>
                           ) : (
-                            <div className="text-[11px] text-[#999999]">Activates on payment verification</div>
+                            <div className="text-[11px] text-[#999999]">Activates on Stripe verification</div>
                           )}
                         </td>
 
                         <td className="py-4 px-4 text-right">
-                          {isActive ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedEventId(ev.id);
-                                handleCheckout(ev.id);
-                              }}
-                              leftIcon={<RefreshCw className="w-3 h-3" />}
-                            >
-                              Renew 12 Mos ({formatPrice(EVENT_PRICING.pricePerEvent)})
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedEventId(ev.id);
-                                handleCheckout(ev.id);
-                              }}
-                              leftIcon={<CreditCard className="w-3 h-3" />}
-                            >
-                              Activate Event ({formatPrice(EVENT_PRICING.pricePerEvent)})
-                            </Button>
-                          )}
+                          <Button
+                            variant={isActive ? 'outline' : 'primary'}
+                            size="sm"
+                            disabled={isProcessingCheckout}
+                            onClick={() => {
+                              setSelectedEventId(ev.id);
+                              handleCheckout(ev.id);
+                            }}
+                            leftIcon={isActive ? <RefreshCw className="w-3 h-3" /> : <CreditCard className="w-3 h-3" />}
+                          >
+                            {isActive
+                              ? `Renew 12 Mos (${formatPrice(EVENT_PRICING.pricePerEvent)})`
+                              : status === 'failed'
+                                ? `Retry Payment (${formatPrice(EVENT_PRICING.pricePerEvent)})`
+                                : `Activate Event (${formatPrice(EVENT_PRICING.pricePerEvent)})`}
+                          </Button>
                         </td>
                       </tr>
                     );
@@ -595,16 +710,16 @@ export default function Subscription() {
           )}
         </div>
 
-        {/* Order History Table */}
+        {/* Order & Payment Receipt History */}
         {orders.length > 0 && (
-          <div className="bg-white border border-[#E8E8E5] rounded-xl overflow-hidden shadow-subtle">
+          <div className="bg-white border border-[#E8E8E5] rounded-xl overflow-hidden">
             <div className="p-6 border-b border-[#E8E8E5]">
               <h3 className="text-base font-semibold text-[#252525] flex items-center gap-2">
                 <Receipt className="w-4 h-4 text-[#8B806F]" />
                 <span>Payment Receipts & Order History</span>
               </h3>
               <p className="text-xs text-[#777777] mt-0.5">
-                Past transactions and one-time event activations for this workspace.
+                Authoritative Stripe Checkout orders, payment IDs, and refund statuses for this workspace.
               </p>
             </div>
 
@@ -612,33 +727,71 @@ export default function Subscription() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#FAF9F7] text-[#777777] uppercase text-[10px] tracking-wider border-b border-[#E8E8E5]">
                   <tr>
-                    <th className="py-3 px-4 font-medium">Order ID</th>
+                    <th className="py-3 px-4 font-medium">Order / Payment ID</th>
+                    <th className="py-3 px-4 font-medium">Event</th>
                     <th className="py-3 px-4 font-medium">Date</th>
-                    <th className="py-3 px-4 font-medium">Description</th>
+                    <th className="py-3 px-4 font-medium">License Type</th>
                     <th className="py-3 px-4 font-medium">Amount</th>
                     <th className="py-3 px-4 font-medium text-right">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E8E8E5]">
-                  {orders.map((ord: any) => (
-                    <tr key={ord.id} className="hover:bg-[#FAF9F7]/50">
-                      <td className="py-3.5 px-4 font-mono text-[11px] text-[#252525]">
-                        {ord.id}
-                      </td>
-                      <td className="py-3.5 px-4 text-[#777777]">
-                        {new Date(ord.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-                      </td>
-                      <td className="py-3.5 px-4 font-medium text-[#252525]">
-                        Event License ({ord.order_type === 'renewal' ? '12M Renewal' : '12M Purchase'})
-                      </td>
-                      <td className="py-3.5 px-4 font-mono font-medium text-[#252525]">
-                        ${((ord.amount || 0) / 100).toFixed(2)} {ord.currency?.toUpperCase() || 'USD'}
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <Badge variant="success" size="sm">Completed</Badge>
-                      </td>
-                    </tr>
-                  ))}
+                  {orders.map((ord: any) => {
+                    const ordStatus = String(ord.payment_status || ord.order_status || 'pending').toLowerCase();
+                    const statusVariant =
+                      ordStatus === 'succeeded' || ordStatus === 'completed'
+                        ? 'success'
+                        : ordStatus === 'failed' || ordStatus === 'checkout_failed' || ordStatus === 'refunded'
+                          ? 'error'
+                          : ordStatus === 'partially_refunded' || ordStatus === 'pending'
+                            ? 'warning'
+                            : 'neutral';
+
+                    return (
+                      <tr key={ord.id} className="hover:bg-[#FAF9F7]/50">
+                        <td className="py-3.5 px-4 font-mono text-[11px] text-[#252525]">
+                          <div>{ord.id}</div>
+                          {(ord.stripe_payment_intent_id || ord.stripe_session_id) && (
+                            <div className="text-[10px] text-[#777777]">
+                              {ord.stripe_payment_intent_id || ord.stripe_session_id}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 font-medium text-[#252525]">
+                          {ord.event_name || ord.event_id}
+                        </td>
+                        <td className="py-3.5 px-4 text-[#777777] tabular-nums">
+                          {new Date(ord.created_at).toLocaleDateString(undefined, {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </td>
+                        <td className="py-3.5 px-4 text-[#252525]">
+                          Event License ({ord.order_type === 'renewal' ? '12M Renewal' : '12M Purchase'})
+                        </td>
+                        <td className="py-3.5 px-4 font-mono font-medium tabular-nums text-[#252525]">
+                          ${((ord.amount || 0) / 100).toFixed(2)} {ord.currency?.toUpperCase() || 'USD'}
+                          {Number(ord.refund_amount || 0) > 0 && (
+                            <div className="text-[10px] text-amber-700">
+                              Refunded: ${(Number(ord.refund_amount) / 100).toFixed(2)}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <Badge variant={statusVariant as any} size="sm">
+                            {ordStatus.replace(/_/g, ' ')}
+                          </Badge>
+                          {ord.failure_reason && (
+                            <div className="text-[10px] text-red-700 mt-1 inline-flex items-center gap-1">
+                              <XCircle className="w-3 h-3 shrink-0" />
+                              <span>{ord.failure_reason}</span>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -646,7 +799,7 @@ export default function Subscription() {
         )}
 
         <div className="text-center text-xs text-[#777777] pt-4">
-          All transactions are processed authoritatively through Stripe with end-to-end 256-bit encryption. Need assistance? Contact support@eventframe.io.
+          All payments are processed and verified server-side via Stripe Checkout. Need help? Contact support@eventframe.io.
         </div>
       </div>
     </DashboardLayout>
