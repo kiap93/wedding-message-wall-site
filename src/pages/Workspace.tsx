@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Save, 
@@ -25,7 +25,8 @@ import {
   Sparkles,
   Globe,
   Eye,
-  EyeOff
+  EyeOff,
+  AlertCircle
 } from 'lucide-react';
 import { Agency, WeddingEvent, DEFAULT_TEMPLATES, TemplateId, WeddingTemplate } from '../types';
 import { isEventActive, getDaysRemaining, getPackageById } from '../lib/packages';
@@ -36,7 +37,7 @@ import RSVPFieldEditor from '../components/RSVPFieldEditor';
 import RSVPForm from '../components/RSVPForm';
 import MessageModerator from '../components/MessageModerator';
 import { API_BASE } from '../lib/config';
-import { authenticatedFetch, removeAuthToken } from '../lib/auth';
+import { authenticatedFetch, extractApiErrorMessage, removeAuthToken } from '../lib/auth';
 import { useWorkspace } from '../lib/WorkspaceContext';
 import { useUser } from '../lib/UserContext';
 import { fetchTemplates } from '../lib/templates';
@@ -47,6 +48,8 @@ import {
   buildWorkspaceUrl,
   getDashboardNavItem,
   isSameWorkspaceTarget,
+  isValidProjectIdFormat,
+  normalizeProjectIdParam,
   resolveWorkspaceView,
 } from '../lib/workspaceNavigation';
 import { LayoutDashboard, Mail, ClipboardList } from 'lucide-react';
@@ -60,24 +63,39 @@ import PageHeader from '../design-system/components/PageHeader';
 import Modal from '../design-system/components/Modal';
 import EmptyState from '../design-system/components/EmptyState';
 
+interface ProjectLoadError {
+  title: string;
+  message: string;
+  code?: string;
+  retryable?: boolean;
+}
+
+function normalizeEventRecord(event: any): WeddingEvent {
+  let parsedRsvpFields: any = null;
+  if (typeof event?.rsvp_fields === 'string') {
+    try {
+      const parsed = JSON.parse(event.rsvp_fields);
+      parsedRsvpFields = Array.isArray(parsed) ? parsed : null;
+    } catch {
+      parsedRsvpFields = null;
+    }
+  } else if (Array.isArray(event?.rsvp_fields)) {
+    parsedRsvpFields = event.rsvp_fields;
+  }
+
+  return {
+    ...event,
+    rsvp_fields: parsedRsvpFields,
+  };
+}
+
 export default function Workspace() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
   const { user } = useUser();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const view = resolveWorkspaceView(searchParams);
-  const projectParam = searchParams.get('project');
-  const rawViewParam = searchParams.get('view');
-
-  const navigateToView = useCallback(
-    (nextView: WorkspaceView, options?: { projectId?: string | null; replace?: boolean }) => {
-      const projectId = options?.projectId ?? null;
-      const shouldReplace =
-        options?.replace ?? isSameWorkspaceTarget(searchParams, nextView, projectId);
-      navigate(buildWorkspaceUrl(nextView, { projectId }), { replace: shouldReplace });
-    },
-    [navigate, searchParams]
-  );
+  const projectParam = normalizeProjectIdParam(searchParams);
 
   // Agency
   const [agency, setAgency] = useState<Agency | null>(null);
@@ -86,6 +104,7 @@ export default function Workspace() {
   // Event List
   const [events, setEvents] = useState<WeddingEvent[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(true);
+  const [eventsLoadError, setEventsLoadError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -94,6 +113,10 @@ export default function Workspace() {
 
   // Current Editor State
   const [editingEvent, setEditingEvent] = useState<Partial<WeddingEvent> | null>(null);
+  const [isDraftNewProject, setIsDraftNewProject] = useState(false);
+  const [directProjectLoading, setDirectProjectLoading] = useState(false);
+  const [projectLoadError, setProjectLoadError] = useState<ProjectLoadError | null>(null);
+  const [retryCounter, setRetryCounter] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
   const [activeEditorTab, setActiveEditorTab] = useState<'overview' | 'aesthetic' | 'rsvp' | 'form' | 'moderation' | 'invitation' | 'website'>('overview');
@@ -102,6 +125,31 @@ export default function Workspace() {
 
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showRSVPPreview, setShowRSVPPreview] = useState(false);
+
+  const editingEventIdRef = useRef<string | null>(null);
+  editingEventIdRef.current = editingEvent?.id ?? null;
+
+  const resetEditorState = useCallback(() => {
+    setEditingEvent(null);
+    setIsDraftNewProject(false);
+    setDirectProjectLoading(false);
+    setProjectLoadError(null);
+    setActiveEditorTab('overview');
+    setGuestSuiteSubTab('guests');
+  }, []);
+
+  const navigateToView = useCallback(
+    (nextView: WorkspaceView, options?: { projectId?: string | null; replace?: boolean }) => {
+      const projectId = nextView === 'editor' ? options?.projectId ?? null : null;
+      if (nextView !== 'editor') {
+        resetEditorState();
+      }
+      const shouldReplace =
+        options?.replace ?? isSameWorkspaceTarget(searchParams, nextView, projectId);
+      navigate(buildWorkspaceUrl(nextView, { projectId }), { replace: shouldReplace });
+    },
+    [navigate, searchParams, resetEditorState]
+  );
 
   useEffect(() => {
     async function load() {
@@ -113,24 +161,25 @@ export default function Workspace() {
 
   const fetchEvents = useCallback(async (agencyId: string) => {
     setIsLoadingEvents(true);
+    setEventsLoadError(null);
     try {
       const response = await authenticatedFetch(
         `${API_BASE}/api/projects?agency_id=${encodeURIComponent(agencyId)}`
       );
       if (!response.ok) {
-        console.error('Error fetching events:', response.status);
+        const errBody = await response.json().catch(() => ({}));
+        const errMsg = extractApiErrorMessage(errBody, `Failed to load events (${response.status})`);
+        console.error('Error fetching events:', response.status, errMsg);
+        setEventsLoadError(errMsg);
       } else {
-        const payload = await response.json();
-        const eventList = (payload?.data || []).map((event: any) => ({
-          ...event,
-          rsvp_fields: typeof event.rsvp_fields === 'string'
-            ? JSON.parse(event.rsvp_fields)
-            : (Array.isArray(event.rsvp_fields) ? event.rsvp_fields : null)
-        }));
+        const payload = await response.json().catch(() => ({}));
+        const rawList = Array.isArray(payload?.data) ? payload.data : [];
+        const eventList = rawList.map(normalizeEventRecord);
         setEvents(eventList);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching events:', error);
+      setEventsLoadError(error?.message || 'Unable to connect to load wedding events.');
     } finally {
       setIsLoadingEvents(false);
     }
@@ -146,18 +195,26 @@ export default function Workspace() {
         setAgency(workspace);
         await fetchEvents(workspace.id);
       } else {
+        setIsLoadingEvents(true);
+        setEventsLoadError(null);
         try {
           const response = await authenticatedFetch(`${API_BASE}/api/agencies/me`);
-          if (cancelled || response.status === 401 || response.status === 403) {
-            return;
-          }
+          if (cancelled) return;
           if (!response.ok) {
-            console.error('Error fetching user agencies:', response.status);
-            if (!cancelled) setIsLoadingEvents(false);
+            const errBody = await response.json().catch(() => ({}));
+            const errMsg = extractApiErrorMessage(
+              errBody,
+              response.status === 401 || response.status === 403
+                ? 'Your session lacks permission to access this workspace.'
+                : 'Unable to load your workspace organizations.'
+            );
+            console.error('Error fetching user agencies:', response.status, errMsg);
+            setEventsLoadError(errMsg);
+            setIsLoadingEvents(false);
             return;
           }
 
-          const payload = await response.json();
+          const payload = await response.json().catch(() => ({}));
           const userAgencies = Array.isArray(payload?.agencies) ? payload.agencies : [];
           if (cancelled) return;
 
@@ -166,11 +223,15 @@ export default function Workspace() {
             setAgency(primaryWorkspace);
             await fetchEvents(primaryWorkspace.id);
           } else {
+            setIsLoadingEvents(false);
             navigate('/onboarding');
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('Error fetching user agencies:', err);
-          if (!cancelled) setIsLoadingEvents(false);
+          if (!cancelled) {
+            setEventsLoadError(err?.message || 'Network error while loading workspace.');
+            setIsLoadingEvents(false);
+          }
         }
       }
     };
@@ -179,51 +240,157 @@ export default function Workspace() {
     return () => {
       cancelled = true;
     };
-  }, [workspace?.id, isLoadingWorkspace, user?.id, fetchEvents, navigate]);
+  }, [workspace?.id, isLoadingWorkspace, user?.id, fetchEvents, navigate, retryCounter]);
 
-  // Keep selected editor event synchronized with URL ?view=editor&project=<id>
+  const handleRetryProjectLoad = useCallback(() => {
+    setProjectLoadError(null);
+    setEventsLoadError(null);
+    if (agency?.id) {
+      fetchEvents(agency.id);
+    }
+    setRetryCounter((c) => c + 1);
+  }, [agency?.id, fetchEvents]);
+
+  // Synchronize selected editor project cleanly with URL ?view=editor&project=<id>
+  // Never leave stale editor state in memory when exiting to grid/calendar, and never trap on invalid/failed loads.
   useEffect(() => {
-    if (isLoadingEvents) return;
-
-    if (view === 'editor') {
-      if (projectParam) {
-        const targetEvent = events.find((e) => e.id === projectParam);
-        if (targetEvent) {
-          if (editingEvent?.id !== targetEvent.id) {
-            setEditingEvent({ ...targetEvent });
-            setActiveEditorTab('overview');
-            setGuestSuiteSubTab('guests');
-          }
-        } else {
-          navigateToView('grid', { replace: true });
-        }
-      } else if (!editingEvent) {
-        navigateToView('grid', { replace: true });
-      }
+    if (view !== 'editor') {
+      resetEditorState();
       return;
     }
 
-    if (
-      agency?.user_role === 'couple' &&
-      !rawViewParam &&
-      !projectParam &&
-      events.length > 0
-    ) {
-      const firstEvent = events[0];
-      setEditingEvent({ ...firstEvent });
+    if (!projectParam) {
+      if (isDraftNewProject) {
+        setProjectLoadError(null);
+        setDirectProjectLoading(false);
+        return;
+      }
+      setEditingEvent(null);
+      setDirectProjectLoading(false);
+      setProjectLoadError({
+        title: 'No Wedding Project Selected',
+        message: 'Select an existing wedding event from the Grid or Calendar, or create a new wedding event.',
+        code: 'MISSING_PROJECT_ID',
+        retryable: false,
+      });
+      return;
+    }
+
+    if (isDraftNewProject) {
+      setIsDraftNewProject(false);
+    }
+
+    if (!isValidProjectIdFormat(projectParam)) {
+      setEditingEvent(null);
+      setDirectProjectLoading(false);
+      setProjectLoadError({
+        title: 'Invalid Project ID',
+        message: `The project identifier "${projectParam}" is invalid.`,
+        code: 'INVALID_PROJECT_ID',
+        retryable: false,
+      });
+      return;
+    }
+
+    if (editingEventIdRef.current === projectParam) {
+      setProjectLoadError(null);
+      setDirectProjectLoading(false);
+      return;
+    }
+
+    const matchedFromList = events.find((e) => e.id === projectParam);
+    if (matchedFromList) {
+      setEditingEvent({ ...matchedFromList });
       setActiveEditorTab('overview');
       setGuestSuiteSubTab('guests');
-      navigateToView('editor', { projectId: firstEvent.id, replace: true });
+      setProjectLoadError(null);
+      setDirectProjectLoading(false);
+      return;
     }
+
+    if (isLoadingEvents) {
+      return;
+    }
+
+    let cancelled = false;
+    const loadSingleProject = async () => {
+      setDirectProjectLoading(true);
+      setProjectLoadError(null);
+
+      try {
+        const res = await authenticatedFetch(
+          `${API_BASE}/api/projects/${encodeURIComponent(projectParam)}`
+        );
+        if (cancelled) return;
+
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = extractApiErrorMessage(payload, 'Unable to load wedding project.');
+          let title = 'Unable to Load Wedding Project';
+          if (res.status === 404 || res.status === 422) {
+            title = 'Wedding Project Not Found';
+          } else if (res.status === 403 || res.status === 401) {
+            title = 'Access Denied';
+          }
+          setEditingEvent(null);
+          setProjectLoadError({
+            title,
+            message: msg,
+            code: payload?.code || `HTTP_${res.status}`,
+            retryable: res.status >= 500 || res.status === 408 || res.status === 429,
+          });
+          return;
+        }
+
+        const rawProject = payload?.data || payload?.project || null;
+        if (!rawProject || !rawProject.id) {
+          setEditingEvent(null);
+          setProjectLoadError({
+            title: 'Wedding Project Not Found',
+            message: 'The requested wedding project could not be found.',
+            code: 'PROJECT_NOT_FOUND',
+            retryable: false,
+          });
+          return;
+        }
+
+        const normalized = normalizeEventRecord(rawProject);
+        setEditingEvent(normalized);
+        setActiveEditorTab('overview');
+        setGuestSuiteSubTab('guests');
+        setProjectLoadError(null);
+        if (payload?.agency && !agency) {
+          setAgency(payload.agency);
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        setEditingEvent(null);
+        setProjectLoadError({
+          title: 'Unable to Load Wedding Project',
+          message: err?.message || 'A network error occurred while loading this project.',
+          code: 'NETWORK_ERROR',
+          retryable: true,
+        });
+      } finally {
+        if (!cancelled) {
+          setDirectProjectLoading(false);
+        }
+      }
+    };
+
+    loadSingleProject();
+    return () => {
+      cancelled = true;
+    };
   }, [
     view,
     projectParam,
-    rawViewParam,
     events,
     isLoadingEvents,
-    agency?.user_role,
-    editingEvent,
-    navigateToView,
+    isDraftNewProject,
+    retryCounter,
+    agency,
+    resetEditorState,
   ]);
 
   const handleSaveAgency = async (agencyData: Partial<Agency>) => {
@@ -292,12 +459,6 @@ export default function Workspace() {
   const isCouple = agency?.user_role === 'couple';
   const isStaff = user?.is_developer === true || user?.isDeveloper === true;
 
-  useEffect(() => {
-    if (isCouple && events.length === 0 && view === 'grid' && !rawViewParam && !isLoadingEvents && !editingEvent) {
-      handleCreateNew();
-    }
-  }, [isCouple, events.length, view, rawViewParam, isLoadingEvents, editingEvent]);
-
   const handleCreateNew = () => {
     if (!agency) return;
     if (isCouple && events.length >= 1) {
@@ -322,12 +483,18 @@ export default function Workspace() {
       payment_status: 'unpaid',
       package_id: 'standard'
     };
+    setProjectLoadError(null);
+    setDirectProjectLoading(false);
+    setIsDraftNewProject(true);
     setEditingEvent(newEvent);
     setActiveEditorTab('aesthetic');
     navigateToView('editor');
   };
 
   const handleEdit = (event: WeddingEvent) => {
+    setProjectLoadError(null);
+    setDirectProjectLoading(false);
+    setIsDraftNewProject(false);
     setEditingEvent({ ...event });
     setActiveEditorTab(event.id ? 'overview' : 'aesthetic');
     setGuestSuiteSubTab('guests');
@@ -751,6 +918,18 @@ export default function Workspace() {
           </div>
 
           {/* Events Grid */}
+          {eventsLoadError && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-rose-800">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{eventsLoadError}</span>
+              </div>
+              <Button variant="outline" size="sm" onClick={handleRetryProjectLoad}>
+                Retry
+              </Button>
+            </div>
+          )}
+
           {isLoadingEvents ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[1, 2, 3].map(i => (
@@ -1159,14 +1338,101 @@ export default function Workspace() {
         </div>
       ) : (
         /* Event Configuration Editor */
-        !editingEvent ? (
-          <div className="bg-white rounded-lg border border-[#E8E8E5] shadow-subtle p-10 flex flex-col items-center justify-center gap-3">
+        projectLoadError ? (
+          <div className="max-w-xl mx-auto bg-white rounded-xl border border-[#E6E0D6] shadow-subtle p-8 text-center space-y-4">
+            <div className="w-11 h-11 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center mx-auto text-rose-600">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div className="space-y-1.5">
+              <h2 className="text-lg font-semibold text-[#23201C]">{projectLoadError.title}</h2>
+              <p className="text-xs text-[#6E6456] leading-relaxed">{projectLoadError.message}</p>
+              {projectParam && (
+                <p className="text-[11px] font-mono text-[#8A8276] pt-1">
+                  Project ID: {projectParam}
+                </p>
+              )}
+            </div>
+            <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5">
+              {projectLoadError.retryable !== false && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleRetryProjectLoad}
+                  leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+                >
+                  Retry
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigateToView('grid')}
+                leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
+              >
+                Back to Grid View
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigateToView('calendar')}
+                leftIcon={<CalendarIcon className="w-3.5 h-3.5" />}
+              >
+                Event Calendar
+              </Button>
+            </div>
+          </div>
+        ) : !editingEvent || directProjectLoading ? (
+          <div className="bg-white rounded-lg border border-[#E8E8E5] shadow-subtle p-10 flex flex-col items-center justify-center gap-4">
             <div className="w-5 h-5 border-2 border-[#252525] border-t-transparent rounded-full animate-spin" />
             <p className="text-xs text-[#777777]">Loading wedding configuration...</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigateToView('grid')}
+              leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
+            >
+              Back to Grid View
+            </Button>
           </div>
         ) : (
         <div className="space-y-6">
-          {activeEditorTab !== 'overview' && (
+          {activeEditorTab === 'overview' ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-1 border-b border-[#EFEAE0]">
+              <nav className="flex items-center gap-1.5 text-xs text-[#7A7368]" aria-label="Breadcrumb">
+                <button
+                  type="button"
+                  onClick={() => navigateToView('grid')}
+                  className="hover:text-[#23201C] transition-colors font-medium"
+                >
+                  Weddings
+                </button>
+                <span className="text-[#C7BFA9]">/</span>
+                <span className="text-[#23201C] font-medium truncate max-w-[220px] sm:max-w-xs">
+                  {editingEvent?.groom_name && editingEvent?.bride_name
+                    ? `${editingEvent.groom_name} & ${editingEvent.bride_name}`
+                    : editingEvent?.name || 'Event Overview'}
+                </span>
+              </nav>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigateToView('grid')}
+                  leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
+                >
+                  Back to Grid View
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigateToView('calendar')}
+                  leftIcon={<CalendarIcon className="w-3.5 h-3.5" />}
+                >
+                  Event Calendar
+                </Button>
+              </div>
+            </div>
+          ) : (
             <PageHeader
               title={
                 editingEvent?.groom_name && editingEvent?.bride_name
@@ -1187,8 +1453,9 @@ export default function Workspace() {
                     variant="outline"
                     size="sm"
                     onClick={() => navigateToView('grid')}
+                    leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
                   >
-                    Back to Events
+                    Back to Grid View
                   </Button>
                   <Button
                     variant="primary"

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Layout, Globe, ArrowRight, CheckCircle2, Building2, Heart, ArrowLeft } from 'lucide-react';
 import { API_BASE } from '../lib/config';
 import { authenticatedFetch, extractApiErrorMessage } from '../lib/auth';
+import { buildWorkspaceUrl } from '../lib/workspaceNavigation';
 import { useUser } from '../lib/UserContext';
 import Button from '../design-system/components/Button';
 import Input from '../design-system/components/Input';
@@ -101,7 +102,11 @@ export default function Onboarding() {
       if (role === 'agency' && !isPreviewOrLocalDomain(window.location.hostname)) {
         window.location.replace(`${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
       } else {
-        window.location.replace(`/workspace${createdProjectId ? `?project=${createdProjectId}` : ''}`);
+        window.location.replace(
+          createdProjectId
+            ? buildWorkspaceUrl('editor', { projectId: createdProjectId })
+            : buildWorkspaceUrl('grid')
+        );
       }
 
     } catch (err: any) {
