@@ -8,7 +8,11 @@ import {
   VenueLayoutObject,
   WeddingEvent,
 } from '../types';
-import { normalizeVenueLayout } from '../utils/venueCoordinates';
+import {
+  getCanonicalObjectDefaults,
+  METERS_TO_FEET,
+  normalizeVenueLayout,
+} from '../utils/venueCoordinates';
 import { EditorElement } from '../editor/store';
 
 export interface OverviewStats {
@@ -67,21 +71,34 @@ export interface ParsedInvitationConfig {
   hasCustomDesign: boolean;
 }
 
+export type FloorPlanTableShape = 'round' | 'oval' | 'rectangular' | 'square' | 'custom';
+
 export interface FloorPlanProjectedObject {
   id: string;
   objectType: VenueLayoutObject['object_type'];
   label: string;
+  /** Legacy percentage fields preserved for compatibility */
   xPct: number;
   yPct: number;
   wPct: number;
   hPct: number;
+  /** Canonical world-space coordinates in venueUnit */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
   rotation: number;
   isTable: boolean;
+  isCoupleTable: boolean;
   isRound: boolean;
+  isOval: boolean;
+  isSquare: boolean;
+  tableShape: FloorPlanTableShape;
   tableNumber?: string;
   assignedCount?: number;
   capacity?: number;
   color?: string;
+  textColor?: string;
 }
 
 export interface FloorPlanPreviewModel {
@@ -89,8 +106,57 @@ export interface FloorPlanPreviewModel {
   venueHeight: number;
   venueUnit: 'm' | 'ft';
   venueName: string;
+  gridUnitStep: number;
   objects: FloorPlanProjectedObject[];
   hasObjects: boolean;
+}
+
+export interface FloorPlanPadding {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+export interface UniformFloorPlanTransform {
+  containerWidth: number;
+  containerHeight: number;
+  hallWidth: number;
+  hallHeight: number;
+  /** Uniform scale in SVG px per world unit (always scaleX === scaleY) */
+  scale: number;
+  scaleX: number;
+  scaleY: number;
+  renderedWidth: number;
+  renderedHeight: number;
+  offsetX: number;
+  offsetY: number;
+  padding: FloorPlanPadding;
+}
+
+export interface FloorPlanChairPoint {
+  cx: number;
+  cy: number;
+  r: number;
+  isHeadChair?: boolean;
+}
+
+export interface UniformScreenObject {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  cx: number;
+  cy: number;
+  circleDiameter: number;
+  circleRadius: number;
+  rx: number;
+  ry: number;
+  rotation: number;
+  pivotX: number;
+  pivotY: number;
+  chairs: FloorPlanChairPoint[];
 }
 
 export interface OverviewWidgetErrors {
@@ -470,8 +536,9 @@ export function extractEventMilestones(
 }
 
 /**
- * Projects VenueLayout + SeatingTables into percentage coordinates [0..100]
- * for a crisp miniature floor plan SVG preview.
+ * Projects VenueLayout + SeatingTables into canonical world-space coordinates
+ * (plus normalized percentage coordinates for backward-compatible callers).
+ * Never mutates the input layout.
  */
 export function projectFloorPlanPreview(
   layout: VenueLayout | null,
@@ -497,6 +564,12 @@ export function projectFloorPlanPreview(
       venueHeight,
       venueUnit: unit,
       venueName: layout?.venue_name || layout?.layout_name || 'Main Ballroom',
+      gridUnitStep:
+        layout?.grid_unit_step && layout.grid_unit_step > 0
+          ? layout.grid_unit_step
+          : unit === 'ft'
+          ? 2
+          : 1,
       objects: [],
       hasObjects: false,
     };
@@ -504,31 +577,76 @@ export function projectFloorPlanPreview(
 
   const normalized = normalizeVenueLayout(layout);
   const normUnit: 'm' | 'ft' = normalized.venue_unit === 'ft' ? 'ft' : 'm';
-  const normW = normalized.venue_width || venueWidth;
-  const normH = normalized.venue_height || venueHeight;
+  const normW = normalized.venue_width > 0 ? normalized.venue_width : venueWidth;
+  const normH = normalized.venue_height > 0 ? normalized.venue_height : venueHeight;
+  const gridUnitStep =
+    normalized.grid_unit_step && normalized.grid_unit_step > 0
+      ? normalized.grid_unit_step
+      : normUnit === 'ft'
+      ? 2
+      : 1;
 
   const tableMap = new Map<string, SeatingTable>();
   tables.forEach((t) => tableMap.set(t.id, t));
+
+  const ovalTolerance = normUnit === 'ft' ? 0.35 : 0.1;
 
   const projected: FloorPlanProjectedObject[] = normalized.objects
     .slice()
     .sort((a, b) => (a.z_index || 0) - (b.z_index || 0))
     .map((obj) => {
-      const xPct = Math.max(0, Math.min(100, (obj.position_x / normW) * 100));
-      const yPct = Math.max(0, Math.min(100, (obj.position_y / normH) * 100));
-      const wPct = Math.max(1.5, Math.min(100, (obj.width / normW) * 100));
-      const hPct = Math.max(1.5, Math.min(100, (obj.height / normH) * 100));
+      const worldX = Number.isFinite(obj.position_x) ? obj.position_x : 0;
+      const worldY = Number.isFinite(obj.position_y) ? obj.position_y : 0;
+      const worldW =
+        Number.isFinite(obj.width) && obj.width > 0
+          ? obj.width
+          : getCanonicalObjectDefaults(obj.object_type, normUnit).width;
+      const worldH =
+        Number.isFinite(obj.height) && obj.height > 0
+          ? obj.height
+          : getCanonicalObjectDefaults(obj.object_type, normUnit).height;
+
+      const xPct = Math.max(0, Math.min(100, (worldX / normW) * 100));
+      const yPct = Math.max(0, Math.min(100, (worldY / normH) * 100));
+      const wPct = Math.max(1.5, Math.min(100, (worldW / normW) * 100));
+      const hPct = Math.max(1.5, Math.min(100, (worldH / normH) * 100));
 
       const linkedTable = obj.object_reference_id
         ? tableMap.get(obj.object_reference_id)
         : undefined;
-      const isTable =
-        obj.object_type === 'table' || obj.object_type === 'couple_table';
-      const isRound =
+      const isCoupleTable = obj.object_type === 'couple_table';
+      const isTable = obj.object_type === 'table' || isCoupleTable;
+
+      const rawShape = String(
+        linkedTable?.table_type || obj.properties?.tableShape || 'round'
+      ).toLowerCase();
+
+      const tableShape: FloorPlanTableShape =
+        rawShape === 'rectangular' || rawShape === 'custom'
+          ? (rawShape as FloorPlanTableShape)
+          : rawShape === 'square'
+          ? 'square'
+          : rawShape === 'oval'
+          ? 'oval'
+          : !linkedTable &&
+            !obj.properties?.tableShape &&
+            Math.abs(worldW - worldH) >= 0.25
+          ? 'rectangular'
+          : 'round';
+
+      const isSquare = obj.object_type === 'table' && tableShape === 'square';
+      const isOval =
         obj.object_type === 'table' &&
-        (linkedTable?.table_type === 'round' ||
-          obj.properties?.tableShape === 'round' ||
-          (!linkedTable && Math.abs(obj.width - obj.height) < 0.25));
+        (tableShape === 'oval' ||
+          (tableShape === 'round' && Math.abs(worldW - worldH) > ovalTolerance && obj.properties?.tableShape === 'oval'));
+      const isRound =
+        obj.object_type === 'table' && tableShape === 'round' && !isOval;
+
+      const defaults = getCanonicalObjectDefaults(
+        obj.object_type,
+        normUnit,
+        tableShape
+      );
 
       return {
         id: obj.id,
@@ -536,28 +654,271 @@ export function projectFloorPlanPreview(
         label:
           linkedTable?.table_number
             ? `T${linkedTable.table_number}`
-            : obj.label || obj.object_type.replace('_', ' '),
+            : obj.label || defaults.label || obj.object_type.replace('_', ' '),
         xPct,
         yPct,
         wPct,
         hPct,
+        x: worldX,
+        y: worldY,
+        width: worldW,
+        height: worldH,
         rotation: obj.rotation || 0,
         isTable,
+        isCoupleTable,
         isRound,
+        isOval,
+        isSquare,
+        tableShape,
         tableNumber: linkedTable?.table_number || obj.properties?.tableNumber,
         assignedCount: linkedTable?.assigned_count ?? 0,
         capacity: linkedTable?.capacity ?? obj.properties?.capacity,
-        color: obj.properties?.color,
+        color: obj.properties?.color || defaults.properties?.color,
+        textColor: obj.properties?.textColor || defaults.properties?.textColor,
       };
     });
 
   return {
-    venueWidth,
-    venueHeight,
-    venueUnit: unit,
-    venueName: layout?.venue_name || layout?.layout_name || 'Main Ballroom',
+    venueWidth: normW,
+    venueHeight: normH,
+    venueUnit: normUnit,
+    venueName:
+      normalized.venue_name ||
+      layout.venue_name ||
+      layout.layout_name ||
+      'Main Ballroom',
+    gridUnitStep,
     objects: projected,
     hasObjects: projected.length > 0,
+  };
+}
+
+export function getDefaultFloorPlanPadding(containerWidth: number): FloorPlanPadding {
+  if (containerWidth < 400) {
+    return { top: 24, right: 12, bottom: 12, left: 28 };
+  }
+  return { top: 28, right: 18, bottom: 16, left: 34 };
+}
+
+/**
+ * Computes responsive SVG stage dimensions for a measured container width,
+ * preserving natural aspect ratios for landscape, portrait, and narrow halls
+ * while keeping height bounded cleanly across desktop and mobile viewports.
+ */
+export function computeResponsiveFloorPlanStageSize(
+  availableWidth: number,
+  hallWidth: number,
+  hallHeight: number,
+  options?: {
+    minHeight?: number;
+    maxHeight?: number;
+    padding?: FloorPlanPadding;
+  }
+): { width: number; height: number } {
+  const safeWidth = Math.max(220, Math.round(availableWidth || 600));
+  const padding = options?.padding ?? getDefaultFloorPlanPadding(safeWidth);
+  const isCompact = safeWidth < 420;
+  const minHeight = options?.minHeight ?? (isCompact ? 180 : 220);
+  const maxHeight = options?.maxHeight ?? (isCompact ? 300 : 380);
+
+  const safeHallW = hallWidth > 0 ? hallWidth : 30;
+  const safeHallH = hallHeight > 0 ? hallHeight : 20;
+
+  const innerW = Math.max(60, safeWidth - padding.left - padding.right);
+  const idealInnerH = innerW * (safeHallH / safeHallW);
+
+  const minInnerH = Math.max(80, minHeight - padding.top - padding.bottom);
+  const maxInnerH = Math.max(minInnerH, maxHeight - padding.top - padding.bottom);
+  const clampedInnerH = Math.max(minInnerH, Math.min(maxInnerH, Math.round(idealInnerH)));
+
+  return {
+    width: safeWidth,
+    height: clampedInnerH + padding.top + padding.bottom,
+  };
+}
+
+/**
+ * Computes a single uniform scale (`scale = min(innerW / hallW, innerH / hallH)`)
+ * and centered offsets for rendering any venue aspect ratio without distortion.
+ */
+export function computeUniformFloorPlanTransform(params: {
+  containerWidth: number;
+  containerHeight: number;
+  hallWidth: number;
+  hallHeight: number;
+  padding?: Partial<FloorPlanPadding>;
+}): UniformFloorPlanTransform {
+  const safeContainerW = Math.max(120, params.containerWidth);
+  const safeContainerH = Math.max(120, params.containerHeight);
+  const safeHallW = params.hallWidth > 0 ? params.hallWidth : 30;
+  const safeHallH = params.hallHeight > 0 ? params.hallHeight : 20;
+
+  const defaultPad = getDefaultFloorPlanPadding(safeContainerW);
+  const padding: FloorPlanPadding = {
+    top: params.padding?.top ?? defaultPad.top,
+    right: params.padding?.right ?? defaultPad.right,
+    bottom: params.padding?.bottom ?? defaultPad.bottom,
+    left: params.padding?.left ?? defaultPad.left,
+  };
+
+  const innerW = Math.max(20, safeContainerW - padding.left - padding.right);
+  const innerH = Math.max(20, safeContainerH - padding.top - padding.bottom);
+
+  const scale = Math.min(innerW / safeHallW, innerH / safeHallH);
+  const renderedWidth = safeHallW * scale;
+  const renderedHeight = safeHallH * scale;
+  const offsetX = padding.left + (innerW - renderedWidth) / 2;
+  const offsetY = padding.top + (innerH - renderedHeight) / 2;
+
+  return {
+    containerWidth: safeContainerW,
+    containerHeight: safeContainerH,
+    hallWidth: safeHallW,
+    hallHeight: safeHallH,
+    scale,
+    scaleX: scale,
+    scaleY: scale,
+    renderedWidth,
+    renderedHeight,
+    offsetX,
+    offsetY,
+    padding,
+  };
+}
+
+function computeTableChairPoints(
+  obj: FloorPlanProjectedObject,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  scale: number,
+  unit: 'm' | 'ft'
+): FloorPlanChairPoint[] {
+  if (obj.objectType !== 'table') return [];
+  const count = Math.min(24, Math.max(2, obj.capacity || 8));
+  const chairWorldDiam = unit === 'ft' ? 0.38 * METERS_TO_FEET : 0.38;
+  const chairSize = Math.max(3, chairWorldDiam * scale);
+  const chairR = chairSize / 2;
+  const gap = Math.max(1, chairR * 0.35);
+
+  const points: FloorPlanChairPoint[] = [];
+
+  if (obj.tableShape === 'rectangular' || obj.tableShape === 'custom') {
+    const hasEndChairs = count >= 6 && width >= chairSize * 3 && height >= chairSize * 1.8;
+    const endCount = hasEndChairs ? 2 : 0;
+    const sideTotal = Math.max(2, count - endCount);
+    const topCount = Math.ceil(sideTotal / 2);
+    const botCount = Math.max(1, sideTotal - topCount);
+
+    const topStep = width / (topCount + 1);
+    for (let i = 1; i <= topCount; i++) {
+      points.push({
+        cx: x + topStep * i,
+        cy: y - chairR - gap,
+        r: chairR,
+      });
+    }
+    const botStep = width / (botCount + 1);
+    for (let i = 1; i <= botCount; i++) {
+      points.push({
+        cx: x + botStep * i,
+        cy: y + height + chairR + gap,
+        r: chairR,
+      });
+    }
+    if (hasEndChairs) {
+      points.push(
+        {
+          cx: x - chairR - gap,
+          cy: y + height / 2,
+          r: chairR,
+          isHeadChair: true,
+        },
+        {
+          cx: x + width + chairR + gap,
+          cy: y + height / 2,
+          r: chairR,
+          isHeadChair: true,
+        }
+      );
+    }
+    return points;
+  }
+
+  if (obj.tableShape === 'square') {
+    const basePerSide = Math.floor(count / 4);
+    const remainder = count % 4;
+    const sides = [0, 1, 2, 3].map((s) => basePerSide + (s < remainder ? 1 : 0));
+
+    for (let i = 1; i <= sides[0]; i++) {
+      points.push({ cx: x + (width / (sides[0] + 1)) * i, cy: y - chairR - gap, r: chairR });
+    }
+    for (let i = 1; i <= sides[1]; i++) {
+      points.push({ cx: x + width + chairR + gap, cy: y + (height / (sides[1] + 1)) * i, r: chairR });
+    }
+    for (let i = 1; i <= sides[2]; i++) {
+      points.push({ cx: x + (width / (sides[2] + 1)) * i, cy: y + height + chairR + gap, r: chairR });
+    }
+    for (let i = 1; i <= sides[3]; i++) {
+      points.push({ cx: x - chairR - gap, cy: y + (height / (sides[3] + 1)) * i, r: chairR });
+    }
+    return points;
+  }
+
+  // Round / oval radial chairs (uniformly scaled radii)
+  const rx = (obj.isRound ? Math.min(width, height) / 2 : width / 2) + chairR + gap;
+  const ry = (obj.isRound ? Math.min(width, height) / 2 : height / 2) + chairR + gap;
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * 2 * Math.PI;
+    points.push({
+      cx: cx + rx * Math.cos(angle),
+      cy: cy + ry * Math.sin(angle),
+      r: chairR,
+    });
+  }
+
+  return points;
+}
+
+/**
+ * Projects a canonical world-space object into uniform screen/SVG coordinates.
+ * Rotation pivots around top-left (x, y) to match WeddingHallPlanner Konva Groups.
+ */
+export function projectObjectWithUniformScale(
+  obj: FloorPlanProjectedObject,
+  transform: UniformFloorPlanTransform,
+  unit: 'm' | 'ft' = 'm'
+): UniformScreenObject {
+  const { scale, offsetX, offsetY } = transform;
+  const x = offsetX + obj.x * scale;
+  const y = offsetY + obj.y * scale;
+  const width = obj.width * scale;
+  const height = obj.height * scale;
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const circleDiameter = Math.min(width, height);
+  const circleRadius = circleDiameter / 2;
+
+  return {
+    id: obj.id,
+    x,
+    y,
+    width,
+    height,
+    cx,
+    cy,
+    circleDiameter,
+    circleRadius,
+    rx: width / 2,
+    ry: height / 2,
+    rotation: obj.rotation || 0,
+    pivotX: x,
+    pivotY: y,
+    chairs: computeTableChairPoints(obj, x, y, width, height, scale, unit),
   };
 }
 
