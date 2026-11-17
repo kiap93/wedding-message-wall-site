@@ -17,6 +17,7 @@ import {
   getBillingHistoryForUser,
 } from '../server/billingService';
 import { configureSupabase } from '../server/supabaseAdmin';
+import { sendEventFrameEmail } from '../server/emailService';
 import {
   registerWorkerDeveloperRoutes,
   verifyWorkerSessionWithDb,
@@ -1129,20 +1130,13 @@ app.post('/api/auth/email', async (c) => {
     console.log(`Verify link: ${verifyUrl}`);
     console.log('-------------------');
 
-    // Attempt to send real email if configured
-    if (c.env.RESEND_API_KEY) {
-      try {
-        const res = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${c.env.RESEND_API_KEY}`
-          },
-          body: JSON.stringify({
-            from: 'Wedding Manager <onboarding@resend.dev>', // Default for unverified domains
-            to: email,
-            subject: mode === 'signup' ? 'Verify your Wedding Manager account' : 'Sign in to Wedding Manager',
-            html: `
+    // Send email via centralized Resend service (auth/verification: never CC)
+    const emailResult = await sendEventFrameEmail({
+      apiKey: c.env.RESEND_API_KEY,
+      category: mode === 'signup' ? 'email_verification' : 'login_verification',
+      to: email,
+      subject: mode === 'signup' ? 'Verify your Wedding Manager account' : 'Sign in to Wedding Manager',
+      html: `
               <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #FDFCF0; border-radius: 20px;">
                 <h1 style="color: #2D2424; text-align: center;">Wedding Manager</h1>
                 <div style="background-color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
@@ -1161,22 +1155,22 @@ app.post('/api/auth/email', async (c) => {
                   </p>
                 </div>
               </div>
-            `
-          })
-        });
-        
-        if (res.ok) {
-          console.log(`[WORKER] Email sent successfully via Resend to ${email}`);
-        } else {
-          const err = await res.text();
-          console.error(`[WORKER] Resend API error: ${err}`);
-        }
-      } catch (e) {
-        console.error('Worker Resend attempt failed:', e);
-      }
-    } else if (c.env.GMAIL_USER && c.env.GMAIL_PASS) {
-      console.log(`[WORKER] SMTP configured (${c.env.GMAIL_USER}), but direct SMTP is not supported in Workers. Please use Resend.`);
+            `,
+    });
+
+    if (!emailResult.ok) {
+      const failed = emailResult as Extract<typeof emailResult, { ok: false }>;
+      console.error(
+        `[WORKER] Resend email error (${failed.statusCode} ${failed.code}):`,
+        failed.providerMessage || failed.error
+      );
+      return c.json(
+        { success: false, error: failed.error, code: failed.code },
+        failed.statusCode as any
+      );
     }
+
+    console.log(`[WORKER] Email sent successfully via Resend to ${email} (id: ${emailResult.id || 'n/a'})`);
 
     return c.json({ 
       success: true, 
@@ -1290,24 +1284,24 @@ app.post('/api/auth/forgot-password', async (c) => {
         </div>
       `;
 
-      if (c.env.RESEND_API_KEY) {
-        try {
-          await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${c.env.RESEND_API_KEY}`
-            },
-            body: JSON.stringify({
-              from: 'Wedding Manager <onboarding@resend.dev>',
-              to: email,
-              subject: 'Reset your Wedding Manager password',
-              html: emailContent
-            })
-          });
-        } catch (e) {
-          console.error('Worker forgot password Resend failed:', e);
-        }
+      const emailResult = await sendEventFrameEmail({
+        apiKey: c.env.RESEND_API_KEY,
+        category: 'password_reset',
+        to: email,
+        subject: 'Reset your Wedding Manager password',
+        html: emailContent,
+      });
+
+      if (!emailResult.ok) {
+        const failed = emailResult as Extract<typeof emailResult, { ok: false }>;
+        console.error(
+          `[WORKER] Forgot password Resend failed (${failed.statusCode} ${failed.code}):`,
+          failed.providerMessage || failed.error
+        );
+        return c.json(
+          { success: false, error: failed.error, code: failed.code },
+          failed.statusCode as any
+        );
       }
     }
 
