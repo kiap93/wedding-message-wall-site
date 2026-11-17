@@ -1,5 +1,6 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { OAuth2Client } from 'google-auth-library';
@@ -25,6 +26,9 @@ import {
 import { EVENT_PRICING, formatPrice } from './src/config/pricing';
 import { EVENT_PACKAGES, getPackageById, isEventActive, getDaysRemaining } from './src/lib/packages';
 import { buildSitemapXml } from './src/seo/sitemap';
+import { shouldServeCleanAppShell } from './src/seo/appShell';
+import { PRIVATE_ROUTE_PATTERNS } from './src/seo/routes';
+import { normalizePathname } from './src/seo/canonical';
 import {
   BLOG_CATEGORIES,
   buildBlogPostHreflangLinks,
@@ -615,7 +619,14 @@ async function startServer() {
     // Capture the origin to redirect back to the correct area
     // Use query param > Origin header > default APP_URL
     const reqOrigin = (origin as string) || req.headers['origin'] || req.headers['referer'] || APP_URL;
-    const state = Buffer.from(JSON.stringify({ origin: reqOrigin })).toString('base64');
+    const redirectQuery = typeof req.query.redirect === 'string' ? req.query.redirect : null;
+    const safeRedirect =
+      redirectQuery && redirectQuery.startsWith('/') && !redirectQuery.startsWith('//')
+        ? redirectQuery
+        : null;
+    const state = Buffer.from(
+      JSON.stringify({ origin: reqOrigin, ...(safeRedirect ? { redirect: safeRedirect } : {}) })
+    ).toString('base64');
 
     // Dynamically use the host from the request to ensure redirect_uri matches
     let currentRedirectUri = `${APP_URL}/api/auth/callback`;
@@ -645,10 +656,14 @@ async function startServer() {
     const { code, state } = req.query;
     
     let targetOrigin = APP_URL;
+    let stateRedirectPath: string | null = null;
     if (state) {
       try {
         const decoded = JSON.parse(Buffer.from(state as string, 'base64').toString());
         if (decoded.origin) targetOrigin = decoded.origin;
+        if (typeof decoded.redirect === 'string' && decoded.redirect.startsWith('/') && !decoded.redirect.startsWith('//')) {
+          stateRedirectPath = decoded.redirect;
+        }
       } catch (e) {
         console.error('Failed to decode state:', e);
       }
@@ -737,11 +752,10 @@ async function startServer() {
         userIsDeveloper = syncResult.user?.is_developer === true;
       }
 
-      const landingPath = userIsDeveloper ? 'developer' : 'workspace';
-      // Use JS replace to ensure history cleanup and popup support
-      const redirectUrl = targetOrigin.endsWith('/')
-        ? `${targetOrigin}${landingPath}?token=${token}`
-        : `${targetOrigin}/${landingPath}?token=${token}`;
+      const landingPath = userIsDeveloper ? '/developer' : (stateRedirectPath || '/workspace');
+      const redirectTarget = new URL(landingPath, targetOrigin.endsWith('/') ? targetOrigin : `${targetOrigin}/`);
+      redirectTarget.searchParams.set('token', token);
+      const redirectUrl = redirectTarget.toString();
 
       res.send(`
         <!DOCTYPE html>
@@ -3483,8 +3497,18 @@ Return ONLY a valid JSON array of objects with the following schema:
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(__dirname, 'dist');
+    const appShellPath = path.join(distPath, 'app-shell', 'index.html');
+    app.use('/app-shell', (_req, res) => res.redirect(302, '/'));
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
+      const normalizedPath = normalizePathname(req.path);
+      if (PRIVATE_ROUTE_PATTERNS.some((pattern) => pattern.test(normalizedPath))) {
+        res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+      }
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+      if (shouldServeCleanAppShell(req.path, req.hostname) && fs.existsSync(appShellPath)) {
+        return res.sendFile(appShellPath);
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

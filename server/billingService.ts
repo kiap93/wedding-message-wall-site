@@ -31,6 +31,17 @@ export interface BillingAuthUser {
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ANY_UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidUuid(value?: string | null): boolean {
+  return Boolean(value && ANY_UUID_REGEX.test(String(value).trim()));
+}
+
+function isUuidSyntaxDbError(err: any): boolean {
+  const code = String(err?.code || '');
+  const msg = String(err?.message || '').toLowerCase();
+  return code === '22P02' || msg.includes('invalid input syntax for type uuid');
+}
 
 function generateUuid(): string {
   if (typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
@@ -171,13 +182,26 @@ export async function verifyUserEventOwnership(
     };
   }
 
+  const normalizedEventId = String(eventId || '').trim();
+  if (!normalizedEventId) {
+    return { ok: false, statusCode: 400, error: 'eventId is required', code: 'INVALID_EVENT_ID' };
+  }
+
   const { data: event, error: eventErr } = await supabase
     .from('projects')
     .select('*')
-    .eq('id', eventId)
+    .eq('id', normalizedEventId)
     .maybeSingle();
 
   if (eventErr) {
+    if (isUuidSyntaxDbError(eventErr)) {
+      return {
+        ok: false,
+        statusCode: 400,
+        error: `Invalid eventId UUID format: ${normalizedEventId}`,
+        code: 'INVALID_UUID_METADATA',
+      };
+    }
     return { ok: false, statusCode: 500, error: eventErr.message || 'Failed to look up event', code: 'DB_ERROR' };
   }
 
@@ -261,9 +285,21 @@ export async function activateEventPurchase(
   const effectiveAmount =
     amountPaidCents !== undefined ? Number(amountPaidCents) : EVENT_PRICING.priceInCents;
   const effectiveCurrency = String(currency || 'usd').toLowerCase();
-  const effectiveSessionId = stripeSessionId || (transactionId?.startsWith('cs_') ? transactionId : undefined);
-  const effectivePiId = stripePaymentIntentId || (transactionId?.startsWith('pi_') ? transactionId : undefined);
-  const effectiveTxId = effectivePiId || effectiveSessionId || transactionId || orderId;
+  const cleanEventId = String(eventId || '').trim();
+  const cleanAgencyId = agencyId ? String(agencyId).trim() || null : null;
+  const cleanOrderId = orderId ? String(orderId).trim() || null : null;
+  const cleanCustomerId = customerId ? String(customerId).trim() || 'customer' : 'customer';
+  const effectiveSessionId = (stripeSessionId || (transactionId?.startsWith('cs_') ? transactionId : undefined))?.trim() || undefined;
+  const effectivePiId = (stripePaymentIntentId || (transactionId?.startsWith('pi_') ? transactionId : undefined))?.trim() || undefined;
+  const effectiveTxId = effectivePiId || effectiveSessionId || transactionId?.trim() || cleanOrderId || undefined;
+
+  if (!cleanEventId) {
+    throw new Error('Invalid eventId: eventId is required for payment activation');
+  }
+
+  if (cleanOrderId && !isValidUuid(cleanOrderId)) {
+    throw new Error(`Invalid UUID metadata: orderId "${cleanOrderId}" is not a valid UUID`);
+  }
 
   // Enforce authoritative $5.00 USD pricing unless explicit legacy migration
   if (provider !== 'legacy_migration') {
@@ -280,13 +316,13 @@ export async function activateEventPurchase(
   // Authoritative PostgreSQL atomic RPC execution path
   if (supabase && typeof supabase.rpc === 'function') {
     const { data: rpcData, error: rpcError } = await supabase.rpc('complete_event_payment_order', {
-      p_order_id: orderId || null,
-      p_event_id: eventId,
-      p_agency_id: agencyId || null,
-      p_customer_id: customerId,
+      p_order_id: cleanOrderId,
+      p_event_id: cleanEventId,
+      p_agency_id: cleanAgencyId,
+      p_customer_id: cleanCustomerId,
       p_stripe_session_id: effectiveSessionId || null,
       p_stripe_payment_intent_id: effectivePiId || null,
-      p_stripe_charge_id: stripeChargeId || null,
+      p_stripe_charge_id: stripeChargeId?.trim() || null,
       p_amount_cents: effectiveAmount,
       p_currency: effectiveCurrency,
       p_provider: provider,
@@ -357,8 +393,11 @@ export async function activateEventPurchase(
       if (String(ordData.event_id) !== String(eventId)) {
         throw new Error(`Order ${orderId} does not belong to event ${eventId}`);
       }
-      if (agencyId && ordData.agency_id && String(ordData.agency_id) !== String(agencyId)) {
+      if (agencyId && ordData.agency_id && String(ordData.agency_id) !== 'unknown' && String(ordData.agency_id) !== String(agencyId)) {
         throw new Error(`Order ${orderId} does not belong to organization ${agencyId}`);
+      }
+      if (ordData.stripe_session_id && effectiveSessionId && ordData.stripe_session_id !== effectiveSessionId) {
+        throw new Error(`Order ${orderId} is bound to a different Stripe session`);
       }
       existingOrder = ordData;
       if (ordData.order_status === 'completed') {
@@ -931,7 +970,7 @@ export async function verifyAndCompleteCheckoutSession(params: {
     };
   }
 
-  // Validate checkout mode & metadata
+  // Validate checkout mode, status & metadata
   if (session.mode !== 'payment') {
     return {
       statusCode: 400,
@@ -987,27 +1026,95 @@ export async function verifyAndCompleteCheckoutSession(params: {
   }
 
   const sessionOrderId = session.metadata?.orderId || session.client_reference_id || undefined;
-  if (sessionOrderId) {
-    const { data: orderRow } = await supabase
-      .from('event_orders')
-      .select('id, event_id, agency_id')
-      .eq('id', sessionOrderId)
-      .maybeSingle();
+  if (!sessionOrderId) {
+    return {
+      statusCode: 400,
+      body: {
+        success: false,
+        code: 'MISSING_ORDER_METADATA',
+        error: 'Missing required orderId in Stripe Checkout session metadata.',
+      },
+    };
+  }
 
-    if (orderRow) {
-      if (String(orderRow.event_id) !== String(eventId)) {
-        return {
-          statusCode: 403,
-          body: { success: false, error: 'Security violation: Order event mismatch.' },
-        };
-      }
-      if (ownership.event.agency_id && String(orderRow.agency_id) !== String(ownership.event.agency_id)) {
-        return {
-          statusCode: 403,
-          body: { success: false, error: 'Security violation: Order organization mismatch.' },
-        };
-      }
-    }
+  if (!isValidUuid(sessionOrderId)) {
+    return {
+      statusCode: 400,
+      body: {
+        success: false,
+        code: 'INVALID_UUID_METADATA',
+        error: `Invalid orderId UUID format in Stripe session metadata: ${sessionOrderId}`,
+      },
+    };
+  }
+
+  const { data: orderRow, error: ordErr } = await supabase
+    .from('event_orders')
+    .select('id, event_id, agency_id, stripe_session_id, order_status')
+    .eq('id', sessionOrderId)
+    .maybeSingle();
+
+  if (ordErr) {
+    return {
+      statusCode: isUuidSyntaxDbError(ordErr) ? 400 : 500,
+      body: {
+        success: false,
+        error: `Order lookup failed: ${ordErr.message}`,
+      },
+    };
+  }
+
+  if (!orderRow) {
+    return {
+      statusCode: 404,
+      body: {
+        success: false,
+        code: 'ORDER_NOT_FOUND',
+        error: `Order '${sessionOrderId}' not found for Stripe Checkout session verification.`,
+      },
+    };
+  }
+
+  if (String(orderRow.event_id) !== String(eventId)) {
+    return {
+      statusCode: 403,
+      body: { success: false, error: 'Security violation: Order event mismatch.' },
+    };
+  }
+
+  if (
+    ownership.event.agency_id &&
+    orderRow.agency_id &&
+    String(orderRow.agency_id) !== 'unknown' &&
+    String(orderRow.agency_id) !== String(ownership.event.agency_id)
+  ) {
+    return {
+      statusCode: 403,
+      body: { success: false, error: 'Security violation: Order organization mismatch.' },
+    };
+  }
+
+  if (orderRow.stripe_session_id && orderRow.stripe_session_id !== session.id) {
+    return {
+      statusCode: 403,
+      body: {
+        success: false,
+        error: 'Security violation: Stripe Checkout session ID does not match order record.',
+      },
+    };
+  }
+
+  if (session.status === 'expired' && session.payment_status !== 'paid') {
+    return {
+      statusCode: 400,
+      body: {
+        success: false,
+        expired: true,
+        status: 'cancelled',
+        orderId: sessionOrderId,
+        error: 'Stripe Checkout session expired without payment completion. Please start a new checkout.',
+      },
+    };
   }
 
   if (session.payment_status !== 'paid') {
@@ -1018,7 +1125,7 @@ export async function verifyAndCompleteCheckoutSession(params: {
         pending: true,
         status: 'pending_payment',
         paymentStatus: session.payment_status,
-        orderId: sessionOrderId || null,
+        orderId: sessionOrderId,
         error: `Payment not yet settled (Stripe status: ${session.payment_status}). Waiting for webhook confirmation.`,
       },
     };
@@ -1070,6 +1177,10 @@ export async function cancelCheckoutOrder(params: {
     return { statusCode: 401, body: { error: 'Authentication required' } };
   }
 
+  if (!orderId || !isValidUuid(orderId)) {
+    return { statusCode: 400, body: { error: 'Invalid orderId UUID format' } };
+  }
+
   const { data: order, error: fetchErr } = await supabase
     .from('event_orders')
     .select('*')
@@ -1077,7 +1188,7 @@ export async function cancelCheckoutOrder(params: {
     .maybeSingle();
 
   if (fetchErr) {
-    return { statusCode: 500, body: { error: fetchErr.message } };
+    return { statusCode: isUuidSyntaxDbError(fetchErr) ? 400 : 500, body: { error: fetchErr.message } };
   }
   if (!order) {
     return { statusCode: 404, body: { error: 'Order not found' } };
@@ -1567,6 +1678,11 @@ export async function processStripeWebhookEvent(params: {
           await markWebhookResult('failed', msg);
           return { statusCode: 400, body: { error: msg } };
         }
+        if (!isValidUuid(orderId)) {
+          const msg = `Invalid orderId UUID format in webhook metadata: '${orderId}'.`;
+          await markWebhookResult('failed', msg);
+          return { statusCode: 400, body: { error: msg, code: 'INVALID_UUID_METADATA' } };
+        }
         relatedEventId = eventId;
         relatedOrderId = orderId;
 
@@ -1591,6 +1707,11 @@ export async function processStripeWebhookEvent(params: {
           .maybeSingle();
 
         if (ordErr) {
+          if (isUuidSyntaxDbError(ordErr)) {
+            const msg = `Invalid UUID metadata while fetching order '${orderId}': ${ordErr.message}`;
+            await markWebhookResult('failed', msg);
+            return { statusCode: 400, body: { error: msg, code: 'INVALID_UUID_METADATA' } };
+          }
           throw new Error(`Order lookup DB error: ${ordErr.message}`);
         }
         if (!orderRow) {
@@ -1598,7 +1719,10 @@ export async function processStripeWebhookEvent(params: {
           await markWebhookResult('failed', msg);
           return { statusCode: 400, body: { error: msg } };
         }
-        if (String(orderRow.event_id) !== String(eventId) || String(orderRow.agency_id) !== String(agencyId)) {
+        if (
+          String(orderRow.event_id) !== String(eventId) ||
+          (orderRow.agency_id && String(orderRow.agency_id) !== 'unknown' && String(orderRow.agency_id) !== String(agencyId))
+        ) {
           const msg = `Order ownership validation failed for order '${orderId}'.`;
           await markWebhookResult('failed', msg);
           return { statusCode: 400, body: { error: msg } };
@@ -1684,7 +1808,7 @@ export async function processStripeWebhookEvent(params: {
         relatedOrderId = orderId || null;
         relatedEventId = eventId || null;
 
-        if (orderId) {
+        if (orderId && isValidUuid(orderId)) {
           await supabase
             .from('event_orders')
             .update({
@@ -1730,7 +1854,7 @@ export async function processStripeWebhookEvent(params: {
         const failCode = pi.last_payment_error?.code || 'payment_failed';
 
         let matchedOrder: any = null;
-        if (orderId) {
+        if (orderId && isValidUuid(orderId)) {
           const { data: ord } = await supabase.from('event_orders').select('*').eq('id', orderId).maybeSingle();
           matchedOrder = ord;
         } else {

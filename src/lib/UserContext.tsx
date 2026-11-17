@@ -108,7 +108,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
       if (urlToken) {
         setAuthToken(urlToken);
-        window.history.replaceState({}, document.title, window.location.pathname);
+        const cleanParams = new URLSearchParams(window.location.search);
+        cleanParams.delete('token');
+        const cleanSearch = cleanParams.toString();
+        const nextUrl = `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}`;
+        window.history.replaceState({}, document.title, nextUrl);
       }
 
       const token = localStorage.getItem('wedding_session_token');

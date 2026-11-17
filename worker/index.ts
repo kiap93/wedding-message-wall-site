@@ -93,6 +93,7 @@ import {
   normalizeBlogLocale,
 } from '../src/content/blog';
 import { PRIVATE_ROUTE_PATTERNS } from '../src/seo/routes';
+import { APP_SHELL_ROUTE_PATH, shouldServeCleanAppShell } from '../src/seo/appShell';
 import {
   getEventGuests,
   createGuest,
@@ -646,9 +647,14 @@ app.get('/api/auth/google', async (c) => {
     currentRedirectUri = `${protocol}://${host}/api/auth/callback`;
   }
 
-  // Capture the origin to redirect back to the correct area
+  // Capture the origin and optional relative redirect destination
   const origin = originQuery || c.req.header('Origin') || c.req.header('Referer') || c.env.FRONTEND_URL || c.env.APP_URL || `${protocol}://${host}`;
-  const state = btoa(JSON.stringify({ origin }));
+  const redirectQuery = c.req.query('redirect');
+  const safeRedirect =
+    redirectQuery && redirectQuery.startsWith('/') && !redirectQuery.startsWith('//')
+      ? redirectQuery
+      : null;
+  const state = btoa(JSON.stringify({ origin, ...(safeRedirect ? { redirect: safeRedirect } : {}) }));
 
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
@@ -677,10 +683,14 @@ app.get('/api/auth/callback', async (c) => {
   const stateParam = c.req.query('state');
   
   let targetOrigin = c.env.FRONTEND_URL || c.env.APP_URL || 'https://eventframe.io';
+  let stateRedirectPath: string | null = null;
   if (stateParam) {
     try {
       const decoded = JSON.parse(atob(stateParam));
       if (decoded.origin) targetOrigin = decoded.origin;
+      if (typeof decoded.redirect === 'string' && decoded.redirect.startsWith('/') && !decoded.redirect.startsWith('//')) {
+        stateRedirectPath = decoded.redirect;
+      }
     } catch (e) {
       console.error('Failed to decode state:', e);
     }
@@ -782,11 +792,10 @@ app.get('/api/auth/callback', async (c) => {
       userIsDeveloper = syncResult.user?.is_developer === true;
     }
 
-    const landingPath = userIsDeveloper ? 'developer' : 'workspace';
-    // Use JS replace to ensure history cleanup and popup support
-    const redirectUrl = targetOrigin.endsWith('/')
-      ? `${targetOrigin}${landingPath}?token=${token}`
-      : `${targetOrigin}/${landingPath}?token=${token}`;
+    const landingPath = userIsDeveloper ? '/developer' : (stateRedirectPath || '/workspace');
+    const redirectTarget = new URL(landingPath, targetOrigin.endsWith('/') ? targetOrigin : `${targetOrigin}/`);
+    redirectTarget.searchParams.set('token', token);
+    const redirectUrl = redirectTarget.toString();
     return c.html(`
       <!DOCTYPE html>
       <html>
@@ -2610,7 +2619,7 @@ app.post('/api/events/:id/verify-session', async (c) => {
 
   const supabase = getWorkerSupabase(c);
   if (!supabase) {
-    return c.json({ error: 'Supabase configuration missing' }, 500);
+    return c.json({ success: false, error: 'Supabase configuration missing' }, 500);
   }
 
   const { sessionId } = await c.req.json().catch(() => ({}));
@@ -3419,10 +3428,15 @@ app.get('/sitemap.xml', async (c) => {
 
 // 9. Static Assets & Single-Page Application (SPA) Routing Fallback
 app.all('*', async (c) => {
+  const url = new URL(c.req.url);
+  const normalizedPath = normalizePathname(url.pathname);
+
+  if (normalizedPath === '/app-shell') {
+    return c.redirect(`${url.origin}/`, 302);
+  }
+
   // Normalize legacy `?lang=zh-CN|zh-TW|ms` query links on marketing routes to clean localized paths
   if (c.req.method === 'GET') {
-    const url = new URL(c.req.url);
-    const normalizedPath = normalizePathname(url.pathname);
     const extracted = extractLocaleFromPathname(normalizedPath);
     const queryLang = normalizeLangParam(url.searchParams.get('lang'));
 
@@ -3439,7 +3453,21 @@ app.all('*', async (c) => {
 
   // If Cloudflare Workers Static Assets binding is present
   if (c.env.ASSETS) {
-    const response = await c.env.ASSETS.fetch(c.req.raw);
+    const useCleanShell =
+      c.req.method === 'GET' && shouldServeCleanAppShell(url.pathname, url.hostname);
+
+    let response: Response;
+    if (useCleanShell) {
+      const shellReq = new Request(new URL(APP_SHELL_ROUTE_PATH, url.origin).toString(), {
+        method: 'GET',
+      });
+      response = await c.env.ASSETS.fetch(shellReq);
+      if (!response.ok) {
+        response = await c.env.ASSETS.fetch(c.req.raw);
+      }
+    } else {
+      response = await c.env.ASSETS.fetch(c.req.raw);
+    }
 
     // Revalidate HTML so new frontend releases are immediately picked up (zero Supabase env injection)
     const contentType = response.headers.get('content-type') || '';
@@ -3448,8 +3476,7 @@ app.all('*', async (c) => {
       newHeaders.set('Cache-Control', 'public, max-age=0, must-revalidate');
       newHeaders.set('Pragma', 'no-cache');
 
-      const normalizedReqPath = normalizePathname(c.req.path);
-      if (PRIVATE_ROUTE_PATTERNS.some((pattern) => pattern.test(normalizedReqPath))) {
+      if (PRIVATE_ROUTE_PATTERNS.some((pattern) => pattern.test(normalizedPath))) {
         newHeaders.set('X-Robots-Tag', 'noindex, nofollow');
       }
 

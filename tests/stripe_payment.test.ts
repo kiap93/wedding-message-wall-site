@@ -20,6 +20,8 @@ import {
 import { computePaymentLedgerAndMetrics } from '../server/developerAdminService';
 import { registerWorkerDeveloperRoutes } from '../server/registerWorkerDeveloperRoutes';
 import { createDeveloperRouter } from '../server/createDeveloperRouter';
+import fs from 'fs';
+import path from 'path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 
@@ -922,6 +924,365 @@ async function runTests() {
     assert(Boolean(liveSession.id && liveSession.url), 'Live Stripe test-mode Checkout Session created & verified');
   } else {
     console.log('ℹ INFO: STRIPE_SECRET_KEY (sk_test_...) not configured in local environment; live Stripe API network test skipped (mocked Stripe harness passed).');
+  }
+
+  // --------------------------------------------------------------------------
+  // TEST 21: PostgreSQL COALESCE(text, uuid) Fix Verification & Strict UUID Schema Simulation
+  // --------------------------------------------------------------------------
+  console.log('\n--- Test 21: PostgreSQL COALESCE(text, uuid) Migration & Strict UUID RPC Simulation ---');
+  const fixSql = fs.readFileSync(
+    path.resolve(process.cwd(), 'supabase/migrations/20261121_fix_payment_coalesce_uuid_text.sql'),
+    'utf8'
+  );
+  const execSql = fixSql
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('--'))
+    .join('\n');
+  assert(execSql.includes('CREATE OR REPLACE FUNCTION complete_event_payment_order'), 'SQL migration defines complete_event_payment_order');
+  assert(execSql.includes('CREATE OR REPLACE FUNCTION process_stripe_refund'), 'SQL migration defines process_stripe_refund');
+  assert(!/COALESCE\(\s*NULLIF\(\s*p_agency_id\s*,\s*''\s*\)\s*,\s*v_project\.agency_id\s*\)/i.test(execSql), 'Legacy uncast COALESCE(NULLIF(p_agency_id, \'\'), v_project.agency_id) eliminated');
+  assert(!/COALESCE\(\s*order_id\s*,\s*\$1\s*\)/i.test(execSql), 'Legacy untyped COALESCE(order_id, $1) fallback eliminated');
+  assert(!/COALESCE\(\s*v_payment\.agency_id\s*,\s*v_order_agency_id\s*\)/i.test(execSql), 'Legacy uncast COALESCE(v_payment.agency_id, v_order_agency_id) eliminated');
+  assert(execSql.includes('v_project.agency_id::text'), 'Projects agency_id is explicitly cast ::text before text COALESCE');
+  assert(execSql.includes('v_payment.agency_id::text'), 'Payment agency_id is explicitly cast ::text before text COALESCE');
+  assert(execSql.includes('INVALID_UUID_METADATA'), 'SQL validates text inputs against UUID regex before ::uuid casts');
+
+  // Simulate strict PostgreSQL UUID-typed tables (projects.id, projects.agency_id, event_orders.id, event_payments.order_id, event_entitlements.order_id are uuid)
+  const UUID_EVENT_ID = '11111111-1111-4111-8111-111111111111';
+  const UUID_AGENCY_ID = '22222222-2222-4222-8222-222222222222';
+  const UUID_USER_ID = '33333333-3333-4333-8333-333333333333';
+  const uuidUser = {
+    id: UUID_USER_ID,
+    dbUserId: UUID_USER_ID,
+    email: 'uuid-owner@agency.com',
+    name: 'UUID Owner',
+    role: 'agency_owner',
+    status: 'active',
+  };
+  const uuidSchemaData: TableRows = {
+    users_auth: [{ id: UUID_USER_ID, email: 'uuid-owner@agency.com', full_name: 'UUID Owner', role: 'agency_owner', status: 'active', organization_id: UUID_AGENCY_ID, created_at: new Date().toISOString() }],
+    agencies: [{ id: UUID_AGENCY_ID, name: 'UUID Agency', slug: 'uuid-agency', user_id: UUID_USER_ID, owner_email: 'uuid-owner@agency.com', status: 'active', is_demo: false, is_test: false, created_at: new Date().toISOString() }],
+    projects: [{ id: UUID_EVENT_ID, name: 'UUID Wedding', slug: 'uuid-wedding', agency_id: UUID_AGENCY_ID, payment_status: 'unpaid', status: 'draft', activated_at: null, expires_at: null, created_at: new Date().toISOString() }],
+    event_orders: [],
+    event_payments: [],
+    event_entitlements: [],
+    stripe_webhook_events: [],
+    platform_activity_logs: [],
+  };
+
+  const STRICT_UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const dbUuidStrict = createMockSupabase(uuidSchemaData);
+  // Install strict PostgreSQL RPC simulator enforcing identical uuid vs text typing rules
+  dbUuidStrict.rpc = async (fnName: string, rpcArgs: Record<string, any>) => {
+    if (fnName !== 'complete_event_payment_order') return { data: null, error: { message: 'Unknown RPC' } };
+    const {
+      p_order_id,
+      p_event_id,
+      p_agency_id,
+      p_stripe_session_id,
+      p_stripe_payment_intent_id,
+      p_amount_cents,
+      p_currency,
+    } = rpcArgs;
+
+    // Enforce UUID validation just like updated PostgreSQL RPC
+    if (!p_event_id || !STRICT_UUID_REGEX.test(String(p_event_id))) {
+      return { data: null, error: { message: `INVALID_UUID_METADATA: event_id "${p_event_id}" is not a valid UUID` } };
+    }
+    if (p_order_id && !STRICT_UUID_REGEX.test(String(p_order_id))) {
+      return { data: null, error: { message: `INVALID_UUID_METADATA: order_id "${p_order_id}" is not a valid UUID` } };
+    }
+    if (p_agency_id && !STRICT_UUID_REGEX.test(String(p_agency_id))) {
+      return { data: null, error: { message: `INVALID_UUID_METADATA: agency_id "${p_agency_id}" is not a valid UUID` } };
+    }
+    if (Number(p_amount_cents) !== 500 || String(p_currency || '').toLowerCase() !== 'usd') {
+      return { data: null, error: { message: 'INVALID_PAYMENT_AMOUNT' } };
+    }
+
+    // Clone snapshot for atomic transaction rollback guarantee
+    const snap = JSON.parse(JSON.stringify(dbUuidStrict.db));
+    try {
+      const noRpcSupabase = { from: dbUuidStrict.from.bind(dbUuidStrict) };
+      const res = await activateEventPurchase(noRpcSupabase as any, {
+        eventId: p_event_id,
+        agencyId: p_agency_id || undefined,
+        orderId: p_order_id || undefined,
+        stripeSessionId: p_stripe_session_id || undefined,
+        stripePaymentIntentId: p_stripe_payment_intent_id || undefined,
+        amountPaidCents: p_amount_cents,
+        currency: p_currency,
+      });
+      return {
+        data: {
+          success: true,
+          idempotent: res.idempotent,
+          orderId: res.orderId,
+          eventId: p_event_id,
+          activatedAt: res.activatedAt,
+          expiresAt: res.expiresAt,
+          isRenewal: res.isRenewal,
+          event: res.event,
+          order: res.order,
+        },
+        error: null,
+      };
+    } catch (err: any) {
+      dbUuidStrict.db = snap;
+      return { data: null, error: { message: err?.message || 'Transaction rolled back' } };
+    }
+  };
+
+  const stripeUuid = createMockStripe();
+  const uuidChk = await createPayPerEventCheckout({
+    supabase: dbUuidStrict,
+    stripe: stripeUuid,
+    stripeSecretKey: STRIPE_SECRET_KEY,
+    appUrl: APP_URL,
+    authUser: uuidUser,
+    body: { eventId: UUID_EVENT_ID },
+  });
+  assert(uuidChk.statusCode === 200, 'UUID schema checkout created');
+  const uuidSess = stripeUuid._sessions.get(uuidChk.body.sessionId);
+  uuidSess.payment_status = 'paid';
+  // Simulate empty agencyId metadata in session so RPC must fall back cleanly to v_project.agency_id (uuid) without COALESCE error
+  uuidSess.metadata.agencyId = '';
+  delete uuidSess.metadata.organizationId;
+
+  const uuidVerifyRes = await verifyAndCompleteCheckoutSession({
+    supabase: dbUuidStrict,
+    stripe: stripeUuid,
+    stripeSecretKey: STRIPE_SECRET_KEY,
+    authUser: uuidUser,
+    eventId: UUID_EVENT_ID,
+    sessionId: uuidSess.id,
+  });
+  assert(uuidVerifyRes.statusCode === 200 && uuidVerifyRes.body.success === true, 'verifyAndCompleteCheckoutSession succeeds with UUID schema & NULL p_agency_id without COALESCE error');
+  assert(dbUuidStrict.db.projects[0].payment_status === 'paid' && dbUuidStrict.db.projects[0].status === 'active', 'UUID project activated to paid/active');
+
+  // --------------------------------------------------------------------------
+  // TEST 22: Invalid UUID Metadata, Expired Sessions, Wrong Amount/Currency/Session Binding
+  // --------------------------------------------------------------------------
+  console.log('\n--- Test 22: Invalid UUID Metadata, Expired Sessions & Tampered Verify Checks ---');
+  const dbVal = createMockSupabase(baseData);
+  const stripeVal = createMockStripe();
+  const valChk = await createPayPerEventCheckout({
+    supabase: dbVal,
+    stripe: stripeVal,
+    stripeSecretKey: STRIPE_SECRET_KEY,
+    appUrl: APP_URL,
+    authUser: ownerA,
+    body: { eventId: 'evt-draft' },
+  });
+  const valSess = stripeVal._sessions.get(valChk.body.sessionId);
+  valSess.payment_status = 'paid';
+
+  // Invalid UUID orderId in session metadata
+  const badUuidSess = { ...valSess, id: 'cs_bad_uuid_order', metadata: { ...valSess.metadata, orderId: 'not-a-valid-uuid' } };
+  stripeVal._sessions.set(badUuidSess.id, badUuidSess);
+  const badUuidVerify = await verifyAndCompleteCheckoutSession({
+    supabase: dbVal,
+    stripe: stripeVal,
+    stripeSecretKey: STRIPE_SECRET_KEY,
+    authUser: ownerA,
+    eventId: 'evt-draft',
+    sessionId: badUuidSess.id,
+  });
+  assert(badUuidVerify.statusCode === 400 && badUuidVerify.body.code === 'INVALID_UUID_METADATA', 'verify-session rejects invalid orderId UUID metadata with 400 INVALID_UUID_METADATA');
+
+  const badUuidWebhook = await processStripeWebhookEvent({
+    supabase: dbVal,
+    stripe: stripeVal,
+    event: { id: 'evt_bad_uuid_wh', type: 'checkout.session.completed', data: { object: badUuidSess } } as any,
+  });
+  assert(badUuidWebhook.statusCode === 400 && badUuidWebhook.body.code === 'INVALID_UUID_METADATA', 'Webhook rejects invalid orderId UUID metadata cleanly with 400');
+
+  // Wrong currency & wrong amount on verify-session
+  const wrongAmtSess = { ...valSess, id: 'cs_wrong_amt', amount_total: 100 };
+  stripeVal._sessions.set(wrongAmtSess.id, wrongAmtSess);
+  const wrongAmtVerify = await verifyAndCompleteCheckoutSession({
+    supabase: dbVal,
+    stripe: stripeVal,
+    stripeSecretKey: STRIPE_SECRET_KEY,
+    authUser: ownerA,
+    eventId: 'evt-draft',
+    sessionId: wrongAmtSess.id,
+  });
+  assert(wrongAmtVerify.statusCode === 400, 'verify-session rejects wrong amount_total with 400');
+
+  const wrongCurrSess = { ...valSess, id: 'cs_wrong_curr', currency: 'eur' };
+  stripeVal._sessions.set(wrongCurrSess.id, wrongCurrSess);
+  const wrongCurrVerify = await verifyAndCompleteCheckoutSession({
+    supabase: dbVal,
+    stripe: stripeVal,
+    stripeSecretKey: STRIPE_SECRET_KEY,
+    authUser: ownerA,
+    eventId: 'evt-draft',
+    sessionId: wrongCurrSess.id,
+  });
+  assert(wrongCurrVerify.statusCode === 400, 'verify-session rejects wrong currency with 400');
+
+  // Session hijack / mismatched stripe_session_id against an existing order
+  const spoofedSess = { ...valSess, id: 'cs_different_session_hijack' };
+  stripeVal._sessions.set(spoofedSess.id, spoofedSess);
+  const spoofVerify = await verifyAndCompleteCheckoutSession({
+    supabase: dbVal,
+    stripe: stripeVal,
+    stripeSecretKey: STRIPE_SECRET_KEY,
+    authUser: ownerA,
+    eventId: 'evt-draft',
+    sessionId: spoofedSess.id,
+  });
+  assert(spoofVerify.statusCode === 403, 'verify-session rejects mismatched Stripe Checkout session ID for existing order with 403');
+
+  // Expired checkout session returns 400 without activating
+  const expiredChk = await createPayPerEventCheckout({
+    supabase: dbVal,
+    stripe: stripeVal,
+    stripeSecretKey: STRIPE_SECRET_KEY,
+    appUrl: APP_URL,
+    authUser: ownerA,
+    body: { eventId: 'evt-expired-late' },
+  });
+  const expiredSess = stripeVal._sessions.get(expiredChk.body.sessionId);
+  expiredSess.status = 'expired';
+  expiredSess.payment_status = 'unpaid';
+  const expiredVerifyRes = await verifyAndCompleteCheckoutSession({
+    supabase: dbVal,
+    stripe: stripeVal,
+    stripeSecretKey: STRIPE_SECRET_KEY,
+    authUser: ownerA,
+    eventId: 'evt-expired-late',
+    sessionId: expiredSess.id,
+  });
+  assert(expiredVerifyRes.statusCode === 400 && expiredVerifyRes.body.expired === true, 'Expired Stripe session rejected cleanly with 400');
+  assert(dbVal.db.event_payments.length === 0, 'No payment created for invalid/expired session checks');
+
+  // --------------------------------------------------------------------------
+  // TEST 23: Transaction Rollback Integrity (Simulated RPC DB failure leaves zero partial writes)
+  // --------------------------------------------------------------------------
+  console.log('\n--- Test 23: Atomic Rollback Guarantees ---');
+  const dbRollback = createMockSupabase(baseData, { simulateRpcError: true });
+  const stripeRollback = createMockStripe();
+  const rbChk = await createPayPerEventCheckout({
+    supabase: dbRollback,
+    stripe: stripeRollback,
+    stripeSecretKey: STRIPE_SECRET_KEY,
+    appUrl: APP_URL,
+    authUser: ownerA,
+    body: { eventId: 'evt-draft' },
+  });
+  const rbSess = stripeRollback._sessions.get(rbChk.body.sessionId);
+  rbSess.payment_status = 'paid';
+
+  let rbThrew = false;
+  try {
+    await verifyAndCompleteCheckoutSession({
+      supabase: dbRollback,
+      stripe: stripeRollback,
+      stripeSecretKey: STRIPE_SECRET_KEY,
+      authUser: ownerA,
+      eventId: 'evt-draft',
+      sessionId: rbSess.id,
+    });
+  } catch (err: any) {
+    rbThrew = String(err?.message || '').includes('Atomic payment completion failed');
+  }
+  assert(rbThrew, 'Failed RPC inside verifyAndCompleteCheckoutSession throws cleanly without partial success');
+  assert(dbRollback.db.projects.find((p: any) => p.id === 'evt-draft').payment_status === 'pending_payment', 'Project stays unactivated on RPC failure');
+  assert(dbRollback.db.event_payments.length === 0, 'Zero event_payments rows written when atomic RPC fails');
+  assert(dbRollback.db.event_entitlements.length === 0, 'Zero event_entitlements rows written when atomic RPC fails');
+  assert(dbRollback.db.event_orders[0].order_status === 'pending', 'Order remains pending (not completed) on RPC rollback');
+
+  // --------------------------------------------------------------------------
+  // TEST 24: Express vs Cloudflare Worker /api/events/:id/verify-session Parity
+  // --------------------------------------------------------------------------
+  console.log('\n--- Test 24: Express vs Worker /api/events/:id/verify-session HTTP Parity ---');
+  const dbParity = createMockSupabase(baseData);
+  const stripeParity = createMockStripe();
+  const pChk = await createPayPerEventCheckout({
+    supabase: dbParity,
+    stripe: stripeParity,
+    stripeSecretKey: STRIPE_SECRET_KEY,
+    appUrl: APP_URL,
+    authUser: ownerA,
+    body: { eventId: 'evt-draft' },
+  });
+  const pSess = stripeParity._sessions.get(pChk.body.sessionId);
+  pSess.payment_status = 'paid';
+
+  // Mount minimal parity routes mirroring server.ts & worker/index.ts
+  const parityExpress = express();
+  parityExpress.use(express.json());
+  parityExpress.post('/api/events/:id/verify-session', async (req, res) => {
+    try {
+      const r = await verifyAndCompleteCheckoutSession({
+        supabase: dbParity,
+        stripe: stripeParity,
+        stripeSecretKey: STRIPE_SECRET_KEY,
+        authUser: ownerA,
+        eventId: req.params.id,
+        sessionId: req.body?.sessionId,
+      });
+      return res.status(r.statusCode).json(r.body);
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: e?.message || 'Verification failed' });
+    }
+  });
+
+  const parityWorker = new Hono();
+  parityWorker.post('/api/events/:id/verify-session', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const r = await verifyAndCompleteCheckoutSession({
+        supabase: dbParity,
+        stripe: stripeParity,
+        stripeSecretKey: STRIPE_SECRET_KEY,
+        authUser: ownerA,
+        eventId: c.req.param('id'),
+        sessionId: body?.sessionId,
+      });
+      return c.json(r.body, r.statusCode as any);
+    } catch (e: any) {
+      return c.json({ success: false, error: e?.message || 'Verification failed' }, 500);
+    }
+  });
+
+  const paritySrv = parityExpress.listen(0);
+  const parityPort = (paritySrv.address() as any).port;
+  try {
+    // 1. Express completes payment
+    const expOkRes = await fetch(`http://127.0.0.1:${parityPort}/api/events/evt-draft/verify-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: pSess.id }),
+    });
+    const expOkBody = await expOkRes.json();
+
+    // 2. Worker verifies same session idempotently
+    const wrkOkRes = await parityWorker.request('/api/events/evt-draft/verify-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: pSess.id }),
+    });
+    const wrkOkBody = await wrkOkRes.json();
+
+    assert(expOkRes.status === 200 && expOkBody.success === true, 'Express POST /api/events/:id/verify-session returns 200 success');
+    assert(wrkOkRes.status === 200 && wrkOkBody.success === true && wrkOkBody.idempotent === true, 'Worker POST /api/events/:id/verify-session returns idempotent 200');
+
+    // 3. Invalid UUID metadata parity (400 INVALID_UUID_METADATA)
+    const expBadRes = await fetch(`http://127.0.0.1:${parityPort}/api/events/evt-draft/verify-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'not_a_cs_session' }),
+    });
+    const wrkBadRes = await parityWorker.request('/api/events/evt-draft/verify-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'not_a_cs_session' }),
+    });
+    assert(expBadRes.status === 400 && wrkBadRes.status === 400, 'Express and Worker both return 400 for malformed sessionId');
+  } finally {
+    paritySrv.close();
   }
 
   console.log('\n=====================================================');

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Save, 
@@ -42,6 +42,13 @@ import { useUser } from '../lib/UserContext';
 import { fetchTemplates } from '../lib/templates';
 import DashboardLayout, { EventSidebarNav } from '../layouts/DashboardLayout';
 import EventOverviewDashboard, { OverviewNavigationTarget } from '../components/overview/EventOverviewDashboard';
+import {
+  WorkspaceView,
+  buildWorkspaceUrl,
+  getDashboardNavItem,
+  isSameWorkspaceTarget,
+  resolveWorkspaceView,
+} from '../lib/workspaceNavigation';
 import { LayoutDashboard, Mail, ClipboardList } from 'lucide-react';
 import invitationCraftImage from '../assets/images/invitation_craft_showcase_1793501242453.jpg';
 import Button from '../design-system/components/Button';
@@ -56,9 +63,21 @@ import EmptyState from '../design-system/components/EmptyState';
 export default function Workspace() {
   const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
   const { user } = useUser();
-  const [view, setView] = useState<'list' | 'editor' | 'agency_settings' | 'calendar'>('list');
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const view = resolveWorkspaceView(searchParams);
+  const projectParam = searchParams.get('project');
+  const rawViewParam = searchParams.get('view');
+
+  const navigateToView = useCallback(
+    (nextView: WorkspaceView, options?: { projectId?: string | null; replace?: boolean }) => {
+      const projectId = options?.projectId ?? null;
+      const shouldReplace =
+        options?.replace ?? isSameWorkspaceTarget(searchParams, nextView, projectId);
+      navigate(buildWorkspaceUrl(nextView, { projectId }), { replace: shouldReplace });
+    },
+    [navigate, searchParams]
+  );
 
   // Agency
   const [agency, setAgency] = useState<Agency | null>(null);
@@ -92,56 +111,7 @@ export default function Workspace() {
     load();
   }, []);
 
-  // Sync view query param if passed
-  useEffect(() => {
-    const viewParam = searchParams.get('view');
-    if (viewParam === 'calendar' || viewParam === 'agency_settings' || viewParam === 'list') {
-      setView(viewParam);
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
-    const initAdmin = async () => {
-      if (isLoadingWorkspace || !user) return;
-
-      const targetProjectId = searchParams.get('project');
-
-      if (workspace) {
-        setAgency(workspace);
-        fetchEvents(workspace.id, workspace.user_role, targetProjectId);
-      } else {
-        try {
-          const response = await authenticatedFetch(`${API_BASE}/api/agencies/me`);
-          if (response.status === 401 || response.status === 403) {
-            return;
-          }
-          if (!response.ok) {
-            console.error('Error fetching user agencies:', response.status);
-            setIsLoadingEvents(false);
-            return;
-          }
-
-          const payload = await response.json();
-          const userAgencies = Array.isArray(payload?.agencies) ? payload.agencies : [];
-
-          if (userAgencies.length > 0) {
-            const primaryWorkspace = userAgencies[0];
-            setAgency(primaryWorkspace);
-            fetchEvents(primaryWorkspace.id, primaryWorkspace.user_role, targetProjectId);
-          } else {
-            navigate('/onboarding');
-          }
-        } catch (err) {
-          console.error('Error fetching user agencies:', err);
-          setIsLoadingEvents(false);
-        }
-      }
-    };
-
-    initAdmin();
-  }, [workspace, isLoadingWorkspace, user, navigate, searchParams]);
-
-  const fetchEvents = async (agencyId: string, role?: string, targetProjectId?: string | null) => {
+  const fetchEvents = useCallback(async (agencyId: string) => {
     setIsLoadingEvents(true);
     try {
       const response = await authenticatedFetch(
@@ -158,29 +128,103 @@ export default function Workspace() {
             : (Array.isArray(event.rsvp_fields) ? event.rsvp_fields : null)
         }));
         setEvents(eventList);
-
-        if (targetProjectId) {
-          const targetEvent = eventList.find((e: any) => e.id === targetProjectId);
-          if (targetEvent) {
-            setEditingEvent(targetEvent);
-            setActiveEditorTab('overview');
-            setGuestSuiteSubTab('guests');
-            setView('editor');
-          }
-        } else if (role === 'couple' && eventList.length > 0 && view === 'list' && !editingEvent) {
-          const firstEvent = eventList[0];
-          setEditingEvent(firstEvent);
-          setActiveEditorTab('overview');
-          setGuestSuiteSubTab('guests');
-          setView('editor');
-        }
       }
     } catch (error) {
       console.error('Error fetching events:', error);
     } finally {
       setIsLoadingEvents(false);
     }
-  };
+  }, []);
+
+  // Load agency and events only when workspace/user session changes (never refetch on ?view= switches)
+  useEffect(() => {
+    let cancelled = false;
+    const initAdmin = async () => {
+      if (isLoadingWorkspace || !user) return;
+
+      if (workspace) {
+        setAgency(workspace);
+        await fetchEvents(workspace.id);
+      } else {
+        try {
+          const response = await authenticatedFetch(`${API_BASE}/api/agencies/me`);
+          if (cancelled || response.status === 401 || response.status === 403) {
+            return;
+          }
+          if (!response.ok) {
+            console.error('Error fetching user agencies:', response.status);
+            if (!cancelled) setIsLoadingEvents(false);
+            return;
+          }
+
+          const payload = await response.json();
+          const userAgencies = Array.isArray(payload?.agencies) ? payload.agencies : [];
+          if (cancelled) return;
+
+          if (userAgencies.length > 0) {
+            const primaryWorkspace = userAgencies[0];
+            setAgency(primaryWorkspace);
+            await fetchEvents(primaryWorkspace.id);
+          } else {
+            navigate('/onboarding');
+          }
+        } catch (err) {
+          console.error('Error fetching user agencies:', err);
+          if (!cancelled) setIsLoadingEvents(false);
+        }
+      }
+    };
+
+    initAdmin();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace?.id, isLoadingWorkspace, user?.id, fetchEvents, navigate]);
+
+  // Keep selected editor event synchronized with URL ?view=editor&project=<id>
+  useEffect(() => {
+    if (isLoadingEvents) return;
+
+    if (view === 'editor') {
+      if (projectParam) {
+        const targetEvent = events.find((e) => e.id === projectParam);
+        if (targetEvent) {
+          if (editingEvent?.id !== targetEvent.id) {
+            setEditingEvent({ ...targetEvent });
+            setActiveEditorTab('overview');
+            setGuestSuiteSubTab('guests');
+          }
+        } else {
+          navigateToView('grid', { replace: true });
+        }
+      } else if (!editingEvent) {
+        navigateToView('grid', { replace: true });
+      }
+      return;
+    }
+
+    if (
+      agency?.user_role === 'couple' &&
+      !rawViewParam &&
+      !projectParam &&
+      events.length > 0
+    ) {
+      const firstEvent = events[0];
+      setEditingEvent({ ...firstEvent });
+      setActiveEditorTab('overview');
+      setGuestSuiteSubTab('guests');
+      navigateToView('editor', { projectId: firstEvent.id, replace: true });
+    }
+  }, [
+    view,
+    projectParam,
+    rawViewParam,
+    events,
+    isLoadingEvents,
+    agency?.user_role,
+    editingEvent,
+    navigateToView,
+  ]);
 
   const handleSaveAgency = async (agencyData: Partial<Agency>) => {
     if (!user) return;
@@ -249,10 +293,10 @@ export default function Workspace() {
   const isStaff = user?.is_developer === true || user?.isDeveloper === true;
 
   useEffect(() => {
-    if (isCouple && events.length === 0 && view === 'list' && !isLoadingEvents) {
+    if (isCouple && events.length === 0 && view === 'grid' && !rawViewParam && !isLoadingEvents && !editingEvent) {
       handleCreateNew();
     }
-  }, [isCouple, events, view, isLoadingEvents]);
+  }, [isCouple, events.length, view, rawViewParam, isLoadingEvents, editingEvent]);
 
   const handleCreateNew = () => {
     if (!agency) return;
@@ -280,14 +324,14 @@ export default function Workspace() {
     };
     setEditingEvent(newEvent);
     setActiveEditorTab('aesthetic');
-    setView('editor');
+    navigateToView('editor');
   };
 
   const handleEdit = (event: WeddingEvent) => {
     setEditingEvent({ ...event });
     setActiveEditorTab(event.id ? 'overview' : 'aesthetic');
     setGuestSuiteSubTab('guests');
-    setView('editor');
+    navigateToView('editor', { projectId: event.id });
   };
 
   const handleSave = async () => {
@@ -315,8 +359,8 @@ export default function Workspace() {
           throw new Error(errData.error || 'Failed to save event');
         }
 
-        if (agency) await fetchEvents(agency.id, agency.user_role);
-        setView('list');
+        if (agency) await fetchEvents(agency.id);
+        navigateToView('grid');
       } catch (err: any) {
         console.error('Save error:', err);
         alert('Error saving event: ' + err.message);
@@ -334,8 +378,8 @@ export default function Workspace() {
           throw new Error(errData.error || 'Failed to create event');
         }
 
-        if (agency) await fetchEvents(agency.id, agency.user_role);
-        setView('list');
+        if (agency) await fetchEvents(agency.id);
+        navigateToView('grid');
       } catch (err: any) {
         console.error('Create error:', err);
         alert('Error creating event: ' + err.message);
@@ -414,7 +458,7 @@ export default function Workspace() {
         const err = await response.json();
         throw new Error(err.error || 'Failed to unpublish website');
       }
-      if (agency) await fetchEvents(agency.id, agency.user_role);
+      if (agency) await fetchEvents(agency.id);
       if (editingEvent && editingEvent.id === projectId) {
         setEditingEvent({ ...editingEvent, website_status: 'unpublished' });
       }
@@ -461,7 +505,7 @@ export default function Workspace() {
     (e.location && e.location.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const activeNavItem = view === 'calendar' ? 'calendar' : view === 'agency_settings' ? 'settings' : 'events';
+  const activeNavItem = getDashboardNavItem(view);
 
   const handleOverviewNavigate = (target: OverviewNavigationTarget) => {
     if (!editingEvent?.id) return;
@@ -531,7 +575,7 @@ export default function Workspace() {
                 : 'Configure your white-label studio name, custom subdomain, and default branding palette.'
             }
             breadcrumbs={[
-              { label: 'Weddings', onClick: () => setView('list') },
+              { label: 'Weddings', onClick: () => navigateToView('grid') },
               { label: 'Branding Settings' }
             ]}
           />
@@ -617,7 +661,7 @@ export default function Workspace() {
             </form>
           </div>
         </div>
-      ) : view === 'list' ? (
+      ) : view === 'grid' ? (
         <div className="space-y-6">
           <PageHeader
             title={isCouple ? 'Wedding Dashboard' : 'Weddings & Celebrations'}
@@ -630,13 +674,15 @@ export default function Workspace() {
               <div className="flex items-center gap-2">
                 <div className="flex bg-[#F2EFE9] p-0.5 rounded border border-[#E8E8E5]">
                   <button
-                    onClick={() => setView('list')}
+                    type="button"
+                    onClick={() => navigateToView('grid')}
                     className="px-3 py-1 text-xs font-medium rounded bg-white text-[#252525] shadow-subtle transition-colors"
                   >
                     Grid View
                   </button>
                   <button
-                    onClick={() => setView('calendar')}
+                    type="button"
+                    onClick={() => navigateToView('calendar')}
                     className="px-3 py-1 text-xs font-medium rounded text-[#777777] hover:text-[#252525] transition-colors"
                   >
                     Calendar
@@ -989,14 +1035,14 @@ export default function Workspace() {
             title="Event Schedule Calendar"
             description="Monthly calendar view of upcoming celebrations across your workspace."
             breadcrumbs={[
-              { label: 'Weddings', onClick: () => setView('list') },
+              { label: 'Weddings', onClick: () => navigateToView('grid') },
               { label: 'Calendar' }
             ]}
             actions={
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setView('list')}
+                onClick={() => navigateToView('grid')}
               >
                 Back to Grid View
               </Button>
@@ -1013,7 +1059,7 @@ export default function Workspace() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))}
+                  onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
                   className="!px-2"
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -1028,7 +1074,7 @@ export default function Workspace() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))}
+                  onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
                   className="!px-2"
                 >
                   <ChevronRight className="w-4 h-4" />
@@ -1113,6 +1159,12 @@ export default function Workspace() {
         </div>
       ) : (
         /* Event Configuration Editor */
+        !editingEvent ? (
+          <div className="bg-white rounded-lg border border-[#E8E8E5] shadow-subtle p-10 flex flex-col items-center justify-center gap-3">
+            <div className="w-5 h-5 border-2 border-[#252525] border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs text-[#777777]">Loading wedding configuration...</p>
+          </div>
+        ) : (
         <div className="space-y-6">
           {activeEditorTab !== 'overview' && (
             <PageHeader
@@ -1123,7 +1175,7 @@ export default function Workspace() {
               }
               description="Configure event details, RSVP fields, and live guest moderation."
               breadcrumbs={[
-                { label: 'Weddings', onClick: () => setView('list') },
+                { label: 'Weddings', onClick: () => navigateToView('grid') },
                 ...(editingEvent?.id
                   ? [{ label: 'Overview', onClick: () => setActiveEditorTab('overview') }]
                   : []),
@@ -1134,7 +1186,7 @@ export default function Workspace() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setView('list')}
+                    onClick={() => navigateToView('grid')}
                   >
                     Back to Events
                   </Button>
@@ -1548,6 +1600,7 @@ export default function Workspace() {
             )}
           </div>
         </div>
+        )
       )}
     </DashboardLayout>
   );

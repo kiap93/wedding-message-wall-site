@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useUser } from '../lib/UserContext';
 import { useWorkspace } from '../lib/WorkspaceContext';
+import { buildWorkspaceUrl } from '../lib/workspaceNavigation';
 
 export interface EventSidebarNav {
   eventName: string;
@@ -53,7 +54,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       icon: <Heart className="w-4 h-4" />,
       onClick: () => {
         setMobileMenuOpen(false);
-        navigate('/workspace');
+        navigate(buildWorkspaceUrl('grid'));
       },
     },
     {
@@ -62,7 +63,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       icon: <CalendarIcon className="w-4 h-4" />,
       onClick: () => {
         setMobileMenuOpen(false);
-        navigate('/workspace?view=calendar');
+        navigate(buildWorkspaceUrl('calendar'));
       },
     },
     {
@@ -80,7 +81,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       icon: <Settings className="w-4 h-4" />,
       onClick: () => {
         setMobileMenuOpen(false);
-        navigate('/workspace?view=agency_settings');
+        navigate(buildWorkspaceUrl('agency_settings'));
       },
     },
     {
@@ -178,6 +179,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             return (
               <button
                 key={item.id}
+                type="button"
+                aria-current={isActive ? 'page' : undefined}
                 onClick={item.onClick}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors text-left ${
                   isActive

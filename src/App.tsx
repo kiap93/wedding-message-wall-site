@@ -7,6 +7,7 @@ import { getUserWorkspaces, getCurrentSubdomain } from './lib/workspace';
 
 import SEO, { SEOProvider } from './components/SEO';
 import { MarketingTranslationProvider } from './lib/i18n/MarketingTranslationContext';
+import { normalizePathname } from './seo/canonical';
 
 // Eagerly loaded public marketing & blog pages for instant SSR / hydration
 import Home from './pages/Home';
@@ -70,12 +71,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let redirected = false;
 
     async function checkWorkspaces() {
-      if (workspaces.length > 0 && user) {
-        return;
-      }
-
       if (!user) {
         if (active) {
           setLoadingWorkspaces(false);
@@ -84,13 +82,17 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (active) setLoadingWorkspaces(true);
+      if (workspaces.length === 0 && active) {
+        setLoadingWorkspaces(true);
+      }
 
       try {
-        const userWorkspaces = await getUserWorkspaces();
+        const userWorkspaces = workspaces.length > 0 ? workspaces : await getUserWorkspaces();
         if (!active) return;
 
-        setWorkspaces(userWorkspaces);
+        if (workspaces.length === 0) {
+          setWorkspaces(userWorkspaces);
+        }
 
         const currentHost = window.location.host;
         const hostname = window.location.hostname;
@@ -106,8 +108,10 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
           hostname.endsWith('.netlify.app');
         const isGenericRoot = hostParts.length <= 2 && !isPreviewOrLocal;
         const isRoot = isRootDomain || isGenericRoot;
+        const normalizedPath = normalizePathname(location.pathname);
 
-        if (isRoot && !isPreviewOrLocal && userWorkspaces.length === 0 && location.pathname !== '/onboarding') {
+        if (isRoot && !isPreviewOrLocal && userWorkspaces.length === 0 && normalizedPath !== '/onboarding') {
+          redirected = true;
           window.location.replace('/onboarding');
           return;
         }
@@ -116,15 +120,21 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        if (isRoot && userWorkspaces.length > 0 && location.pathname === '/workspace') {
-          const workspace = userWorkspaces[0];
-          if (workspace.user_role === 'agency' && workspace.slug) {
-            const slug = workspace.slug;
+        if (isRoot && userWorkspaces.length > 0 && normalizedPath === '/workspace') {
+          const primaryWorkspace = userWorkspaces[0];
+          if (primaryWorkspace.user_role === 'agency' && primaryWorkspace.slug) {
+            const slug = primaryWorkspace.slug;
             const protocol = window.location.protocol;
             const baseDomain = hostParts.slice(-2).join('.');
             if (currentHost !== `${slug}.${baseDomain}`) {
               const token = localStorage.getItem('wedding_session_token');
-              window.location.replace(`${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
+              const nextParams = new URLSearchParams(location.search);
+              if (token) nextParams.set('token', token);
+              const nextSearch = nextParams.toString();
+              redirected = true;
+              window.location.replace(
+                `${protocol}//${slug}.${baseDomain}/workspace${nextSearch ? `?${nextSearch}` : ''}`
+              );
               return;
             }
           }
@@ -132,7 +142,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error('AuthGuard: Workspace check failed:', err);
       } finally {
-        if (active) {
+        if (active && !redirected) {
           setLoadingWorkspaces(false);
         }
       }
@@ -166,10 +176,28 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    const intendedDestination = `${location.pathname}${location.search}`;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(intendedDestination)}`} replace />;
   }
 
   return <>{children}</>;
+}
+
+function WorkspaceWildcardRedirect() {
+  const location = useLocation();
+  const suffix = location.pathname.replace(/^\/workspace\/?/i, '').toLowerCase();
+  const params = new URLSearchParams(location.search);
+  if (suffix === 'calendar') {
+    params.set('view', 'calendar');
+  } else if (suffix === 'agency_settings' || suffix === 'settings') {
+    params.set('view', 'agency_settings');
+  } else if (suffix === 'editor') {
+    params.set('view', 'editor');
+  } else if (!params.get('view')) {
+    params.set('view', 'grid');
+  }
+  const nextSearch = params.toString();
+  return <Navigate to={`/workspace${nextSearch ? `?${nextSearch}` : ''}`} replace />;
 }
 
 const LOCALIZED_PREFIXES = ['/zh-cn', '/zh-tw', '/ms'] as const;
@@ -185,6 +213,7 @@ export function AppRoutes() {
         <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
         <Route path="/templates/manage" element={<AuthGuard><StaffTemplates /></AuthGuard>} />
         <Route path="/workspace" element={<AuthGuard><Workspace /></AuthGuard>} />
+        <Route path="/workspace/*" element={<AuthGuard><WorkspaceWildcardRedirect /></AuthGuard>} />
         <Route path="/editor/:projectId" element={<AuthGuard><InvitationEditor /></AuthGuard>} />
         <Route path="/website-studio/:projectId" element={<AuthGuard><WebsiteStudio /></AuthGuard>} />
         <Route path="/website-studio" element={<AuthGuard><WebsiteStudio /></AuthGuard>} />

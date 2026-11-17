@@ -14,6 +14,7 @@ import {
   LOCALIZED_MARKETING_BASE_PATHS,
   MARKETING_HREFLANG_CODES,
   MarketingLanguageCode,
+  normalizePathname,
 } from '../src/seo/canonical.ts';
 import {
   buildPageStructuredData,
@@ -242,11 +243,28 @@ ${hreflangTags ? `${hreflangTags}\n` : ''}    <meta name="robots" content="${rou
   html = html.replace('</head>', `${metaTags}\n</head>`);
 
   const renderedMarkup = renderPageHtml(routePath, effectiveLang);
+  const normalizedRoutePath = normalizePathname(routePath);
   html = html.replace(
     '<div id="root"></div>',
-    `<div id="root" data-prerendered="true">${renderedMarkup}</div>`
+    `<div id="root" data-prerendered="true" data-prerender-path="${escapeHtmlAttr(normalizedRoutePath)}">${renderedMarkup}</div>`
   );
 
+  return html;
+}
+
+function buildAppShellHtml(baseHtml: string): string {
+  let html = baseHtml;
+  html = html.replace(/<html\s+lang="[^"]*"/i, '<html lang="en"');
+  html = html.replace(/<title>[\s\S]*?<\/title>/i, '<title>Studio Portal | EventFrame</title>');
+  html = html.replace(/<meta\s+name="description"[\s\S]*?>/gi, '');
+  html = html.replace(/<meta\s+name="keywords"[\s\S]*?>/gi, '');
+  html = html.replace(/<meta\s+name="robots"[\s\S]*?>/gi, '');
+  html = html.replace(/<meta\s+property="og:[\s\S]*?>/gi, '');
+  html = html.replace(/<meta\s+name="twitter:[\s\S]*?>/gi, '');
+  html = html.replace(/<link\s+rel="canonical"[\s\S]*?>/gi, '');
+  html = html.replace(/<link\s+rel="alternate"[\s\S]*?>/gi, '');
+  html = html.replace(/<script\s+id="eventframe-schema-jsonld"[\s\S]*?<\/script>/gi, '');
+  html = html.replace('</head>', '    <meta name="robots" content="noindex, nofollow" />\n  </head>');
   return html;
 }
 
@@ -283,6 +301,15 @@ async function prerender() {
     fs.unlinkSync(distSitemapPath);
     console.log('✓ Removed dist/sitemap.xml so Cloudflare Worker /sitemap.xml handler serves live sitemap');
   }
+
+  // Write a clean, un-prerendered SPA shell for authenticated & dynamic app routes
+  // (/workspace, /login, /developer, /:slug, etc.) so Cloudflare/Express never serve the marketing homepage DOM.
+  const appShellOutDir = path.join(distDir, 'app-shell');
+  if (!fs.existsSync(appShellOutDir)) {
+    fs.mkdirSync(appShellOutDir, { recursive: true });
+  }
+  fs.writeFileSync(path.join(appShellOutDir, 'index.html'), buildAppShellHtml(baseHtml), 'utf8');
+  console.log('✓ Generated clean SPA shell -> dist/app-shell/index.html');
 
   const targets: PrerenderTarget[] = [];
 

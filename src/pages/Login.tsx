@@ -63,8 +63,12 @@ export default function Login() {
     localStorage.removeItem('wedding_session_token');
     
     const currentOrigin = window.location.origin;
-    
-    fetch(`${API_BASE}/api/auth/google?origin=${encodeURIComponent(currentOrigin)}`, {
+    const googleAuthParams = new URLSearchParams({ origin: currentOrigin });
+    if (safeRedirectParam) {
+      googleAuthParams.set('redirect', safeRedirectParam);
+    }
+
+    fetch(`${API_BASE}/api/auth/google?${googleAuthParams.toString()}`, {
       headers: { 'Accept': 'application/json', 'X-Requested-With': 'EventFrame' },
       credentials: 'include',
     })
