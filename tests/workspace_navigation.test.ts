@@ -113,6 +113,9 @@ async function runDomIntegrationTests() {
   const VALID_PROJECT_UUID = '1ff1a5bf-a9a3-45f7-a782-ed1bf83acf73';
   const DIRECT_ONLY_PROJECT_UUID = '2aa2b6cf-b0b4-46a8-b893-fe2ca94bdf84';
 
+  const UNAUTHORIZED_PROJECT_UUID = '3bb3c7df-c1c5-47b9-c904-af3db05cef95';
+  const CREATED_PROJECT_UUID = '4cc4d8ea-d2d6-48ca-da15-bf4ec16dfa06';
+
   const listProject = {
     id: VALID_PROJECT_UUID,
     agency_id: 'agency-1',
@@ -145,12 +148,16 @@ async function runDomIntegrationTests() {
     rsvp_fields: [],
   };
 
-  let mode: 'normal' | 'fail_project_fetch' | 'fail_all_projects' = 'normal';
+  const createdProjects: any[] = [];
+
+  let mode: 'normal' | 'fail_project_fetch' | 'fail_all_projects' | 'fail_create_project' = 'normal';
   let projectsListFetchCount = 0;
   let singleProjectFetchCount = 0;
+  let createProjectPostCount = 0;
 
-  (globalThis as any).fetch = async (input: RequestInfo | URL) => {
+  (globalThis as any).fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
+    const method = (init?.method || 'GET').toUpperCase();
 
     if (url.includes('/api/auth/me')) {
       return new Response(
@@ -199,6 +206,45 @@ async function runDomIntegrationTests() {
       return new Response(JSON.stringify({ data: [] }), { status: 200 });
     }
 
+    // Create project endpoint POST /api/projects
+    if (url.endsWith('/api/projects') && method === 'POST') {
+      createProjectPostCount += 1;
+      await new Promise((r) => setTimeout(r, 25));
+
+      if (mode === 'fail_create_project') {
+        return new Response(
+          JSON.stringify({ error: 'This event URL slug is already in use.', code: 'SLUG_ALREADY_EXISTS' }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      const newRecord = {
+        id: CREATED_PROJECT_UUID,
+        agency_id: body.agency_id || 'agency-1',
+        name: body.name || `${body.groom_name} & ${body.bride_name}`,
+        groom_name: body.groom_name || '',
+        bride_name: body.bride_name || '',
+        slug: body.slug || 'arthur-claire',
+        wedding_date: body.wedding_date || todayStr,
+        location: body.location || '',
+        theme_id: body.theme_id || 'minimal_luxury',
+        access_password: body.access_password || 'PIN789',
+        status: 'draft',
+        payment_status: 'unpaid',
+        package_id: 'standard',
+        rsvp_fields: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      createdProjects.push(newRecord);
+
+      return new Response(JSON.stringify({ success: true, data: newRecord }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // Single-project endpoint GET /api/projects/:id
     const singleMatch = url.match(/\/api\/projects\/([^/?#]+)$/);
     if (singleMatch) {
@@ -210,6 +256,12 @@ async function runDomIntegrationTests() {
           { status: 500, headers: { 'Content-Type': 'application/json' } }
         );
       }
+      if (requestedId === UNAUTHORIZED_PROJECT_UUID) {
+        return new Response(
+          JSON.stringify({ error: 'You do not have permission to access this event.', code: 'FORBIDDEN_AGENCY_ACCESS' }),
+          { status: 403, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
       if (requestedId === VALID_PROJECT_UUID) {
         return new Response(JSON.stringify({ success: true, data: listProject }), {
           status: 200,
@@ -218,6 +270,13 @@ async function runDomIntegrationTests() {
       }
       if (requestedId === DIRECT_ONLY_PROJECT_UUID) {
         return new Response(JSON.stringify({ success: true, data: directOnlyProject }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const createdMatch = createdProjects.find((p) => p.id === requestedId);
+      if (createdMatch) {
+        return new Response(JSON.stringify({ success: true, data: createdMatch }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -237,7 +296,7 @@ async function runDomIntegrationTests() {
           { status: 500, headers: { 'Content-Type': 'application/json' } }
         );
       }
-      return new Response(JSON.stringify({ data: [listProject] }), {
+      return new Response(JSON.stringify({ data: [...createdProjects, listProject] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -259,11 +318,12 @@ async function runDomIntegrationTests() {
 
     const { runWorkspaceDomSuite } = await vite.ssrLoadModule('/tests/helpers/workspaceDomHarness.tsx');
     await runWorkspaceDomSuite({
-      setMode: (nextMode: 'normal' | 'fail_project_fetch' | 'fail_all_projects') => {
+      setMode: (nextMode: 'normal' | 'fail_project_fetch' | 'fail_all_projects' | 'fail_create_project') => {
         mode = nextMode;
       },
       getProjectsListFetchCount: () => projectsListFetchCount,
       getSingleProjectFetchCount: () => singleProjectFetchCount,
+      getCreateProjectPostCount: () => createProjectPostCount,
     });
   } finally {
     if (vite) {

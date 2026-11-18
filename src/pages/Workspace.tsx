@@ -62,6 +62,7 @@ import Tabs from '../design-system/components/Tabs';
 import PageHeader from '../design-system/components/PageHeader';
 import Modal from '../design-system/components/Modal';
 import EmptyState from '../design-system/components/EmptyState';
+import CreateWeddingModal from '../components/workspace/CreateWeddingModal';
 
 interface ProjectLoadError {
   title: string;
@@ -113,11 +114,12 @@ export default function Workspace() {
 
   // Current Editor State
   const [editingEvent, setEditingEvent] = useState<Partial<WeddingEvent> | null>(null);
-  const [isDraftNewProject, setIsDraftNewProject] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [directProjectLoading, setDirectProjectLoading] = useState(false);
   const [projectLoadError, setProjectLoadError] = useState<ProjectLoadError | null>(null);
   const [retryCounter, setRetryCounter] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [templates, setTemplates] = useState<WeddingTemplate[]>([]);
   const [activeEditorTab, setActiveEditorTab] = useState<'overview' | 'aesthetic' | 'rsvp' | 'form' | 'moderation' | 'invitation' | 'website'>('overview');
   const [guestSuiteSubTab, setGuestSuiteSubTab] = useState<'guests' | 'rsvp' | 'tables' | 'layout' | 'overview'>('guests');
@@ -130,10 +132,11 @@ export default function Workspace() {
   editingEventIdRef.current = editingEvent?.id ?? null;
 
   const resetEditorState = useCallback(() => {
+    editingEventIdRef.current = null;
     setEditingEvent(null);
-    setIsDraftNewProject(false);
     setDirectProjectLoading(false);
     setProjectLoadError(null);
+    setSaveFeedback(null);
     setActiveEditorTab('overview');
     setGuestSuiteSubTab('guests');
   }, []);
@@ -260,11 +263,7 @@ export default function Workspace() {
     }
 
     if (!projectParam) {
-      if (isDraftNewProject) {
-        setProjectLoadError(null);
-        setDirectProjectLoading(false);
-        return;
-      }
+      editingEventIdRef.current = null;
       setEditingEvent(null);
       setDirectProjectLoading(false);
       setProjectLoadError({
@@ -276,11 +275,8 @@ export default function Workspace() {
       return;
     }
 
-    if (isDraftNewProject) {
-      setIsDraftNewProject(false);
-    }
-
     if (!isValidProjectIdFormat(projectParam)) {
+      editingEventIdRef.current = null;
       setEditingEvent(null);
       setDirectProjectLoading(false);
       setProjectLoadError({
@@ -387,7 +383,6 @@ export default function Workspace() {
     projectParam,
     events,
     isLoadingEvents,
-    isDraftNewProject,
     retryCounter,
     agency,
     resetEditorState,
@@ -455,104 +450,75 @@ export default function Workspace() {
     }
   };
 
-  const isSubscribed = agency?.subscription_status === 'active' || agency?.is_demo === true;
-  const isCouple = agency?.user_role === 'couple';
+  const activeAgency = agency || workspace;
+  const isSubscribed = activeAgency?.subscription_status === 'active' || activeAgency?.is_demo === true;
+  const isCouple = activeAgency?.user_role === 'couple';
   const isStaff = user?.is_developer === true || user?.isDeveloper === true;
+  const isCoupleLimitReached = Boolean(isCouple && events.length >= 1);
 
   const handleCreateNew = () => {
-    if (!agency) return;
-    if (isCouple && events.length >= 1) {
-      alert('Individual accounts are limited to one event. Upgrade to an Agency account to manage multiple events.');
-      return;
-    }
-    // Free draft event creation: Any registered user can create draft events
-    const newEvent: Partial<WeddingEvent> = {
-      name: '',
-      slug: `wedding-${Math.random().toString(36).substring(2, 7)}`,
-      groom_name: '',
-      bride_name: '',
-      wedding_date: new Date().toISOString().split('T')[0],
-      location: '',
-      theme_id: 'minimal_luxury',
-      agency_id: agency.id,
-      access_password: Math.random().toString(36).substring(2, 8).toUpperCase(),
-      auto_approve_messages: false,
-      image_url: '',
-      rsvp_fields: [],
-      status: 'draft',
-      payment_status: 'unpaid',
-      package_id: 'standard'
-    };
+    setShowCreateModal(true);
+  };
+
+  const handleProjectCreated = (rawCreated: WeddingEvent) => {
+    const created = normalizeEventRecord(rawCreated);
+    setEvents((prev) => [created, ...prev.filter((ev) => ev.id !== created.id)]);
+    editingEventIdRef.current = created.id;
     setProjectLoadError(null);
     setDirectProjectLoading(false);
-    setIsDraftNewProject(true);
-    setEditingEvent(newEvent);
-    setActiveEditorTab('aesthetic');
-    navigateToView('editor');
+    setSaveFeedback(null);
+    setEditingEvent({ ...created });
+    setActiveEditorTab('overview');
+    setGuestSuiteSubTab('guests');
+    navigateToView('editor', { projectId: created.id });
   };
 
   const handleEdit = (event: WeddingEvent) => {
     setProjectLoadError(null);
     setDirectProjectLoading(false);
-    setIsDraftNewProject(false);
+    setSaveFeedback(null);
+    editingEventIdRef.current = event.id;
     setEditingEvent({ ...event });
-    setActiveEditorTab(event.id ? 'overview' : 'aesthetic');
+    setActiveEditorTab('overview');
     setGuestSuiteSubTab('guests');
     navigateToView('editor', { projectId: event.id });
   };
 
   const handleSave = async () => {
-    if (!editingEvent || !agency) return;
+    if (!editingEvent || !activeAgency || !editingEvent.id) return;
     setIsSaving(true);
+    setSaveFeedback(null);
 
     const eventData = {
       ...editingEvent,
-      agency_id: agency.id,
+      agency_id: activeAgency.id,
       updated_at: new Date().toISOString()
     };
-    
+
     delete (eventData as any).user_id;
 
-    if (eventData.id) {
-      try {
-        const response = await authenticatedFetch(`${API_BASE}/api/projects/${eventData.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(eventData)
-        });
+    try {
+      const response = await authenticatedFetch(`${API_BASE}/api/projects/${eventData.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData)
+      });
 
-        if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || 'Failed to save event');
-        }
-
-        if (agency) await fetchEvents(agency.id);
-        navigateToView('grid');
-      } catch (err: any) {
-        console.error('Save error:', err);
-        alert('Error saving event: ' + err.message);
+      const resBody = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(extractApiErrorMessage(resBody, 'Failed to save event'));
       }
-    } else {
-      try {
-        const response = await authenticatedFetch(`${API_BASE}/api/projects`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(eventData)
-        });
 
-        if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || 'Failed to create event');
-        }
-
-        if (agency) await fetchEvents(agency.id);
-        navigateToView('grid');
-      } catch (err: any) {
-        console.error('Create error:', err);
-        alert('Error creating event: ' + err.message);
-      }
+      const savedRecord = resBody?.data ? normalizeEventRecord(resBody.data) : normalizeEventRecord(eventData);
+      setEditingEvent(savedRecord);
+      setEvents((prev) => prev.map((ev) => (ev.id === savedRecord.id ? { ...ev, ...savedRecord } : ev)));
+      setSaveFeedback({ type: 'success', message: 'Wedding details saved.' });
+    } catch (err: any) {
+      console.error('Save error:', err);
+      setSaveFeedback({ type: 'error', message: err?.message || 'Failed to save event.' });
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -862,7 +828,7 @@ export default function Workspace() {
                   onClick={handleCreateNew}
                   leftIcon={<Plus className="w-3.5 h-3.5" />}
                 >
-                  {isCouple ? 'Initialize Wedding' : 'New Wedding'}
+                  {isCouple ? 'Initialize Wedding' : 'Add New Wedding Event'}
                 </Button>
               </div>
             }
@@ -952,7 +918,7 @@ export default function Workspace() {
                   onClick={handleCreateNew}
                   leftIcon={<Plus className="w-3.5 h-3.5" />}
                 >
-                  Create Wedding Event
+                  Add New Wedding Event
                 </Button>
               }
             />
@@ -1218,13 +1184,23 @@ export default function Workspace() {
               { label: 'Calendar' }
             ]}
             actions={
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigateToView('grid')}
-              >
-                Back to Grid View
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigateToView('grid')}
+                >
+                  Back to Grid View
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleCreateNew}
+                  leftIcon={<Plus className="w-3.5 h-3.5" />}
+                >
+                  Add New Wedding Event
+                </Button>
+              </div>
             }
           />
 
@@ -1353,6 +1329,16 @@ export default function Workspace() {
               )}
             </div>
             <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5">
+              {projectLoadError.code === 'MISSING_PROJECT_ID' && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleCreateNew}
+                  leftIcon={<Plus className="w-3.5 h-3.5" />}
+                >
+                  Add New Wedding Event
+                </Button>
+              )}
               {projectLoadError.retryable !== false && (
                 <Button
                   variant="primary"
@@ -1469,6 +1455,26 @@ export default function Workspace() {
                 </div>
               }
             />
+          )}
+
+          {saveFeedback && (
+            <div
+              role="status"
+              className={`rounded-lg border px-4 py-2.5 flex items-center justify-between text-xs ${
+                saveFeedback.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+            >
+              <span>{saveFeedback.message}</span>
+              <button
+                type="button"
+                onClick={() => setSaveFeedback(null)}
+                className="text-current opacity-70 hover:opacity-100 font-medium ml-4"
+              >
+                Dismiss
+              </button>
+            </div>
           )}
 
           {/* Editor Tabs */}
@@ -1869,6 +1875,15 @@ export default function Workspace() {
         </div>
         )
       )}
+
+      <CreateWeddingModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        agency={activeAgency}
+        templates={templates}
+        isCoupleLimitReached={isCoupleLimitReached}
+        onCreated={handleProjectCreated}
+      />
     </DashboardLayout>
   );
 }

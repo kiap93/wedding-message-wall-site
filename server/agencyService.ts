@@ -1230,18 +1230,146 @@ export async function createProjectForUser(
     }
   }
 
+  // Enforce couple single-event limit on the backend as well as the frontend
+  if (targetAgency.user_role === 'couple' && authUser.role !== 'super_admin') {
+    const { data: existingProjects, error: listErr } = await supabase
+      .from('projects')
+      .select('id, deleted_at')
+      .eq('agency_id', targetAgency.id);
+
+    if (listErr) {
+      return mapDatabaseError(listErr, 'Failed to verify existing wedding events for this account.');
+    }
+
+    const activeCount = (existingProjects || []).filter((p: any) => p && !p.deleted_at).length;
+    if (activeCount >= 1) {
+      return {
+        ok: false,
+        statusCode: 409,
+        code: 'COUPLE_EVENT_LIMIT_REACHED',
+        error: 'Individual couple accounts are limited to one wedding event. Upgrade to an Agency account to manage multiple events.',
+      };
+    }
+  }
+
+  const groomName = String(projectData?.groom_name ?? '').trim();
+  const brideName = String(projectData?.bride_name ?? '').trim();
+  const explicitName = String(projectData?.name ?? '').trim();
+
+  if (!explicitName && (!groomName || !brideName)) {
+    return {
+      ok: false,
+      statusCode: 400,
+      code: 'MISSING_EVENT_DETAILS',
+      error: 'Please provide both partner names or a wedding event title.',
+    };
+  }
+
+  const resolvedName = explicitName || `${groomName} & ${brideName}`;
+
+  let weddingDate = new Date().toISOString().split('T')[0];
+  if (projectData?.wedding_date !== undefined && projectData?.wedding_date !== null) {
+    const rawDate = String(projectData.wedding_date).trim();
+    if (rawDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate) || Number.isNaN(Date.parse(rawDate))) {
+        return {
+          ok: false,
+          statusCode: 400,
+          code: 'INVALID_WEDDING_DATE',
+          error: 'Please provide a valid wedding date (YYYY-MM-DD).',
+        };
+      }
+      weddingDate = rawDate;
+    }
+  }
+
+  let validatedSlug: string;
+  const rawSlugInput = typeof projectData?.slug === 'string' ? projectData.slug.trim() : '';
+  if (rawSlugInput) {
+    const slugCheck = normalizeAndValidateSlug(rawSlugInput, 'Event URL slug');
+    if (slugCheck.ok === false) {
+      return slugCheck;
+    }
+    validatedSlug = slugCheck.slug;
+  } else {
+    const baseFromName = resolvedName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-{2,}/g, '-')
+      .slice(0, 40);
+    const suffix = Math.random().toString(36).substring(2, 7);
+    const candidate = baseFromName && baseFromName.length >= 2 ? `${baseFromName}-${suffix}` : `wedding-${suffix}`;
+    validatedSlug = RESERVED_AGENCY_SLUGS.has(candidate) ? `event-${candidate}` : candidate;
+  }
+
+  // Check active slug conflict cleanly before insert
+  const { data: slugMatches, error: slugErr } = await supabase
+    .from('projects')
+    .select('id, agency_id, slug, deleted_at')
+    .eq('slug', validatedSlug)
+    .limit(5);
+
+  if (slugErr) {
+    return mapDatabaseError(slugErr, 'Failed to verify event URL slug availability.');
+  }
+
+  const conflictingSlug = (slugMatches || []).find((row: any) => row && !row.deleted_at);
+  if (conflictingSlug) {
+    return {
+      ok: false,
+      statusCode: 409,
+      code: 'SLUG_ALREADY_EXISTS',
+      error: `The event URL slug "${validatedSlug}" is already in use. Please choose another.`,
+    };
+  }
+
+  const {
+    id: _ignoredId,
+    user_id: _ignoredUserId,
+    agency_id: _ignoredAgencyId,
+    status: _ignoredStatus,
+    payment_status: _ignoredPaymentStatus,
+    activated_at: _ignoredActivatedAt,
+    expires_at: _ignoredExpiresAt,
+    deleted_at: _ignoredDeletedAt,
+    created_at: _ignoredCreatedAt,
+    updated_at: _ignoredUpdatedAt,
+    ...safeFields
+  } = projectData || {};
+
+  const nowIso = new Date().toISOString();
+  const generatedPin = Math.random().toString(36).substring(2, 8).toUpperCase();
+
   const newProject: Record<string, any> = {
+    ...safeFields,
+    name: resolvedName,
+    groom_name: groomName || safeFields.groom_name || '',
+    bride_name: brideName || safeFields.bride_name || '',
+    slug: validatedSlug,
+    wedding_date: weddingDate,
+    location: typeof safeFields.location === 'string' ? safeFields.location.trim() : '',
+    theme_id: typeof safeFields.theme_id === 'string' && safeFields.theme_id.trim()
+      ? safeFields.theme_id.trim()
+      : 'minimal_luxury',
+    access_password:
+      typeof safeFields.access_password === 'string' && safeFields.access_password.trim()
+        ? safeFields.access_password.trim().toUpperCase()
+        : generatedPin,
+    auto_approve_messages: Boolean(safeFields.auto_approve_messages),
     status: 'draft',
     payment_status: 'unpaid',
-    package_id: 'standard',
-    ...projectData,
+    package_id: typeof safeFields.package_id === 'string' && safeFields.package_id.trim()
+      ? safeFields.package_id.trim()
+      : 'standard',
     agency_id: targetAgency.id,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    created_at: nowIso,
+    updated_at: nowIso,
   };
 
-  if (!newProject.id) delete newProject.id;
-  if (newProject.rsvp_fields && typeof newProject.rsvp_fields === 'object') {
+  if (newProject.rsvp_fields === undefined || newProject.rsvp_fields === null) {
+    newProject.rsvp_fields = '[]';
+  } else if (typeof newProject.rsvp_fields === 'object') {
     newProject.rsvp_fields = JSON.stringify(newProject.rsvp_fields);
   }
 
@@ -1256,7 +1384,14 @@ export async function createProjectForUser(
     return mapDatabaseError(error, 'Failed to create wedding event.');
   }
 
-  return { ok: true, statusCode: 201, data: { project: data, agency: targetAgency } };
+  return {
+    ok: true,
+    statusCode: 201,
+    data: {
+      project: sanitizePublicProject(data, { includePin: true, includePreviewToken: true }),
+      agency: targetAgency,
+    },
+  };
 }
 
 /**

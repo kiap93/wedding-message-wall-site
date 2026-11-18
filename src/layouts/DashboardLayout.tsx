@@ -125,7 +125,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             className="w-full h-8 px-3 text-xs font-medium bg-[#23201C] text-white rounded-lg hover:bg-[#38332D] transition-colors flex items-center justify-center gap-1.5 shadow-xs"
           >
             <Plus className="w-3.5 h-3.5 text-[#D8B979]" />
-            <span>New Wedding Event</span>
+            <span>Add New Wedding Event</span>
           </button>
         </div>
       )}

@@ -112,10 +112,18 @@ function assertUrlViewInvariant(
   }
 }
 
+function setInputValue(input: HTMLInputElement, value: string) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+  nativeSetter?.call(input, value);
+  input.dispatchEvent(new window.Event('input', { bubbles: true }));
+  input.dispatchEvent(new window.Event('change', { bubbles: true }));
+}
+
 export interface WorkspaceDomController {
-  setMode: (mode: 'normal' | 'fail_project_fetch' | 'fail_all_projects') => void;
+  setMode: (mode: 'normal' | 'fail_project_fetch' | 'fail_all_projects' | 'fail_create_project') => void;
   getProjectsListFetchCount: () => number;
   getSingleProjectFetchCount: () => number;
+  getCreateProjectPostCount: () => number;
 }
 
 export async function runWorkspaceDomSuite(controller: WorkspaceDomController) {
@@ -157,6 +165,8 @@ export async function runWorkspaceDomSuite(controller: WorkspaceDomController) {
   const VALID_PROJECT_UUID = '1ff1a5bf-a9a3-45f7-a782-ed1bf83acf73';
   const DIRECT_ONLY_PROJECT_UUID = '2aa2b6cf-b0b4-46a8-b893-fe2ca94bdf84';
   const MISSING_PROJECT_UUID = '99999999-9999-4999-8999-999999999999';
+  const UNAUTHORIZED_PROJECT_UUID = '3bb3c7df-c1c5-47b9-c904-af3db05cef95';
+  const CREATED_PROJECT_UUID = '4cc4d8ea-d2d6-48ca-da15-bf4ec16dfa06';
 
   try {
     // =========================================================================
@@ -398,6 +408,180 @@ export async function runWorkspaceDomSuite(controller: WorkspaceDomController) {
     assert.equal(window.location.pathname + window.location.search, `/workspace?view=editor&project=${VALID_PROJECT_UUID}`);
     assertUrlViewInvariant(container, { expectedCouple: 'Lucas & Sofia' });
     console.log('✓ Sequence 10 passed: Project loading failure shows error + Retry recovers cleanly into Editor');
+
+    // =========================================================================
+    // Sequence 11: Direct /workspace?view=editor without ?project= shows "No Wedding Project Selected"
+    // =========================================================================
+    await unmountApp();
+    container = await mountApp('/workspace?view=editor');
+    assertUrlViewInvariant(container, { expectEditorError: true });
+    assert.ok(
+      container.textContent?.includes('No Wedding Project Selected'),
+      'Missing ?project= on /workspace?view=editor must still display No Wedding Project Selected'
+    );
+    assert.ok(
+      findButtonByText(container, 'Add New Wedding Event'),
+      'Missing project recovery screen must offer Add New Wedding Event CTA'
+    );
+    console.log('✓ Sequence 11 passed: Missing ?project= continues to display No Wedding Project Selected');
+
+    // =========================================================================
+    // Sequence 12: Add New Wedding Event -> Modal opens without premature navigation & failed API stays in modal
+    // =========================================================================
+    await unmountApp();
+    controller.setMode('fail_create_project');
+    container = await mountApp('/workspace?view=grid');
+    assertUrlViewInvariant(container);
+
+    const addNewBtn = findButtonByText(container, 'Add New Wedding Event');
+    assert.ok(addNewBtn, 'Add New Wedding Event button must exist in Grid view');
+    await act(async () => {
+      addNewBtn!.click();
+      await flushUi();
+    });
+    assert.equal(
+      window.location.pathname + window.location.search,
+      '/workspace?view=grid',
+      'Clicking Add New Wedding Event must open modal WITHOUT navigating to /workspace?view=editor prematurely'
+    );
+
+    const groomInput = container.querySelector('input[name="groom_name"]') as HTMLInputElement;
+    const brideInput = container.querySelector('input[name="bride_name"]') as HTMLInputElement;
+    const slugInput = container.querySelector('input[name="slug"]') as HTMLInputElement;
+    const locationInput = container.querySelector('input[name="location"]') as HTMLInputElement;
+    assert.ok(groomInput && brideInput && slugInput && locationInput, 'Creation modal form inputs must render');
+
+    await act(async () => {
+      setInputValue(groomInput, 'Arthur');
+      setInputValue(brideInput, 'Claire');
+      setInputValue(slugInput, 'arthur-claire');
+      setInputValue(locationInput, 'Chateau de Villette, Paris');
+      await flushUi();
+    });
+
+    const createSubmitBtn = findButtonByText(container, 'Create Wedding Project');
+    assert.ok(createSubmitBtn, 'Create Wedding Project submit button must exist');
+    await act(async () => {
+      createSubmitBtn!.click();
+      await flushUi(10);
+    });
+    assert.equal(
+      window.location.pathname + window.location.search,
+      '/workspace?view=grid',
+      'Failed project creation must NOT navigate away from Grid view'
+    );
+    assert.ok(
+      container.textContent?.includes('This event URL slug is already in use.'),
+      'Failed project creation must display backend API error inside modal'
+    );
+    console.log('✓ Sequence 12 passed: Modal opens without premature navigation & failed API surfaces error cleanly');
+
+    // =========================================================================
+    // Sequence 13: Double-click submit prevention -> Real API creation -> Editor -> Refresh -> Grid/Calendar & Switching
+    // =========================================================================
+    controller.setMode('normal');
+    const postsBefore = controller.getCreateProjectPostCount();
+    const formEl = container.querySelector('#create-wedding-event-form') as HTMLFormElement;
+    assert.ok(formEl, 'Creation form must exist');
+
+    await act(async () => {
+      const btn = findButtonByText(container, 'Create Wedding Project')!;
+      btn.click();
+      btn.click();
+      formEl.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+      await flushUi(14);
+    });
+
+    assert.equal(
+      controller.getCreateProjectPostCount(),
+      postsBefore + 1,
+      'Double-click/duplicate submit must only send ONE POST /api/projects request'
+    );
+    assert.equal(
+      window.location.pathname + window.location.search,
+      `/workspace?view=editor&project=${CREATED_PROJECT_UUID}`,
+      'Successful creation must navigate to /workspace?view=editor&project=<actual_id>'
+    );
+    assertUrlViewInvariant(container, { expectedCouple: 'Arthur & Claire' });
+    assert.equal(
+      container.textContent?.includes('No Wedding Project Selected') ?? false,
+      false,
+      'Created wedding editor must NOT display No Wedding Project Selected'
+    );
+
+    // Refresh editor URL directly -> must reload persisted Arthur & Claire cleanly
+    await unmountApp();
+    container = await mountApp();
+    assert.equal(
+      window.location.pathname + window.location.search,
+      `/workspace?view=editor&project=${CREATED_PROJECT_UUID}`
+    );
+    assertUrlViewInvariant(container, { expectedCouple: 'Arthur & Claire' });
+
+    // Back to Grid -> newly created project must immediately appear in Grid
+    await act(async () => {
+      findButtonByText(container, 'Back to Grid View')!.click();
+      await flushUi();
+    });
+    assertUrlViewInvariant(container);
+    assert.ok(
+      container.textContent?.includes('Arthur & Claire'),
+      'Newly created wedding must appear in Grid view'
+    );
+
+    // Calendar view -> newly created project must also appear in Calendar
+    await act(async () => {
+      findButtonByText(container, 'Event Calendar')!.click();
+      await flushUi();
+    });
+    assertUrlViewInvariant(container);
+    assert.ok(
+      container.textContent?.includes('Arthur & Claire'),
+      'Newly created wedding must appear in Calendar view'
+    );
+
+    // Switch between Lucas & Sofia and Arthur & Claire in Calendar -> Browser Back/Forward
+    await act(async () => {
+      findButtonByText(container, 'Lucas & Sofia')!.click();
+      await flushUi();
+    });
+    assert.equal(window.location.search, `?view=editor&project=${VALID_PROJECT_UUID}`);
+    assertUrlViewInvariant(container, { expectedCouple: 'Lucas & Sofia' });
+
+    await act(async () => {
+      window.history.back();
+      await flushUi(10);
+    });
+    assert.equal(window.location.search, '?view=calendar');
+    assertUrlViewInvariant(container);
+
+    await act(async () => {
+      findButtonByText(container, 'Arthur & Claire')!.click();
+      await flushUi();
+    });
+    assert.equal(window.location.search, `?view=editor&project=${CREATED_PROJECT_UUID}`);
+    assertUrlViewInvariant(container, { expectedCouple: 'Arthur & Claire' });
+    console.log('✓ Sequence 13 passed: Creation workflow, double-submit guard, refresh, Grid/Calendar sync & switching work cleanly');
+
+    // =========================================================================
+    // Sequence 14: Unauthorized project access (403) renders Access Denied and leaks no data
+    // =========================================================================
+    await unmountApp();
+    container = await mountApp(`/workspace?view=editor&project=${UNAUTHORIZED_PROJECT_UUID}`);
+    assertUrlViewInvariant(container, { expectEditorError: true });
+    assert.ok(container.textContent?.includes('Access Denied'), '403 project access must render Access Denied');
+    assert.equal(
+      container.textContent?.includes('Lucas & Sofia') ?? false,
+      false,
+      'Unauthorized access must not leak previous project details'
+    );
+    await act(async () => {
+      findButtonByText(container, 'Back to Grid View')!.click();
+      await flushUi();
+    });
+    assert.equal(window.location.search, '?view=grid');
+    assertUrlViewInvariant(container);
+    console.log('✓ Sequence 14 passed: Unauthorized project access shows Access Denied and recovers cleanly');
   } finally {
     await unmountApp();
   }

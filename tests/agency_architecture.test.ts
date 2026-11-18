@@ -753,6 +753,62 @@ async function runTests() {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Scenario 12: Wedding Event Creation Validation, Slug Uniqueness & Couple Limits
+  // ---------------------------------------------------------------------------
+  {
+    const sb = createMockSupabase({
+      agencies: [
+        { id: 'ag-12', name: 'Maison Lumiere', slug: 'maison-lumiere', user_id: 'owner-12', owner_email: 'o12@co.com', user_role: 'agency' },
+        { id: 'cp-12', name: 'Alex & Jamie', slug: 'alex-jamie', user_id: 'couple-12', owner_email: 'c12@co.com', user_role: 'couple' },
+      ],
+      projects: [
+        { id: 'proj-cp-1', agency_id: 'cp-12', name: 'Alex & Jamie', slug: 'alex-jamie', groom_name: 'Alex', bride_name: 'Jamie' },
+      ],
+    });
+
+    const agencyUser = { id: 'owner-12', email: 'o12@co.com', role: 'agency_owner', status: 'active' };
+    const coupleUser = { id: 'couple-12', email: 'c12@co.com', role: 'user', status: 'active' };
+
+    const missingDetails = await createProjectForUser(sb, agencyUser, { agency_id: 'ag-12' });
+    assert(missingDetails.ok === false && missingDetails.statusCode === 400 && missingDetails.code === 'MISSING_EVENT_DETAILS', '12a. Empty wedding details rejected cleanly with 400');
+
+    const badDate = await createProjectForUser(sb, agencyUser, { agency_id: 'ag-12', groom_name: 'Leo', bride_name: 'Maya', wedding_date: '18-99-2026' });
+    assert(badDate.ok === false && badDate.statusCode === 400 && badDate.code === 'INVALID_WEDDING_DATE', '12b. Invalid wedding_date rejected cleanly with 400');
+
+    const reservedSlug = await createProjectForUser(sb, agencyUser, { agency_id: 'ag-12', groom_name: 'Leo', bride_name: 'Maya', slug: 'workspace' });
+    assert(reservedSlug.ok === false && reservedSlug.statusCode === 422 && reservedSlug.code === 'RESERVED_SLUG', '12c. Reserved platform slug rejected cleanly with 422');
+
+    const coupleSecond = await createProjectForUser(sb, coupleUser, { agency_id: 'cp-12', groom_name: 'Alex', bride_name: 'Jamie', slug: 'second-event' });
+    assert(coupleSecond.ok === false && coupleSecond.statusCode === 409 && coupleSecond.code === 'COUPLE_EVENT_LIMIT_REACHED', '12d. Couple second event rejected cleanly with 409');
+
+    const created = await createProjectForUser(sb, agencyUser, {
+      agency_id: 'ag-12',
+      groom_name: 'Leo',
+      bride_name: 'Maya',
+      slug: 'leo-maya',
+      wedding_date: '2027-06-15',
+      location: 'Florence, Italy',
+      status: 'active',
+      payment_status: 'paid',
+    });
+    assert(created.ok === true && created.statusCode === 201, '12e. Valid wedding project creation succeeds with 201');
+    if (created.ok) {
+      assert(Boolean(created.data.project.id), '12f. Created project returns a real persisted id');
+      assert(created.data.project.name === 'Leo & Maya', '12g. Created project derives display title cleanly');
+      assert(Array.isArray(created.data.project.rsvp_fields), '12h. Created project returns normalized rsvp_fields array');
+      assert(created.data.project.status === 'draft' && created.data.project.payment_status === 'unpaid', '12i. Server enforces draft/unpaid defaults on creation');
+    }
+
+    const dupSlug = await createProjectForUser(sb, agencyUser, {
+      agency_id: 'ag-12',
+      groom_name: 'Liam',
+      bride_name: 'Chloe',
+      slug: 'leo-maya',
+    });
+    assert(dupSlug.ok === false && dupSlug.statusCode === 409 && dupSlug.code === 'SLUG_ALREADY_EXISTS', '12j. Duplicate active event slug rejected cleanly with 409');
+  }
+
   console.log('\n🎉 ALL AGENCY ARCHITECTURE & LOOKUP HARDENING TESTS PASSED!\n');
 }
 
