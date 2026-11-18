@@ -1,4 +1,9 @@
-import { resolveUserOrganizations, type BillingAuthUser } from './billingService';
+import {
+  hasExplicitAdminAgencyAccess,
+  resolveUserOrganizations,
+  resolveUserOrganizationsWithMetadata,
+  type BillingAuthUser,
+} from './billingService';
 import { recordPlatformActivity } from './developerAdminService';
 
 export interface ServiceSuccess<T = any> {
@@ -274,7 +279,8 @@ function buildDemoProject(): any {
  * Never auto-creates agencies on read lookup.
  */
 export async function findAgencyById(supabase: any, agencyId: string): Promise<ServiceResult<any>> {
-  if (!agencyId || !String(agencyId).trim()) {
+  const normalizedId = String(agencyId || '').trim();
+  if (!normalizedId) {
     return {
       ok: false,
       statusCode: 400,
@@ -283,17 +289,36 @@ export async function findAgencyById(supabase: any, agencyId: string): Promise<S
     };
   }
 
-  if (agencyId === 'demo-agency') {
+  if (normalizedId === 'undefined' || normalizedId === 'null') {
+    return {
+      ok: false,
+      statusCode: 404,
+      code: 'AGENCY_NOT_FOUND',
+      error: 'Agency workspace not found.',
+    };
+  }
+
+  if (normalizedId === 'demo-agency') {
     return { ok: true, statusCode: 200, data: buildDemoAgency() };
   }
 
   const { data, error } = await supabase
     .from('agencies')
     .select('*')
-    .eq('id', agencyId)
+    .eq('id', normalizedId)
     .maybeSingle();
 
   if (error) {
+    const code = String(error?.code || '');
+    const msg = String(error?.message || '').toLowerCase();
+    if (code === '22P02' || msg.includes('invalid input syntax for type uuid')) {
+      return {
+        ok: false,
+        statusCode: 404,
+        code: 'AGENCY_NOT_FOUND',
+        error: 'Agency workspace not found.',
+      };
+    }
     return mapDatabaseError(error, 'Unable to load agency workspace.');
   }
 
@@ -469,6 +494,23 @@ async function syncUserAuthAgencyLink(
         role: nextRole,
       };
       await supabase.from('users_auth').update(patch).eq('id', dbUser.id);
+
+      try {
+        await supabase.from('agency_members').upsert(
+          [
+            {
+              agency_id: String(agencyId),
+              user_id: dbUser.id,
+              role: 'owner',
+              status: 'active',
+              updated_at: new Date().toISOString(),
+            },
+          ],
+          { onConflict: 'agency_id,user_id' }
+        );
+      } catch {
+        // Non-fatal if agency_members table is absent in legacy test fixtures
+      }
     }
   } catch {
     // Non-fatal if users_auth table/columns not present in legacy test fixture
@@ -946,28 +988,11 @@ export async function updateAgencyForUser(
   agencyId: string,
   body: any
 ): Promise<ServiceResult<any>> {
-  if (!authUser || (!authUser.id && !authUser.sub && !authUser.email)) {
-    return { ok: false, statusCode: 401, code: 'UNAUTHENTICATED', error: 'Not authenticated' };
-  }
-  if (authUser.status === 'suspended') {
-    return { ok: false, statusCode: 403, code: 'ACCOUNT_SUSPENDED', error: 'Account suspended.' };
-  }
-
-  const agencyLookup = await findAgencyById(supabase, agencyId);
-  if (agencyLookup.ok === false) return agencyLookup;
-  const targetAgency = agencyLookup.data;
-
-  const userOrgs = await resolveUserOrganizations(supabase, authUser);
-  const ownsAgency =
-    authUser.role === 'super_admin' || userOrgs.some((org) => String(org.id) === String(targetAgency.id));
-  if (!ownsAgency) {
-    return {
-      ok: false,
-      statusCode: 403,
-      code: 'FORBIDDEN_AGENCY_ACCESS',
-      error: 'You do not have permission to update this agency.',
-    };
-  }
+  const authz = await authorizeAgencyAccess(supabase, authUser, agencyId, {
+    forbiddenMessage: 'You do not have permission to update this agency.',
+  });
+  if (authz.ok === false) return authz;
+  const targetAgency = authz.data.agency;
 
   const {
     id: _ignoredId,
@@ -1087,47 +1112,239 @@ export async function resolveProjectWithAgency(
   };
 }
 
-/**
- * Lists projects belonging to the authenticated user's agency (or specified agency_id after verifying ownership).
- */
-export async function listProjectsForUser(
-  supabase: any,
-  authUser: BillingAuthUser,
-  requestedAgencyId?: string | null
-): Promise<ServiceResult<any[]>> {
-  const userOrgsResult = await findAgenciesForUser(supabase, authUser);
-  if (userOrgsResult.ok === false) return userOrgsResult;
+export type AgencyAccessType = 'owner' | 'member' | 'admin';
 
-  const { agencies, primaryAgency } = userOrgsResult.data;
-  if (agencies.length === 0) {
+export interface AuthorizedAgencyContext {
+  agency: any;
+  accessType: AgencyAccessType;
+  isAdminOverride: boolean;
+  authorizedAgencies: any[];
+  internalUserId: string | null;
+}
+
+/**
+ * Centralized agency authorization helper:
+ * 1. Verifies authenticated, active (non-suspended) user.
+ * 2. Verifies target agency exists (404 AGENCY_NOT_FOUND for invalid/missing IDs).
+ * 3. Verifies ownership (`agencies.user_id`/`owner_email`) or active membership (`agency_members` / `users_auth.organization_id`).
+ * 4. Checks explicit developer/admin policy (`hasExplicitAdminAgencyAccess`) strictly as an isolated permission rule.
+ */
+export async function authorizeAgencyAccess(
+  supabase: any,
+  authUser: BillingAuthUser | null | undefined,
+  agencyId: string,
+  options?: {
+    forbiddenMessage?: string;
+    allowAdminOverride?: boolean;
+  }
+): Promise<ServiceResult<AuthorizedAgencyContext>> {
+  if (!authUser || (!authUser.id && !authUser.sub && !authUser.email && !authUser.dbUserId)) {
+    return { ok: false, statusCode: 401, code: 'UNAUTHENTICATED', error: 'Not authenticated' };
+  }
+
+  if (String(authUser.status || 'active').toLowerCase() === 'suspended') {
     return {
-      ok: true,
-      statusCode: 200,
-      data: [],
+      ok: false,
+      statusCode: 403,
+      code: 'ACCOUNT_SUSPENDED',
+      error: 'Your account has been suspended. Please contact platform support.',
     };
   }
 
-  let targetAgencyIds: string[] = [];
-  if (requestedAgencyId) {
-    const ownsRequested =
-      authUser.role === 'super_admin' || agencies.some((a) => String(a.id) === String(requestedAgencyId));
-    if (!ownsRequested) {
+  const targetId = String(agencyId || '').trim();
+  if (!targetId || targetId === 'undefined' || targetId === 'null') {
+    return {
+      ok: false,
+      statusCode: 404,
+      code: 'AGENCY_NOT_FOUND',
+      error: 'Agency workspace not found.',
+    };
+  }
+
+  const agencyLookup = await findAgencyById(supabase, targetId);
+  if (agencyLookup.ok === false) return agencyLookup;
+  const targetAgency = agencyLookup.data;
+
+  const { agencies, membershipByAgencyId, internalUserId } = await resolveUserOrganizationsWithMetadata(
+    supabase,
+    authUser
+  );
+
+  const memberRole = membershipByAgencyId.get(String(targetAgency.id));
+  if (memberRole) {
+    return {
+      ok: true,
+      statusCode: 200,
+      data: {
+        agency: targetAgency,
+        accessType: memberRole,
+        isAdminOverride: false,
+        authorizedAgencies: agencies,
+        internalUserId,
+      },
+    };
+  }
+
+  if (options?.allowAdminOverride !== false && hasExplicitAdminAgencyAccess(authUser)) {
+    return {
+      ok: true,
+      statusCode: 200,
+      data: {
+        agency: targetAgency,
+        accessType: 'admin',
+        isAdminOverride: true,
+        authorizedAgencies: agencies,
+        internalUserId,
+      },
+    };
+  }
+
+  return {
+    ok: false,
+    statusCode: 403,
+    code: 'FORBIDDEN_AGENCY_ACCESS',
+    error: options?.forbiddenMessage || 'You do not have permission to access projects for this agency.',
+  };
+}
+
+/**
+ * Centralized project authorization helper resolving Project -> agency_id -> Agency
+ * and verifying user ownership/membership, explicit admin policy, or optional couple PIN.
+ */
+export async function authorizeProjectAccess(
+  supabase: any,
+  params: {
+    projectId: string;
+    authUser?: BillingAuthUser | null;
+    pin?: string | null;
+    allowPin?: boolean;
+    forbiddenMessage?: string;
+    allowAdminOverride?: boolean;
+  }
+): Promise<
+  ServiceResult<{
+    project: any;
+    agency: any;
+    accessType: AgencyAccessType | 'pin';
+    isAdminOverride: boolean;
+  }>
+> {
+  const hasAuthUser = Boolean(
+    params.authUser &&
+      (params.authUser.id || params.authUser.sub || params.authUser.email || params.authUser.dbUserId)
+  );
+  const cleanPin = typeof params.pin === 'string' ? params.pin.trim() : '';
+
+  if (!hasAuthUser && !(params.allowPin && cleanPin)) {
+    return {
+      ok: false,
+      statusCode: 401,
+      code: 'UNAUTHENTICATED',
+      error: params.allowPin ? 'Authentication or valid event PIN is required.' : 'Not authenticated',
+    };
+  }
+
+  if (params.authUser && String(params.authUser.status || 'active').toLowerCase() === 'suspended') {
+    return {
+      ok: false,
+      statusCode: 403,
+      code: 'ACCOUNT_SUSPENDED',
+      error: 'Your account has been suspended. Please contact platform support.',
+    };
+  }
+
+  const resolved = await resolveProjectWithAgency(supabase, params.projectId);
+  if (resolved.ok === false) return resolved;
+
+  const { project, agency } = resolved.data;
+
+  if (params.allowPin && cleanPin && project.access_password && project.access_password === cleanPin) {
+    return {
+      ok: true,
+      statusCode: 200,
+      data: {
+        project,
+        agency,
+        accessType: 'pin',
+        isAdminOverride: false,
+      },
+    };
+  }
+
+  if (!hasAuthUser) {
+    return {
+      ok: false,
+      statusCode: 403,
+      code: 'FORBIDDEN_AGENCY_ACCESS',
+      error: 'Unauthorized: invalid event PIN or insufficient permissions.',
+    };
+  }
+
+  const agencyAuth = await authorizeAgencyAccess(supabase, params.authUser, String(agency.id), {
+    forbiddenMessage:
+      params.forbiddenMessage || 'You do not have permission to access this event.',
+    allowAdminOverride: params.allowAdminOverride,
+  });
+
+  if (agencyAuth.ok === false) return agencyAuth;
+
+  return {
+    ok: true,
+    statusCode: 200,
+    data: {
+      project,
+      agency: agencyAuth.data.agency,
+      accessType: agencyAuth.data.accessType,
+      isAdminOverride: agencyAuth.data.isAdminOverride,
+    },
+  };
+}
+
+/**
+ * Lists projects belonging to the authenticated user's agency (or specified agency_id after verifying authorization).
+ */
+export async function listProjectsForUser(
+  supabase: any,
+  authUser: BillingAuthUser | null | undefined,
+  requestedAgencyId?: string | null
+): Promise<ServiceResult<any[]>> {
+  if (!authUser || (!authUser.id && !authUser.sub && !authUser.email && !authUser.dbUserId)) {
+    return { ok: false, statusCode: 401, code: 'UNAUTHENTICATED', error: 'Not authenticated' };
+  }
+
+  if (String(authUser.status || 'active').toLowerCase() === 'suspended') {
+    return {
+      ok: false,
+      statusCode: 403,
+      code: 'ACCOUNT_SUSPENDED',
+      error: 'Your account has been suspended. Please contact platform support.',
+    };
+  }
+
+  let targetAgencyId: string | null = null;
+
+  if (requestedAgencyId !== undefined && requestedAgencyId !== null) {
+    const authz = await authorizeAgencyAccess(supabase, authUser, String(requestedAgencyId));
+    if (authz.ok === false) return authz;
+    targetAgencyId = String(authz.data.agency.id);
+  } else {
+    const userOrgsResult = await findAgenciesForUser(supabase, authUser);
+    if (userOrgsResult.ok === false) return userOrgsResult;
+    const { agencies, primaryAgency } = userOrgsResult.data;
+    if (agencies.length === 0 || !primaryAgency) {
       return {
-        ok: false,
-        statusCode: 403,
-        code: 'FORBIDDEN_AGENCY_ACCESS',
-        error: 'You do not have permission to access projects for this agency.',
+        ok: true,
+        statusCode: 200,
+        data: [],
       };
     }
-    targetAgencyIds = [String(requestedAgencyId)];
-  } else if (primaryAgency) {
-    targetAgencyIds = [String(primaryAgency.id)];
+    targetAgencyId = String(primaryAgency.id);
   }
 
   const { data: projects, error } = await supabase
     .from('projects')
     .select('*')
-    .eq('agency_id', targetAgencyIds[0])
+    .eq('agency_id', targetAgencyId)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -1146,92 +1363,70 @@ export async function listProjectsForUser(
 }
 
 /**
- * Gets a single project for an authenticated user after verifying Project -> agency_id -> Agency ownership.
+ * Gets a single project for an authenticated user after verifying Project -> agency_id -> Agency authorization.
  */
 export async function getProjectForAuthorizedUser(
   supabase: any,
   authUser: BillingAuthUser,
   projectId: string
 ): Promise<ServiceResult<{ project: any; agency: any }>> {
-  if (!authUser || (!authUser.id && !authUser.sub && !authUser.email)) {
-    return { ok: false, statusCode: 401, code: 'UNAUTHENTICATED', error: 'Not authenticated' };
-  }
-
-  const resolved = await resolveProjectWithAgency(supabase, projectId);
-  if (resolved.ok === false) return resolved;
-
-  const userOrgs = await resolveUserOrganizations(supabase, authUser);
-  const authorized =
-    authUser.role === 'super_admin' ||
-    userOrgs.some((org) => String(org.id) === String(resolved.data.agency.id));
-
-  if (!authorized) {
-    return {
-      ok: false,
-      statusCode: 403,
-      code: 'FORBIDDEN_AGENCY_ACCESS',
-      error: 'You do not have permission to access this event.',
-    };
-  }
+  const authz = await authorizeProjectAccess(supabase, {
+    projectId,
+    authUser,
+    forbiddenMessage: 'You do not have permission to access this event.',
+  });
+  if (authz.ok === false) return authz;
 
   return {
     ok: true,
     statusCode: 200,
     data: {
-      project: sanitizePublicProject(resolved.data.project, { includePin: true, includePreviewToken: true }),
-      agency: resolved.data.agency,
+      project: sanitizePublicProject(authz.data.project, { includePin: true, includePreviewToken: true }),
+      agency: authz.data.agency,
     },
   };
 }
 
 /**
- * Creates a project under an agency owned by the authenticated user.
+ * Creates a project under an agency authorized for the authenticated user.
  */
 export async function createProjectForUser(
   supabase: any,
   authUser: BillingAuthUser,
   projectData: any
 ): Promise<ServiceResult<{ project: any; agency: any }>> {
-  if (!authUser || (!authUser.id && !authUser.sub && !authUser.email)) {
+  if (!authUser || (!authUser.id && !authUser.sub && !authUser.email && !authUser.dbUserId)) {
     return { ok: false, statusCode: 401, code: 'UNAUTHENTICATED', error: 'Not authenticated' };
   }
-  if (authUser.status === 'suspended') {
+  if (String(authUser.status || 'active').toLowerCase() === 'suspended') {
     return { ok: false, statusCode: 403, code: 'ACCOUNT_SUSPENDED', error: 'Account suspended.' };
   }
 
-  const userOrgs = await resolveUserOrganizations(supabase, authUser);
-  if (userOrgs.length === 0) {
-    return {
-      ok: false,
-      statusCode: 403,
-      code: 'AGENCY_REQUIRED',
-      error: 'Please complete agency onboarding before creating events.',
-    };
-  }
+  let targetAgency: any = null;
+  let isAdminOverride = false;
 
-  let targetAgency = userOrgs[0];
-  if (projectData?.agency_id) {
-    const requestedId = String(projectData.agency_id);
-    const matched = userOrgs.find((org) => String(org.id) === requestedId);
-    if (!matched && authUser.role !== 'super_admin') {
+  if (projectData?.agency_id !== undefined && projectData?.agency_id !== null && String(projectData.agency_id).trim() !== '') {
+    const authz = await authorizeAgencyAccess(supabase, authUser, String(projectData.agency_id), {
+      forbiddenMessage: 'You do not have permission to create events under this agency.',
+    });
+    if (authz.ok === false) return authz;
+    targetAgency = authz.data.agency;
+    isAdminOverride = authz.data.isAdminOverride;
+  } else {
+    const userOrgs = await resolveUserOrganizations(supabase, authUser);
+    if (userOrgs.length === 0) {
       return {
         ok: false,
         statusCode: 403,
-        code: 'FORBIDDEN_AGENCY_ACCESS',
-        error: 'You do not have permission to create events under this agency.',
+        code: 'AGENCY_REQUIRED',
+        error: 'Please complete agency onboarding before creating events.',
       };
     }
-    if (matched) {
-      targetAgency = matched;
-    } else {
-      const lookup = await findAgencyById(supabase, requestedId);
-      if (lookup.ok === false) return lookup;
-      targetAgency = lookup.data;
-    }
+    targetAgency = userOrgs[0];
   }
 
   // Enforce couple single-event limit on the backend as well as the frontend
-  if (targetAgency.user_role === 'couple' && authUser.role !== 'super_admin') {
+  if (targetAgency.user_role === 'couple' && !isAdminOverride) {
     const { data: existingProjects, error: listErr } = await supabase
       .from('projects')
       .select('id, deleted_at')
@@ -1395,7 +1590,7 @@ export async function createProjectForUser(
 }
 
 /**
- * Updates a project after verifying Project -> agency_id -> Agency ownership or valid event PIN.
+ * Updates a project after verifying Project -> agency_id -> Agency ownership/membership or valid event PIN.
  */
 export async function updateProjectForUserOrPin(
   supabase: any,
@@ -1406,34 +1601,16 @@ export async function updateProjectForUserOrPin(
     body: any;
   }
 ): Promise<ServiceResult<any>> {
-  const resolved = await resolveProjectWithAgency(supabase, params.projectId);
-  if (resolved.ok === false) return resolved;
+  const authz = await authorizeProjectAccess(supabase, {
+    projectId: params.projectId,
+    authUser: params.authUser,
+    pin: params.pin,
+    allowPin: true,
+    forbiddenMessage: 'Unauthorized: you do not have permission to modify this event.',
+  });
+  if (authz.ok === false) return authz;
 
-  const { project, agency } = resolved.data;
-  let authorized = false;
-
-  if (params.authUser) {
-    if (params.authUser.status === 'suspended') {
-      return { ok: false, statusCode: 403, code: 'ACCOUNT_SUSPENDED', error: 'Account suspended.' };
-    }
-    const userOrgs = await resolveUserOrganizations(supabase, params.authUser);
-    authorized =
-      params.authUser.role === 'super_admin' ||
-      userOrgs.some((org) => String(org.id) === String(agency.id));
-  }
-
-  if (!authorized && params.pin && project.access_password && project.access_password === params.pin) {
-    authorized = true;
-  }
-
-  if (!authorized) {
-    return {
-      ok: false,
-      statusCode: 403,
-      code: 'FORBIDDEN_AGENCY_ACCESS',
-      error: 'Unauthorized: you do not have permission to modify this event.',
-    };
-  }
+  const { project, agency } = authz.data;
 
   const {
     id: _ignoredId,
@@ -1466,33 +1643,20 @@ export async function updateProjectForUserOrPin(
 }
 
 /**
- * Deletes a project after verifying Project -> agency_id -> Agency ownership.
+ * Deletes a project after verifying Project -> agency_id -> Agency ownership/membership.
  */
 export async function deleteProjectForUser(
   supabase: any,
   params: { projectId: string; authUser: BillingAuthUser }
 ): Promise<ServiceResult<{ deletedId: string }>> {
-  if (!params.authUser || (!params.authUser.id && !params.authUser.sub && !params.authUser.email)) {
-    return { ok: false, statusCode: 401, code: 'UNAUTHENTICATED', error: 'Not authenticated' };
-  }
+  const authz = await authorizeProjectAccess(supabase, {
+    projectId: params.projectId,
+    authUser: params.authUser,
+    forbiddenMessage: 'Unauthorized: you do not have permission to delete this event.',
+  });
+  if (authz.ok === false) return authz;
 
-  const resolved = await resolveProjectWithAgency(supabase, params.projectId);
-  if (resolved.ok === false) return resolved;
-
-  const { project, agency } = resolved.data;
-  const userOrgs = await resolveUserOrganizations(supabase, params.authUser);
-  const authorized =
-    params.authUser.role === 'super_admin' ||
-    userOrgs.some((org) => String(org.id) === String(agency.id));
-
-  if (!authorized) {
-    return {
-      ok: false,
-      statusCode: 403,
-      code: 'FORBIDDEN_AGENCY_ACCESS',
-      error: 'Unauthorized: you do not have permission to delete this event.',
-    };
-  }
+  const { project, agency } = authz.data;
 
   const { error } = await supabase
     .from('projects')

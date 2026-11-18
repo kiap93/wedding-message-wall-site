@@ -42,8 +42,9 @@ import {
   verifyEmailAccountTokenUser,
   resetUserPasswordWithHash,
 } from '../server/userSyncService';
-import { resolveUserOrganizations } from '../server/billingService';
+import { hasExplicitAdminAgencyAccess, resolveUserOrganizations } from '../server/billingService';
 import {
+  authorizeProjectAccess,
   findAgencyBySlugOrHost,
   findAgenciesForUser,
   sanitizePublicAgency,
@@ -1454,19 +1455,19 @@ async function authorizeWorkerUpload(c: any, eventId?: string | null) {
       const errRes = check as { ok: false; statusCode: number; code: string; error: string };
       return { ok: false as const, statusCode: errRes.statusCode, code: errRes.code, message: errRes.error };
     }
-    if (eventId && eventId !== 'default-event' && supabase && check.user.role !== 'super_admin') {
-      const resolved = await resolvePublicEvent(supabase, { id: eventId });
-      if (resolved.ok) {
-        const orgs = await resolveUserOrganizations(supabase, check.user);
-        const owns = orgs.some((org) => String(org.id) === String(resolved.data.agency.id));
-        if (!owns) {
-          return {
-            ok: false as const,
-            statusCode: 403,
-            code: 'FORBIDDEN_AGENCY_ACCESS',
-            message: 'You do not have permission to manage media for this event.',
-          };
-        }
+    if (eventId && eventId !== 'default-event' && supabase) {
+      const projAuth = await authorizeProjectAccess(supabase, {
+        projectId: eventId,
+        authUser: check.user,
+        forbiddenMessage: 'You do not have permission to manage media for this event.',
+      });
+      if (projAuth.ok === false) {
+        return {
+          ok: false as const,
+          statusCode: projAuth.statusCode,
+          code: projAuth.code,
+          message: projAuth.error,
+        };
       }
     }
     return { ok: true as const, actorId: String(check.user.id || check.user.sub || 'user') };
@@ -1928,14 +1929,12 @@ async function updateProject(c: any) {
   try {
     const project_id = c.req.param('id');
     const projectData = await c.req.json();
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL : undefined);
-    const serviceRoleKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_SERVICE_KEY || c.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY : undefined);
+    const supabase = getWorkerSupabase(c);
 
-    if (!supabaseUrl || !serviceRoleKey) {
+    if (!supabase) {
       return c.json({ error: 'Supabase configuration missing', code: 'DATABASE_ERROR' }, 500);
     }
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
     let authUser = null;
     if (token) {
       const payload = await verify(token, jwtSecret, 'HS256') as any;
@@ -2798,57 +2797,37 @@ async function verifyProjectAccessWorker(c: any, projectId: string) {
   const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
   const pinHeader = c.req.header('x-event-pin');
 
-  if (!supabaseUrl || !serviceRoleKey) {
+  const supabase = getWorkerSupabase(c);
+  if (!supabase) {
     return { authorized: false, error: 'Database configuration missing' };
   }
 
-  const supabase = createClient(supabaseUrl, serviceRoleKey);
-  const { data: project, error: projErr } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('id', projectId)
-    .limit(1)
-    .maybeSingle();
-
-  if (projErr || !project || project.deleted_at || !project.agency_id) {
-    return { authorized: false, error: 'Project not found' };
-  }
-
-  const { data: agency } = await supabase
-    .from('agencies')
-    .select('*')
-    .eq('id', project.agency_id)
-    .limit(1)
-    .maybeSingle();
-
-  if (!agency || agency.deleted_at) {
-    return { authorized: false, error: 'Invalid or missing agency reference for this project' };
-  }
-
+  let authUser: any = null;
   if (token) {
     try {
       const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
       const payload = await verify(token, jwtSecret, 'HS256') as any;
       const activeCheck = await resolveAuthenticatedSessionUser(supabase, payload, c.env.SUPER_ADMIN_EMAILS);
       if (activeCheck.ok) {
-        if (activeCheck.user.role === 'super_admin') {
-          return { authorized: true, project, agency, supabase };
-        }
-        const userOrgs = await resolveUserOrganizations(supabase, activeCheck.user);
-        if (userOrgs.some((org) => String(org.id) === String(agency.id))) {
-          return { authorized: true, project, agency, supabase };
-        }
+        authUser = activeCheck.user;
       }
-    } catch (e) {
-      // invalid token
+    } catch {
+      // invalid token; allow PIN fallback below
     }
   }
 
-  if (pinHeader && project.access_password && project.access_password === pinHeader) {
-    return { authorized: true, project, agency, supabase };
+  const authz = await authorizeProjectAccess(supabase, {
+    projectId,
+    authUser,
+    pin: pinHeader || null,
+    allowPin: true,
+  });
+
+  if (authz.ok === false) {
+    return { authorized: false, error: authz.error || 'Unauthorized: Invalid credentials or insufficient permissions' };
   }
 
-  return { authorized: false, error: 'Unauthorized: Invalid credentials or insufficient permissions' };
+  return { authorized: true, project: authz.data.project, agency: authz.data.agency, supabase };
 }
 
 // 1. Get all tables
@@ -3287,7 +3266,7 @@ app.get('/api/events/:slug/website-data', async (c) => {
           const decoded = (await verify(sessionToken, jwtSecret, 'HS256')) as any;
           const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, c.env.SUPER_ADMIN_EMAILS);
           if (activeCheck.ok) {
-            if (activeCheck.user.role === 'super_admin') {
+            if (hasExplicitAdminAgencyAccess(activeCheck.user)) {
               isAuthorizedPreview = true;
             } else {
               const userOrgs = await resolveUserOrganizations(supabase, activeCheck.user);

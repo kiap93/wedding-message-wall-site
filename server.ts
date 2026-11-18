@@ -104,8 +104,9 @@ import {
   verifyEmailAccountTokenUser,
   resetUserPasswordWithHash,
 } from './server/userSyncService';
-import { resolveUserOrganizations } from './server/billingService';
+import { hasExplicitAdminAgencyAccess, resolveUserOrganizations } from './server/billingService';
 import {
+  authorizeProjectAccess,
   findAgencyBySlugOrHost,
   findAgenciesForUser,
   sanitizePublicAgency,
@@ -2299,51 +2300,32 @@ Return ONLY a valid JSON array of objects with the following schema:
     }
 
     const supabase = getSupabaseAdmin();
-    const { data: project, error: projErr } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('id', projectId)
-      .limit(1)
-      .maybeSingle();
-
-    if (projErr || !project || project.deleted_at || !project.agency_id) {
-      return { authorized: false, project: null, agency: null };
-    }
-
-    const { data: agency } = await supabase
-      .from('agencies')
-      .select('*')
-      .eq('id', project.agency_id)
-      .limit(1)
-      .maybeSingle();
-
-    if (!agency || agency.deleted_at) {
-      return { authorized: false, project: null, agency: null };
-    }
+    let authUser: any = null;
 
     if (token) {
       try {
         const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
         const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
         if (activeCheck.ok) {
-          if (activeCheck.user.role === 'super_admin') {
-            return { authorized: true, project, agency };
-          }
-          const userOrgs = await resolveUserOrganizations(supabase, activeCheck.user);
-          if (userOrgs.some((org) => String(org.id) === String(agency.id))) {
-            return { authorized: true, project, agency };
-          }
+          authUser = activeCheck.user;
         }
-      } catch (e) {
-        // invalid token
+      } catch {
+        // invalid token; allow PIN fallback below
       }
     }
 
-    if (pinHeader && project.access_password && project.access_password === pinHeader) {
-      return { authorized: true, project, agency };
+    const authz = await authorizeProjectAccess(supabase, {
+      projectId,
+      authUser,
+      pin: pinHeader || null,
+      allowPin: true,
+    });
+
+    if (authz.ok) {
+      return { authorized: true, project: authz.data.project, agency: authz.data.agency };
     }
 
-    return { authorized: false, project, agency };
+    return { authorized: false, project: null, agency: null };
   }
 
   // =========================================================================
@@ -3203,7 +3185,7 @@ Return ONLY a valid JSON array of objects with the following schema:
             const supabase = getSupabaseAdmin();
             const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
             if (activeCheck.ok) {
-              if (activeCheck.user.role === 'super_admin') {
+              if (hasExplicitAdminAgencyAccess(activeCheck.user)) {
                 isAuthorizedPreview = true;
               } else {
                 const userOrgs = await resolveUserOrganizations(supabase, activeCheck.user);

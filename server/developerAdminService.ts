@@ -282,11 +282,30 @@ async function safeFetchTable(supabase: any, table: string, orderBy?: string): P
 
 export async function findDbUserForIdentity(
   supabase: any,
-  identity: { id?: string | null; sub?: string | null; email?: string | null }
+  identity: {
+    id?: string | null;
+    sub?: string | null;
+    dbUserId?: string | null;
+    supabaseUserId?: string | null;
+    externalUserId?: string | null;
+    providerUserId?: string | null;
+    email?: string | null;
+  }
 ): Promise<any | null> {
   if (!supabase) return null;
   const email = normalizeEmail(identity.email);
-  const candidateIds = [identity.id, identity.sub].filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+  const candidateIds = Array.from(
+    new Set(
+      [
+        identity.dbUserId,
+        identity.id,
+        identity.sub,
+        identity.supabaseUserId,
+        identity.externalUserId,
+        identity.providerUserId,
+      ].filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    )
+  );
 
   try {
     if (email) {
@@ -400,6 +419,10 @@ export async function resolveAuthenticatedSessionUser(
   let dbUser = await findDbUserForIdentity(supabase, {
     id: decodedToken.supabaseUserId || decodedToken.id,
     sub: decodedToken.sub,
+    dbUserId: decodedToken.dbUserId,
+    supabaseUserId: decodedToken.supabaseUserId,
+    externalUserId: decodedToken.externalUserId,
+    providerUserId: decodedToken.providerUserId,
     email: decodedToken.email,
   });
 
@@ -512,6 +535,7 @@ export async function resolveAuthenticatedSessionUser(
       supabaseUserId: dbUser?.supabase_user_id ? String(dbUser.supabase_user_id) : null,
       externalUserId: dbUser?.external_user_id ? String(dbUser.external_user_id) : null,
       providerUserId: dbUser?.provider_user_id ? String(dbUser.provider_user_id) : null,
+      organizationId: dbUser?.organization_id ? String(dbUser.organization_id) : null,
       authProvider: dbUser?.auth_provider || null,
       emailVerified: Boolean(dbUser?.email_verified ?? dbUser?.is_verified),
     },

@@ -91,7 +91,14 @@ function normalizeEventRecord(event: any): WeddingEvent {
 }
 
 export default function Workspace() {
-  const { workspace, isLoading: isLoadingWorkspace } = useWorkspace();
+  const {
+    activeAgency: contextActiveAgency,
+    authorizedAgencies,
+    isLoadingAuthorizedAgencies,
+    authorizedAgenciesError,
+    clearActiveAgency,
+    refreshAuthorizedAgencies,
+  } = useWorkspace();
   const { user } = useUser();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -162,97 +169,91 @@ export default function Workspace() {
     load();
   }, []);
 
-  const fetchEvents = useCallback(async (agencyId: string) => {
-    setIsLoadingEvents(true);
-    setEventsLoadError(null);
-    try {
-      const response = await authenticatedFetch(
-        `${API_BASE}/api/projects?agency_id=${encodeURIComponent(agencyId)}`
-      );
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        const errMsg = extractApiErrorMessage(errBody, `Failed to load events (${response.status})`);
-        console.error('Error fetching events:', response.status, errMsg);
-        setEventsLoadError(errMsg);
-      } else {
-        const payload = await response.json().catch(() => ({}));
-        const rawList = Array.isArray(payload?.data) ? payload.data : [];
-        const eventList = rawList.map(normalizeEventRecord);
-        setEvents(eventList);
-      }
-    } catch (error: any) {
-      console.error('Error fetching events:', error);
-      setEventsLoadError(error?.message || 'Unable to connect to load wedding events.');
-    } finally {
-      setIsLoadingEvents(false);
-    }
-  }, []);
-
-  // Load agency and events only when workspace/user session changes (never refetch on ?view= switches)
-  useEffect(() => {
-    let cancelled = false;
-    const initAdmin = async () => {
-      if (isLoadingWorkspace || !user) return;
-
-      if (workspace) {
-        setAgency(workspace);
-        await fetchEvents(workspace.id);
-      } else {
-        setIsLoadingEvents(true);
-        setEventsLoadError(null);
-        try {
-          const response = await authenticatedFetch(`${API_BASE}/api/agencies/me`);
-          if (cancelled) return;
-          if (!response.ok) {
-            const errBody = await response.json().catch(() => ({}));
-            const errMsg = extractApiErrorMessage(
-              errBody,
-              response.status === 401 || response.status === 403
-                ? 'Your session lacks permission to access this workspace.'
-                : 'Unable to load your workspace organizations.'
-            );
-            console.error('Error fetching user agencies:', response.status, errMsg);
-            setEventsLoadError(errMsg);
-            setIsLoadingEvents(false);
-            return;
+  const fetchEvents = useCallback(
+    async (agencyId: string) => {
+      setIsLoadingEvents(true);
+      setEventsLoadError(null);
+      setEvents([]);
+      try {
+        const response = await authenticatedFetch(
+          `${API_BASE}/api/projects?agency_id=${encodeURIComponent(agencyId)}`
+        );
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}));
+          const errCode = errBody?.code || errBody?.error?.code;
+          const errMsg = extractApiErrorMessage(errBody, `Failed to load events (${response.status})`);
+          console.error('Error fetching events:', response.status, errMsg);
+          setEvents([]);
+          setEventsLoadError(errMsg);
+          if (
+            (response.status === 403 && errCode === 'FORBIDDEN_AGENCY_ACCESS') ||
+            (response.status === 404 && errCode === 'AGENCY_NOT_FOUND')
+          ) {
+            clearActiveAgency();
+            void refreshAuthorizedAgencies();
           }
-
+        } else {
           const payload = await response.json().catch(() => ({}));
-          const userAgencies = Array.isArray(payload?.agencies) ? payload.agencies : [];
-          if (cancelled) return;
-
-          if (userAgencies.length > 0) {
-            const primaryWorkspace = userAgencies[0];
-            setAgency(primaryWorkspace);
-            await fetchEvents(primaryWorkspace.id);
-          } else {
-            setIsLoadingEvents(false);
-            navigate('/onboarding');
-          }
-        } catch (err: any) {
-          console.error('Error fetching user agencies:', err);
-          if (!cancelled) {
-            setEventsLoadError(err?.message || 'Network error while loading workspace.');
-            setIsLoadingEvents(false);
-          }
+          const rawList = Array.isArray(payload?.data) ? payload.data : [];
+          const eventList = rawList.map(normalizeEventRecord);
+          setEvents(eventList);
         }
+      } catch (error: any) {
+        console.error('Error fetching events:', error);
+        setEvents([]);
+        setEventsLoadError(error?.message || 'Unable to connect to load wedding events.');
+      } finally {
+        setIsLoadingEvents(false);
       }
+    },
+    [clearActiveAgency, refreshAuthorizedAgencies]
+  );
+
+  // Load verified agency and events only when active agency or user session changes (never refetch on ?view= switches)
+  useEffect(() => {
+    const initAdmin = async () => {
+      if (!user || isLoadingAuthorizedAgencies) return;
+
+      if (authorizedAgenciesError) {
+        setAgency(null);
+        setEvents([]);
+        setEventsLoadError(authorizedAgenciesError);
+        setIsLoadingEvents(false);
+        return;
+      }
+
+      if (authorizedAgencies.length === 0 || !contextActiveAgency) {
+        setAgency(null);
+        setEvents([]);
+        setIsLoadingEvents(false);
+        navigate('/onboarding');
+        return;
+      }
+
+      setAgency(contextActiveAgency);
+      await fetchEvents(contextActiveAgency.id);
     };
 
-    initAdmin();
-    return () => {
-      cancelled = true;
-    };
-  }, [workspace?.id, isLoadingWorkspace, user?.id, fetchEvents, navigate, retryCounter]);
+    void initAdmin();
+  }, [
+    user?.id,
+    isLoadingAuthorizedAgencies,
+    authorizedAgenciesError,
+    authorizedAgencies.length,
+    contextActiveAgency?.id,
+    fetchEvents,
+    navigate,
+    retryCounter,
+  ]);
 
   const handleRetryProjectLoad = useCallback(() => {
     setProjectLoadError(null);
     setEventsLoadError(null);
-    if (agency?.id) {
-      fetchEvents(agency.id);
+    if (authorizedAgenciesError || !contextActiveAgency?.id) {
+      void refreshAuthorizedAgencies();
     }
     setRetryCounter((c) => c + 1);
-  }, [agency?.id, fetchEvents]);
+  }, [authorizedAgenciesError, contextActiveAgency?.id, refreshAuthorizedAgencies]);
 
   // Synchronize selected editor project cleanly with URL ?view=editor&project=<id>
   // Never leave stale editor state in memory when exiting to grid/calendar, and never trap on invalid/failed loads.
@@ -417,6 +418,7 @@ export default function Workspace() {
       if (resData.data) {
         setAgency(resData.data);
       }
+      await refreshAuthorizedAgencies();
 
       const newSlug = agencyData.slug;
       if (newSlug && newSlug !== agency?.slug) {
@@ -450,7 +452,7 @@ export default function Workspace() {
     }
   };
 
-  const activeAgency = agency || workspace;
+  const activeAgency = agency || contextActiveAgency;
   const isSubscribed = activeAgency?.subscription_status === 'active' || activeAgency?.is_demo === true;
   const isCouple = activeAgency?.user_role === 'couple';
   const isStaff = user?.is_developer === true || user?.isDeveloper === true;

@@ -6,11 +6,11 @@
 import { isEventActive } from '../src/lib/packages';
 import { type BillingAuthUser } from './billingService';
 import {
+  authorizeProjectAccess,
   mapDatabaseError,
   resolveProjectWithAgency,
   type ServiceResult,
 } from './agencyService';
-import { resolveUserOrganizations } from './billingService';
 
 const VALID_WISH_CATEGORIES = new Set(['normal', 'funny', 'heartfelt', 'family']);
 
@@ -20,48 +20,15 @@ async function verifyProjectAuthorization(
   authUser?: BillingAuthUser | null,
   pin?: string | null
 ): Promise<ServiceResult<{ project: any; agency: any }>> {
-  const resolved = await resolveProjectWithAgency(supabase, projectId);
-  if (resolved.ok === false) return resolved;
-
-  const { project, agency } = resolved.data;
-  if (pin && project.access_password && project.access_password === pin) {
-    return { ok: true, statusCode: 200, data: { project, agency } };
-  }
-
-  if (!authUser || (!authUser.id && !authUser.sub && !authUser.email)) {
-    return {
-      ok: false,
-      statusCode: 401,
-      code: 'UNAUTHENTICATED',
-      error: 'Authentication or valid event PIN is required.',
-    };
-  }
-
-  if (authUser.status === 'suspended') {
-    return {
-      ok: false,
-      statusCode: 403,
-      code: 'ACCOUNT_SUSPENDED',
-      error: 'Your account has been suspended.',
-    };
-  }
-
-  if (authUser.role === 'super_admin') {
-    return { ok: true, statusCode: 200, data: { project, agency } };
-  }
-
-  const userOrgs = await resolveUserOrganizations(supabase, authUser);
-  const authorized = userOrgs.some((org) => String(org.id) === String(agency.id));
-  if (!authorized) {
-    return {
-      ok: false,
-      statusCode: 403,
-      code: 'FORBIDDEN_AGENCY_ACCESS',
-      error: 'You do not have permission to manage this wedding event.',
-    };
-  }
-
-  return { ok: true, statusCode: 200, data: { project, agency } };
+  const authz = await authorizeProjectAccess(supabase, {
+    projectId,
+    authUser,
+    pin,
+    allowPin: true,
+    forbiddenMessage: 'You do not have permission to manage this wedding event.',
+  });
+  if (authz.ok === false) return authz;
+  return { ok: true, statusCode: 200, data: { project: authz.data.project, agency: authz.data.agency } };
 }
 
 /**

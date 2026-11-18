@@ -529,6 +529,50 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://eventframe.io/blog" />
   </url>
   <url>
+    <loc>https://eventframe.io/contact</loc>
+    <lastmod>2026-11-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://eventframe.io/contact" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://eventframe.io/zh-cn/contact" />
+    <xhtml:link rel="alternate" hreflang="zh-TW" href="https://eventframe.io/zh-tw/contact" />
+    <xhtml:link rel="alternate" hreflang="ms" href="https://eventframe.io/ms/contact" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://eventframe.io/contact" />
+  </url>
+  <url>
+    <loc>https://eventframe.io/zh-cn/contact</loc>
+    <lastmod>2026-11-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://eventframe.io/contact" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://eventframe.io/zh-cn/contact" />
+    <xhtml:link rel="alternate" hreflang="zh-TW" href="https://eventframe.io/zh-tw/contact" />
+    <xhtml:link rel="alternate" hreflang="ms" href="https://eventframe.io/ms/contact" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://eventframe.io/contact" />
+  </url>
+  <url>
+    <loc>https://eventframe.io/zh-tw/contact</loc>
+    <lastmod>2026-11-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://eventframe.io/contact" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://eventframe.io/zh-cn/contact" />
+    <xhtml:link rel="alternate" hreflang="zh-TW" href="https://eventframe.io/zh-tw/contact" />
+    <xhtml:link rel="alternate" hreflang="ms" href="https://eventframe.io/ms/contact" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://eventframe.io/contact" />
+  </url>
+  <url>
+    <loc>https://eventframe.io/ms/contact</loc>
+    <lastmod>2026-11-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://eventframe.io/contact" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://eventframe.io/zh-cn/contact" />
+    <xhtml:link rel="alternate" hreflang="zh-TW" href="https://eventframe.io/zh-tw/contact" />
+    <xhtml:link rel="alternate" hreflang="ms" href="https://eventframe.io/ms/contact" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://eventframe.io/contact" />
+  </url>
+  <url>
     <loc>https://eventframe.io/blog/how-to-organize-wedding-guest-list</loc>
     <lastmod>2026-11-11</lastmod>
     <changefreq>monthly</changefreq>

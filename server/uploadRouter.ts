@@ -6,9 +6,8 @@ import path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import { processAndUploadImage, deleteImageFiles } from './storage';
 import { buildErrorResponse, buildSuccessResponse } from './apiResponse';
-import { resolveProjectWithAgency } from './agencyService';
+import { authorizeProjectAccess, resolveProjectWithAgency } from './agencyService';
 import { resolveAuthenticatedSessionUser } from './developerAdminService';
-import { resolveUserOrganizations } from './billingService';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 const uploadRouter = express.Router();
@@ -100,19 +99,19 @@ async function authorizeUploadRequest(
             message: activeCheck.error,
           };
         }
-        if (eventId && eventId !== 'default-event' && activeCheck.user.role !== 'super_admin') {
-          const resolved = await resolveProjectWithAgency(db, eventId);
-          if (resolved.ok) {
-            const orgs = await resolveUserOrganizations(db, activeCheck.user);
-            const ownsProject = orgs.some((org) => String(org.id) === String(resolved.data.agency.id));
-            if (!ownsProject) {
-              return {
-                ok: false,
-                statusCode: 403,
-                code: 'FORBIDDEN_AGENCY_ACCESS',
-                message: 'You do not have permission to upload assets to this event.',
-              };
-            }
+        if (eventId && eventId !== 'default-event') {
+          const projAuth = await authorizeProjectAccess(db, {
+            projectId: eventId,
+            authUser: activeCheck.user,
+            forbiddenMessage: 'You do not have permission to upload assets to this event.',
+          });
+          if (projAuth.ok === false) {
+            return {
+              ok: false,
+              statusCode: projAuth.statusCode,
+              code: projAuth.code,
+              message: projAuth.error,
+            };
           }
         }
         return { ok: true, actorId: String(activeCheck.user.id || activeCheck.user.sub || 'user') };

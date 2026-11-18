@@ -122,8 +122,13 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        if (isRoot && userWorkspaces.length > 0 && normalizedPath === '/workspace') {
-          const primaryWorkspace = userWorkspaces[0];
+        const subdomainAllowed =
+          !subdomain ||
+          userWorkspaces.some((w: any) => String(w?.slug || '').toLowerCase() === subdomain.toLowerCase());
+
+        if ((isRoot || !subdomainAllowed) && userWorkspaces.length > 0 && normalizedPath === '/workspace') {
+          const primaryWorkspace =
+            userWorkspaces.find((w: any) => w.user_role === 'agency' && w.slug) || userWorkspaces[0];
           if (primaryWorkspace.user_role === 'agency' && primaryWorkspace.slug) {
             const slug = primaryWorkspace.slug;
             const protocol = window.location.protocol;

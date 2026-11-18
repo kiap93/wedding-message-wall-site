@@ -39,7 +39,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useUser();
-  const { workspace } = useWorkspace();
+  const { workspace, activeAgency, authorizedAgencies, selectAgency } = useWorkspace();
+  const displayAgency = activeAgency || workspace;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [tabletSidebarCollapsed, setTabletSidebarCollapsed] = useState(false);
 
@@ -97,21 +98,48 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
   const sidebarContent = (
     <div className="flex flex-col h-full bg-[#FFFFFF] border-r border-[#E6E0D6]">
-      {/* Workspace Brand Lockup */}
-      <div className="p-4 border-b border-[#EFEAE0] flex items-center justify-between">
+      {/* Workspace Brand Lockup & Switcher */}
+      <div className="p-4 border-b border-[#EFEAE0] space-y-2.5">
         <div className="flex items-center gap-2.5 overflow-hidden">
           <div className="w-7 h-7 rounded-md bg-[#23201C] text-[#FAF8F4] flex items-center justify-center font-serif font-medium text-xs shrink-0">
-            {workspace?.name ? workspace.name.charAt(0).toUpperCase() : 'E'}
+            {displayAgency?.name ? displayAgency.name.charAt(0).toUpperCase() : 'E'}
           </div>
           <div className="truncate">
             <div className="text-xs font-semibold text-[#23201C] truncate">
-              {workspace?.name || 'EventFrame Studio'}
+              {displayAgency?.name || 'EventFrame Studio'}
             </div>
             <div className="text-[11px] text-[#7A7368] truncate">
-              {workspace?.slug ? `${workspace.slug}.eventframe.io` : 'Agency Workspace'}
+              {displayAgency?.slug ? `${displayAgency.slug}.eventframe.io` : 'Agency Workspace'}
             </div>
           </div>
         </div>
+        {authorizedAgencies.length > 1 && (
+          <div>
+            <label htmlFor="agency-workspace-switcher" className="sr-only">
+              Switch Agency Workspace
+            </label>
+            <select
+              id="agency-workspace-switcher"
+              value={activeAgency?.id || ''}
+              onChange={(e) => {
+                const switched = selectAgency(e.target.value);
+                if (switched && location.pathname === '/workspace') {
+                  const params = new URLSearchParams(location.search);
+                  if (params.get('view') === 'editor') {
+                    navigate(buildWorkspaceUrl('grid'));
+                  }
+                }
+              }}
+              className="w-full h-8 px-2.5 text-xs font-medium text-[#23201C] bg-[#FAF8F4] border border-[#E6E0D6] rounded-lg focus:outline-none focus:border-[#C9A24D]"
+            >
+              {authorizedAgencies.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Action Button */}
@@ -243,10 +271,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       <header className="md:hidden sticky top-0 z-30 bg-white border-b border-[#E6E0D6] px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-6 h-6 rounded bg-[#23201C] text-white flex items-center justify-center font-serif font-medium text-xs shrink-0">
-            {workspace?.name ? workspace.name.charAt(0).toUpperCase() : 'E'}
+            {displayAgency?.name ? displayAgency.name.charAt(0).toUpperCase() : 'E'}
           </div>
           <span className="text-xs font-semibold text-[#23201C] truncate">
-            {eventNav?.eventName || workspace?.name || 'EventFrame.io'}
+            {eventNav?.eventName || displayAgency?.name || 'EventFrame.io'}
           </span>
         </div>
         <button

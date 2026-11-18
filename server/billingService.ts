@@ -1,7 +1,11 @@
 import Stripe from 'stripe';
 import { EVENT_PRICING } from '../src/config/pricing';
 import { add12CalendarMonths, isEventActive, getDaysRemaining } from '../src/lib/packages';
-import { recordPlatformActivity } from './developerAdminService';
+import {
+  recordPlatformActivity,
+  findDbUserForIdentity,
+  resolveDbUserIsDeveloper,
+} from './developerAdminService';
 
 export interface ActivateEventResult {
   success: boolean;
@@ -23,9 +27,12 @@ export interface BillingAuthUser {
   dbUserId?: string | null;
   supabaseUserId?: string | null;
   externalUserId?: string | null;
+  providerUserId?: string | null;
   email: string;
   name?: string;
   role?: string;
+  is_developer?: boolean;
+  isDeveloper?: boolean;
   status?: string;
   organizationId?: string | null;
 }
@@ -126,35 +133,161 @@ export function calculateNewExpiration(currentExpiresAt: string | null | undefin
 }
 
 /**
- * Resolves all organization (agency) records authorized for a given authenticated user.
+ * Explicit, isolated platform developer/admin permission rule for agency administration.
+ * Never infers privilege from email domains or arbitrary JWT claims when DB `is_developer` is present.
  */
-export async function resolveUserOrganizations(supabase: any, authUser: BillingAuthUser): Promise<any[]> {
-  if (!supabase) return [];
+export function hasExplicitAdminAgencyAccess(authUser: BillingAuthUser | null | undefined): boolean {
+  if (!authUser || typeof authUser !== 'object') return false;
+  if (String(authUser.status || 'active').toLowerCase() === 'suspended') return false;
+
+  if (typeof authUser.is_developer === 'boolean' || typeof authUser.isDeveloper === 'boolean') {
+    return authUser.is_developer === true || authUser.isDeveloper === true;
+  }
+
+  // Legacy pre-migration fallback only when explicit `is_developer` boolean is absent
+  return resolveDbUserIsDeveloper(authUser);
+}
+
+/**
+ * Resolves all organization (agency) records authorized for a given authenticated user,
+ * together with membership source metadata (`owner` | `member`) and resolved internal `users_auth.id`.
+ */
+export async function resolveUserOrganizationsWithMetadata(
+  supabase: any,
+  authUser: BillingAuthUser | null | undefined
+): Promise<{
+  agencies: any[];
+  membershipByAgencyId: Map<string, 'owner' | 'member'>;
+  internalUserId: string | null;
+}> {
+  const empty = {
+    agencies: [] as any[],
+    membershipByAgencyId: new Map<string, 'owner' | 'member'>(),
+    internalUserId: null as string | null,
+  };
+  if (!supabase || !authUser) return empty;
+  if (String(authUser.status || 'active').toLowerCase() === 'suspended') return empty;
+
   const { data: agencies, error } = await supabase.from('agencies').select('*');
   if (error) {
     throw new Error(`Failed to resolve user organizations: ${error.message}`);
   }
 
-  const candidateIds = new Set(
+  // Always resolve canonical internal users_auth record if dbUserId or organizationId wasn't already supplied
+  let resolvedDbUser: any = null;
+  if (!authUser.dbUserId || authUser.organizationId === undefined) {
+    resolvedDbUser = await findDbUserForIdentity(supabase, {
+      id: authUser.id,
+      sub: authUser.sub,
+      dbUserId: authUser.dbUserId,
+      supabaseUserId: authUser.supabaseUserId,
+      externalUserId: authUser.externalUserId,
+      providerUserId: authUser.providerUserId,
+      email: authUser.email,
+    });
+  }
+
+  if (resolvedDbUser && String(resolvedDbUser.status || 'active').toLowerCase() === 'suspended') {
+    return empty;
+  }
+
+  const internalUserId = authUser.dbUserId
+    ? String(authUser.dbUserId)
+    : resolvedDbUser?.id
+      ? String(resolvedDbUser.id)
+      : null;
+
+  const candidateOwnerIds = new Set(
     [
       authUser.id,
       authUser.sub,
       authUser.dbUserId,
       authUser.supabaseUserId,
       authUser.externalUserId,
+      authUser.providerUserId,
+      resolvedDbUser?.id,
+      resolvedDbUser?.supabase_user_id,
+      resolvedDbUser?.external_user_id,
+      resolvedDbUser?.provider_user_id,
     ]
       .filter(Boolean)
       .map((v) => String(v))
   );
-  const emailLower = (authUser.email || '').trim().toLowerCase();
 
-  return (agencies || []).filter((a: any) => {
+  const emailLower = (resolvedDbUser?.email || authUser.email || '').trim().toLowerCase();
+
+  const directOrgIds = new Set(
+    [authUser.organizationId, resolvedDbUser?.organization_id]
+      .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+      .map((v) => v.trim())
+  );
+
+  // Resolve explicit agency_members rows strictly using canonical internal users_auth.id
+  const memberRoleByAgencyId = new Map<string, 'owner' | 'member'>();
+  if (internalUserId) {
+    try {
+      const { data: memberRows, error: memberErr } = await supabase
+        .from('agency_members')
+        .select('*')
+        .eq('user_id', internalUserId);
+
+      if (memberErr) {
+        if (!isIgnorableMissingTableError(memberErr)) {
+          console.warn('[BillingService] agency_members lookup warning:', memberErr.message || memberErr);
+        }
+      } else if (Array.isArray(memberRows)) {
+        for (const row of memberRows) {
+          if (!row || !row.agency_id) continue;
+          const rowStatus = String(row.status || 'active').toLowerCase();
+          if (rowStatus !== 'active') continue;
+          const agId = String(row.agency_id);
+          const roleVal = String(row.role || 'member').toLowerCase() === 'owner' ? 'owner' : 'member';
+          memberRoleByAgencyId.set(agId, roleVal);
+        }
+      }
+    } catch {
+      // Safe fallback when mock/pre-migration DB does not implement agency_members
+    }
+  }
+
+  const membershipByAgencyId = new Map<string, 'owner' | 'member'>();
+  const matchedAgencies = (agencies || []).filter((a: any) => {
     if (!a || a.deleted_at) return false;
-    if (a.user_id && candidateIds.has(String(a.user_id))) return true;
-    if (a.owner_email && emailLower && String(a.owner_email).trim().toLowerCase() === emailLower) return true;
-    if (authUser.organizationId && String(a.id) === String(authUser.organizationId)) return true;
+    if (String(a.status || 'active').toLowerCase() === 'suspended') return false;
+
+    const agencyId = String(a.id);
+    const isOwnerById = Boolean(a.user_id && candidateOwnerIds.has(String(a.user_id)));
+    const isOwnerByEmail = Boolean(
+      a.owner_email && emailLower && String(a.owner_email).trim().toLowerCase() === emailLower
+    );
+    const memberTableRole = memberRoleByAgencyId.get(agencyId);
+
+    if (isOwnerById || isOwnerByEmail || memberTableRole === 'owner') {
+      membershipByAgencyId.set(agencyId, 'owner');
+      return true;
+    }
+
+    if (memberTableRole === 'member' || directOrgIds.has(agencyId)) {
+      membershipByAgencyId.set(agencyId, 'member');
+      return true;
+    }
+
     return false;
   });
+
+  return {
+    agencies: matchedAgencies,
+    membershipByAgencyId,
+    internalUserId,
+  };
+}
+
+/**
+ * Resolves all organization (agency) records authorized for a given authenticated user.
+ */
+export async function resolveUserOrganizations(supabase: any, authUser: BillingAuthUser): Promise<any[]> {
+  const { agencies } = await resolveUserOrganizationsWithMetadata(supabase, authUser);
+  return agencies;
 }
 
 /**
@@ -169,11 +302,11 @@ export async function verifyUserEventOwnership(
   | { ok: true; event: any; agency: any | null; authorizedAgencyIds: string[] }
   | { ok: false; statusCode: number; error: string; code: string }
 > {
-  if (!authUser || (!authUser.id && !authUser.sub && !authUser.email)) {
+  if (!authUser || (!authUser.id && !authUser.sub && !authUser.email && !authUser.dbUserId)) {
     return { ok: false, statusCode: 401, error: 'Authentication required', code: 'UNAUTHENTICATED' };
   }
 
-  if (authUser.status === 'suspended') {
+  if (String(authUser.status || 'active').toLowerCase() === 'suspended') {
     return {
       ok: false,
       statusCode: 403,
@@ -211,30 +344,25 @@ export async function verifyUserEventOwnership(
 
   const userOrgs = await resolveUserOrganizations(supabase, authUser);
   const authorizedAgencyIds = userOrgs.map((a) => String(a.id));
+  const isMemberOrOwner = Boolean(event.agency_id && authorizedAgencyIds.includes(String(event.agency_id)));
+  const isExplicitAdmin = hasExplicitAdminAgencyAccess(authUser);
 
-  if (authUser.role !== 'super_admin') {
-    if (!event.agency_id || !authorizedAgencyIds.includes(String(event.agency_id))) {
-      return {
-        ok: false,
-        statusCode: 403,
-        error: 'Forbidden: You cannot access or pay for an event belonging to another organization.',
-        code: 'FORBIDDEN_EVENT_OWNERSHIP',
-      };
-    }
-
-    if (requestedAgencyId && String(requestedAgencyId) !== String(event.agency_id)) {
-      return {
-        ok: false,
-        statusCode: 403,
-        error: 'Forbidden: Cross-organization billing request rejected.',
-        code: 'FORBIDDEN_CROSS_ORG',
-      };
-    }
-  } else if (requestedAgencyId && event.agency_id && String(requestedAgencyId) !== String(event.agency_id)) {
+  if (!isMemberOrOwner && !isExplicitAdmin) {
     return {
       ok: false,
       statusCode: 403,
-      error: 'Forbidden: Target agencyId does not match event organization.',
+      error: 'Forbidden: You cannot access or pay for an event belonging to another organization.',
+      code: 'FORBIDDEN_EVENT_OWNERSHIP',
+    };
+  }
+
+  if (requestedAgencyId && String(requestedAgencyId) !== String(event.agency_id)) {
+    return {
+      ok: false,
+      statusCode: 403,
+      error: isExplicitAdmin
+        ? 'Forbidden: Target agencyId does not match event organization.'
+        : 'Forbidden: Cross-organization billing request rejected.',
       code: 'FORBIDDEN_CROSS_ORG',
     };
   }
