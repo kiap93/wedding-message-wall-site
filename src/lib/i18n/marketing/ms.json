@@ -73,7 +73,8 @@
       "couplePortalLogin": "Log Masuk Portal Pasangan",
       "createFreeDraft": "Cipta Draf Majlis Percuma",
       "payPerEventTerms": "Pelesenan Bayar-Per-Majlis ($5)",
-      "agencyPortal": "Portal Agensi"
+      "agencyPortal": "Portal Agensi",
+      "contactUs": "Hubungi Kami"
     },
     "copyright": "© {{year}} EventFrame.io. Hak cipta terpelihara.",
     "crafted": "Direka khas untuk studio perkahwinan mewah"
@@ -918,7 +919,82 @@
       "/subscription": {
         "title": "Harga EventFrame — Pelesenan Perkahwinan Bayar-Per-Majlis $5 USD",
         "description": "Harga sekali bayar $5.00 USD per majlis yang telus dengan akses penuh 12 bulan. Tiada langganan bulanan."
+      },
+      "/contact": {
+        "title": "Hubungi Kami | EventFrame",
+        "description": "Hubungi EventFrame untuk sokongan perancangan majlis, bantuan teknikal, kerjasama perniagaan dan pertanyaan bil."
       }
+    }
+  },
+  "contactPage": {
+    "hero": {
+      "eyebrow": "Hubungi EventFrame",
+      "title": "Jadikan Majlis Anda Tidak Dapat Dilupakan.",
+      "description": "Ada soalan, perlukan bantuan, atau ingin meneroka apa yang EventFrame boleh lakukan untuk majlis anda? Kami sedia mendengar daripada anda."
+    },
+    "categories": {
+      "eyebrow": "Pilih Kategori Pertanyaan",
+      "title": "Bagaimana pasukan kami dapat membantu?",
+      "general": {
+        "title": "Pertanyaan Umum",
+        "desc": "Soalan mengenai suite perkahwinan, pendaftaran, atau keupayaan studio."
+      },
+      "technical_support": {
+        "title": "Sokongan Teknikal",
+        "desc": "Bantuan kad jemputan, borang RSVP, pelan tempat duduk, atau paparan langsung."
+      },
+      "partnerships": {
+        "title": "Kerjasama Perniagaan",
+        "desc": "Pemasangan label putih agensi, kolaborasi dewan, dan pelesenan pukal."
+      },
+      "billing": {
+        "title": "Bil & Pembayaran",
+        "desc": "Pengesahan bayaran, resit, bayaran balik, dan lesen majlis $5."
+      }
+    },
+    "form": {
+      "sectionEyebrow": "Mesej Terus",
+      "sectionTitle": "Hantar pertanyaan anda",
+      "sectionSubtitle": "Kongsi beberapa perincian di bawah dan kami akan membalas terus ke e-mel anda.",
+      "nameLabel": "Nama Penuh",
+      "namePlaceholder": "Aisyah Rahman",
+      "emailLabel": "Alamat E-mel",
+      "emailPlaceholder": "aisyah@studio.com",
+      "categoryLabel": "Jenis Pertanyaan",
+      "subjectLabel": "Subjek",
+      "subjectPlaceholder": "Bagaimana kami dapat membantu anda?",
+      "eventNameLabel": "Nama Majlis",
+      "optionalTag": "Pilihan",
+      "eventNamePlaceholder": "cth., Majlis Celia & Elias",
+      "messageLabel": "Mesej",
+      "messagePlaceholder": "Beritahu kami tentang majlis anda, soalan atau cara pasukan kami dapat membantu...",
+      "submitButton": "Hantar Mesej",
+      "submittingButton": "Sedang Menghantar...",
+      "sendAnotherButton": "Hantar Mesej Lain",
+      "successTitle": "Mesej diterima",
+      "successMessage": "Terima kasih kerana menghubungi kami! Mesej anda telah berjaya dihantar. Pasukan kami akan membalas secepat mungkin.",
+      "genericError": "Mesej anda tidak dapat dihantar buat masa ini. Sila semak maklumat atau e-mel kami di eventframeio@gmail.com.",
+      "validation": {
+        "nameRequired": "Nama penuh diperlukan.",
+        "nameMin": "Nama penuh mesti sekurang-kurangnya 2 aksara.",
+        "emailRequired": "Alamat e-mel diperlukan.",
+        "emailInvalid": "Sila masukkan alamat e-mel yang sah.",
+        "categoryRequired": "Sila pilih kategori pertanyaan.",
+        "subjectRequired": "Subjek diperlukan.",
+        "subjectMin": "Subjek mesti sekurang-kurangnya 2 aksara.",
+        "messageRequired": "Mesej diperlukan.",
+        "messageMin": "Sila tulis sekurang-kurangnya 10 aksara dalam mesej anda."
+      }
+    },
+    "aside": {
+      "directTitle": "Hubungan Terus",
+      "directDesc": "Lebih suka e-mel? Hubungi pasukan kami bila-bila masa di",
+      "responseTitle": "Piawaian Maklum Balas",
+      "responseDesc": "Setiap pertanyaan direkodkan bersama meja sokongan kami dan disahkan serta-merta melalui e-mel.",
+      "supportHoursLabel": "Waktu Operasi",
+      "supportHoursValue": "Isnin – Ahad · Keutamaan pada hari majlis langsung",
+      "billingNoteLabel": "Rujukan Akaun & Majlis",
+      "billingNoteValue": "Sertakan nama majlis anda sekiranya pertanyaan berkaitan majlis aktif."
     }
   }
 }

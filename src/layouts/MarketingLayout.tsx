@@ -461,6 +461,15 @@ export const MarketingLayout: React.FC<MarketingLayoutProps> = ({ children }) =>
                 </li>
                 <li>
                   <a
+                    href={getLocalizedPath('/contact')}
+                    onClick={(e) => handleLinkClick(e, '/contact')}
+                    className="hover:text-[#252525] transition-colors"
+                  >
+                    {t('footer.links.contactUs')}
+                  </a>
+                </li>
+                <li>
+                  <a
                     href="/login"
                     onClick={(e) => handleLinkClick(e, '/login')}
                     className="hover:text-[#252525] transition-colors"

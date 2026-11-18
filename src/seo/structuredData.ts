@@ -209,14 +209,36 @@ export function buildPageStructuredData(params: {
     schemas.push(getWebSiteSchema(params.inLanguage));
   }
 
-  schemas.push(
-    getWebPageSchema({
-      title: params.title,
+  if (params.type === 'ContactPage') {
+    schemas.push({
+      '@context': 'https://schema.org',
+      '@type': 'ContactPage',
+      name: params.title,
       description: params.description,
       url: params.canonicalUrl,
-      inLanguage: params.inLanguage,
-    })
-  );
+      inLanguage: params.inLanguage || 'en-US',
+      mainEntity: {
+        '@type': 'Organization',
+        name: 'EventFrame',
+        email: SEO_CONFIG.contactEmail,
+        url: SEO_CONFIG.productionDomain,
+      },
+      isPartOf: {
+        '@type': 'WebSite',
+        name: 'EventFrame',
+        url: SEO_CONFIG.productionDomain,
+      },
+    });
+  } else {
+    schemas.push(
+      getWebPageSchema({
+        title: params.title,
+        description: params.description,
+        url: params.canonicalUrl,
+        inLanguage: params.inLanguage,
+      })
+    );
+  }
 
   if (params.breadcrumbs && params.breadcrumbs.length > 0) {
     schemas.push(getBreadcrumbListSchema(params.breadcrumbs));

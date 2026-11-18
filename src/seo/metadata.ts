@@ -3,6 +3,7 @@ export type StructuredDataType =
   | 'WebSite'
   | 'Organization'
   | 'WebPage'
+  | 'ContactPage'
   | 'Article'
   | 'Event';
 

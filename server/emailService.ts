@@ -35,13 +35,22 @@ export const SECURITY_NO_CC_EMAIL_CATEGORIES = [
   'account_security_notification',
 ] as const;
 
+export const DIRECT_NO_CC_EMAIL_CATEGORIES = [
+  'contact_admin_notification',
+  'contact_customer_acknowledgement',
+] as const;
+
 export type BusinessEmailCategory = (typeof BUSINESS_CC_EMAIL_CATEGORIES)[number];
 export type SecurityEmailCategory = (typeof SECURITY_NO_CC_EMAIL_CATEGORIES)[number];
-export type EmailCategory = BusinessEmailCategory | SecurityEmailCategory;
+export type DirectNoCcEmailCategory = (typeof DIRECT_NO_CC_EMAIL_CATEGORIES)[number];
+export type EmailCategory =
+  | BusinessEmailCategory
+  | SecurityEmailCategory
+  | DirectNoCcEmailCategory;
 
 export interface EmailCcPolicy {
   category: string;
-  classification: 'business_cc' | 'security_no_cc' | 'unknown_no_cc';
+  classification: 'business_cc' | 'security_no_cc' | 'direct_no_cc' | 'unknown_no_cc';
   allowCc: boolean;
   defaultCc: string | null;
 }
@@ -56,7 +65,7 @@ export interface SendEventFrameEmailParams {
   replyTo?: string | string[];
   /**
    * Optional caller-supplied CC addresses.
-   * Strictly ignored/blocked for authentication, security, and unknown categories.
+   * Strictly ignored/blocked for authentication, security, direct contact, and unknown categories.
    */
   cc?: string | string[];
   fetchImpl?: typeof fetch;
@@ -96,6 +105,11 @@ export type SendEmailResult =
 
 const BUSINESS_CC_SET = new Set<string>(BUSINESS_CC_EMAIL_CATEGORIES);
 const SECURITY_NO_CC_SET = new Set<string>(SECURITY_NO_CC_EMAIL_CATEGORIES);
+const DIRECT_NO_CC_SET = new Set<string>(DIRECT_NO_CC_EMAIL_CATEGORIES);
+
+export function sanitizeEmailHeaderValue(value: string): string {
+  return value.replace(/[\r\n\0\x01-\x1F\x7F]+/g, ' ').trim();
+}
 
 export function normalizeEmailRecipientList(
   input: string | string[] | undefined | null
@@ -107,7 +121,7 @@ export function normalizeEmailRecipientList(
 
   for (const item of rawList) {
     if (typeof item !== 'string') continue;
-    const trimmed = item.trim();
+    const trimmed = sanitizeEmailHeaderValue(item);
     if (!trimmed) continue;
     const key = trimmed.toLowerCase();
     if (seen.has(key)) continue;
@@ -120,7 +134,7 @@ export function normalizeEmailRecipientList(
 
 /**
  * Classifies email category and determines whether CC is permitted.
- * Unknown categories default strictly to NO CC.
+ * Unknown, security, and direct contact categories default strictly to NO CC.
  */
 export function resolveEmailCcPolicy(category: EmailCategory | string): EmailCcPolicy {
   const normalizedCategory = typeof category === 'string' ? category.trim() : '';
@@ -143,6 +157,15 @@ export function resolveEmailCcPolicy(category: EmailCategory | string): EmailCcP
     };
   }
 
+  if (DIRECT_NO_CC_SET.has(normalizedCategory)) {
+    return {
+      category: normalizedCategory,
+      classification: 'direct_no_cc',
+      allowCc: false,
+      defaultCc: null,
+    };
+  }
+
   return {
     category: normalizedCategory || 'unknown',
     classification: 'unknown_no_cc',
@@ -153,7 +176,8 @@ export function resolveEmailCcPolicy(category: EmailCategory | string): EmailCcP
 
 /**
  * Builds the Resend API JSON payload while enforcing sender identity and CC rules.
- * Caller-supplied CC values cannot override authentication, security, or unknown-category restrictions.
+ * Caller-supplied CC values cannot override authentication, security, direct, or unknown-category restrictions.
+ * Also ensures TO recipients are never duplicated inside CC.
  */
 export function buildResendEmailPayload(
   params: Omit<SendEventFrameEmailParams, 'apiKey' | 'fetchImpl'>
@@ -165,7 +189,7 @@ export function buildResendEmailPayload(
   const payload: ResendEmailPayload = {
     from: EVENTFRAME_EMAIL_CONFIG.from,
     to,
-    subject: typeof params.subject === 'string' ? params.subject.trim() : '',
+    subject: typeof params.subject === 'string' ? sanitizeEmailHeaderValue(params.subject) : '',
   };
 
   if (typeof params.html === 'string' && params.html.trim().length > 0) {
@@ -179,10 +203,11 @@ export function buildResendEmailPayload(
   }
 
   if (policy.allowCc && policy.defaultCc) {
+    const toLowerSet = new Set(to.map((addr) => addr.toLowerCase()));
     const ccRecipients = normalizeEmailRecipientList([
       policy.defaultCc,
       ...(normalizeEmailRecipientList(params.cc)),
-    ]);
+    ]).filter((addr) => !toLowerSet.has(addr.toLowerCase()));
     if (ccRecipients.length > 0) {
       payload.cc = ccRecipients;
     }

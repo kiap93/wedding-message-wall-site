@@ -73,7 +73,8 @@
       "couplePortalLogin": "新人入口登入",
       "createFreeDraft": "免費建立婚禮草稿",
       "payPerEventTerms": "按場次付費授權 ($5)",
-      "agencyPortal": "機構控制台"
+      "agencyPortal": "機構控制台",
+      "contactUs": "聯絡我們"
     },
     "copyright": "© {{year}} EventFrame.io. 版權所有。",
     "crafted": "匠心打造頂級婚禮工作室平台"
@@ -918,7 +919,82 @@
       "/subscription": {
         "title": "EventFrame 價格方案 — 單場 $5 USD 按場次付費授權",
         "description": "透明的單場 $5.00 USD 一次性買斷定價，享完整 12 個月使用權，零月費訂閱。"
+      },
+      "/contact": {
+        "title": "聯絡我們 | EventFrame",
+        "description": "聯絡 EventFrame 團隊，取得婚禮策劃支援、技術協助、商務合作與帳單付款諮詢。"
       }
+    }
+  },
+  "contactPage": {
+    "hero": {
+      "eyebrow": "聯絡 EventFrame",
+      "title": "讓您的每一場慶典都令人難忘。",
+      "description": "有任何疑問、需要技術協助，或想進一步了解 EventFrame 能為您的婚禮與活動帶來什麼？歡迎隨時與我們聯繫。"
+    },
+    "categories": {
+      "eyebrow": "選擇諮詢類別",
+      "title": "我們的團隊能如何協助您？",
+      "general": {
+        "title": "一般諮詢",
+        "desc": "了解婚禮主題套組、啟用流程或工作室協作能力。"
+      },
+      "technical_support": {
+        "title": "技術支援",
+        "desc": "電子請柬、RSVP 問卷、座位平面圖或現場大螢幕使用協助。"
+      },
+      "partnerships": {
+        "title": "商務合作",
+        "desc": "婚顧機構白標部署、會場合作與多場次授權合作。"
+      },
+      "billing": {
+        "title": "帳單與付款",
+        "desc": "付款驗證、收據開立、退款說明與 $5 單場授權諮詢。"
+      }
+    },
+    "form": {
+      "sectionEyebrow": "線上留言",
+      "sectionTitle": "傳送您的諮詢",
+      "sectionSubtitle": "請填寫以下資訊，我們的團隊將直接透過電子郵件回覆您。",
+      "nameLabel": "您的姓名",
+      "namePlaceholder": "例如：陳小姐",
+      "emailLabel": "電子郵件",
+      "emailPlaceholder": "name@studio.com",
+      "categoryLabel": "諮詢類別",
+      "subjectLabel": "主旨",
+      "subjectPlaceholder": "簡要說明您的諮詢主旨",
+      "eventNameLabel": "活動 / 婚禮名稱",
+      "optionalTag": "選填",
+      "eventNamePlaceholder": "例如：Celia & Elias 婚禮",
+      "messageLabel": "訊息內容",
+      "messagePlaceholder": "請告訴我們您的活動需求、遇到的問題或合作構想...",
+      "submitButton": "傳送訊息",
+      "submittingButton": "傳送中...",
+      "sendAnotherButton": "繼續傳送其他諮詢",
+      "successTitle": "訊息已送達",
+      "successMessage": "感謝您的聯絡！您的訊息已成功送出，我們的團隊將盡快回覆您。",
+      "genericError": "目前無法傳送您的訊息，請檢查欄位內容或直接寄信至 eventframeio@gmail.com。",
+      "validation": {
+        "nameRequired": "請填寫您的姓名。",
+        "nameMin": "姓名至少需要 2 個字元。",
+        "emailRequired": "請填寫您的電子郵件。",
+        "emailInvalid": "請輸入有效的電子郵件地址。",
+        "categoryRequired": "請選擇一個諮詢類別。",
+        "subjectRequired": "請填寫主旨。",
+        "subjectMin": "主旨至少需要 2 個字元。",
+        "messageRequired": "請填寫您的訊息內容。",
+        "messageMin": "訊息內容請至少輸入 10 個字元。"
+      }
+    },
+    "aside": {
+      "directTitle": "直接電郵聯絡",
+      "directDesc": "偏好直接寄信？歡迎隨時聯絡",
+      "responseTitle": "回覆標準",
+      "responseDesc": "每筆諮詢皆會登錄至工作室支援系統，並立即寄發確認信給您。",
+      "supportHoursLabel": "服務時間",
+      "supportHoursValue": "週一至週日 · 婚禮當日優先處理",
+      "billingNoteLabel": "活動參考資訊",
+      "billingNoteValue": "若涉及進行中的婚禮專案，建議附上活動名稱以便加速查詢。"
     }
   }
 }

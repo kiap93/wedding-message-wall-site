@@ -11,6 +11,7 @@ Allow: /wedding-reception-display
 Allow: /templates
 Allow: /pricing
 Allow: /blog
+Allow: /contact
 Allow: /zh-cn
 Allow: /zh-tw
 Allow: /ms

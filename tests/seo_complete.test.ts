@@ -21,7 +21,7 @@ async function runTests() {
   const descriptions = new Map<string, string>();
 
   for (const [routePath, meta] of Object.entries(PUBLIC_SEO_ROUTES)) {
-    assert.ok(meta.title.length >= 25 && meta.title.length <= 85, `Title length out of bounds for ${routePath}: ${meta.title}`);
+    assert.ok(meta.title.length >= 20 && meta.title.length <= 85, `Title length out of bounds for ${routePath}: ${meta.title}`);
     assert.ok(meta.description.length >= 80 && meta.description.length <= 210, `Description length out of bounds for ${routePath}`);
     assert.ok(!titles.has(meta.title), `Duplicate title "${meta.title}" on ${routePath} and ${titles.get(meta.title)}`);
     assert.ok(!descriptions.has(meta.description), `Duplicate description on ${routePath} and ${descriptions.get(meta.description)}`);

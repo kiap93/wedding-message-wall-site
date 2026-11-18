@@ -41,6 +41,7 @@ import { OG_LOCALES, SEOProvider } from '../src/components/SEO.tsx';
 import Home from '../src/pages/Home.tsx';
 import TemplateSelector from '../src/pages/TemplateSelector.tsx';
 import PricingPage from '../src/pages/PricingPage.tsx';
+import ContactPage from '../src/pages/ContactPage.tsx';
 import WeddingWebsiteBuilder from '../src/pages/marketing/WeddingWebsiteBuilder.tsx';
 import WeddingSeatingChart from '../src/pages/marketing/WeddingSeatingChart.tsx';
 import WeddingPlannerSoftware from '../src/pages/marketing/WeddingPlannerSoftware.tsx';
@@ -74,6 +75,7 @@ function renderMarketingRoutes(prefix: string = '') {
     { path: prefix || '/', el: React.createElement(Home) },
     { path: `${prefix}/templates`, el: React.createElement(TemplateSelector) },
     { path: `${prefix}/pricing`, el: React.createElement(PricingPage) },
+    { path: `${prefix}/contact`, el: React.createElement(ContactPage) },
     { path: `${prefix}/blog`, el: React.createElement(BlogIndexPage) },
     { path: `${prefix}/blog/:slug`, el: React.createElement(BlogPostPage) },
     { path: `${prefix}/wedding-website-builder`, el: React.createElement(WeddingWebsiteBuilder) },

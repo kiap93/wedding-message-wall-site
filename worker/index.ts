@@ -18,6 +18,7 @@ import {
 } from '../server/billingService';
 import { configureSupabase } from '../server/supabaseAdmin';
 import { sendEventFrameEmail } from '../server/emailService';
+import { submitContactInquiry } from '../server/contactService';
 import {
   registerWorkerDeveloperRoutes,
   verifyWorkerSessionWithDb,
@@ -267,6 +268,67 @@ app.get('/api/health', (c) => c.json({ status: 'ok', worker: true }));
 
 // Safe runtime metadata endpoint (never exposes Supabase URLs or keys to browsers)
 app.get('/api/config', (c) => c.json(buildSuccessResponse({ apiVersion: 'v2', realtimeTransport: 'sse' })));
+
+// Public Contact Us Submission Route
+app.post('/api/contact', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({} as Record<string, any>));
+    const forwardedFor = c.req.header('x-forwarded-for');
+    const clientIp =
+      (c.req.header('cf-connecting-ip') || '').trim() ||
+      (forwardedFor ? forwardedFor.split(',')[0].trim() : '') ||
+      '';
+
+    const supabase = getWorkerServiceSupabase(c);
+    const result = await submitContactInquiry(
+      {
+        supabase,
+        resendApiKey: c.env?.RESEND_API_KEY,
+        clientIp,
+      },
+      body || {}
+    );
+
+    if (result.ok === false) {
+      return c.json(
+        {
+          success: false,
+          code: result.code,
+          error: result.error,
+          ...(result.issues ? { issues: result.issues } : {}),
+          ...(result.saved !== undefined ? { saved: result.saved } : {}),
+          ...(result.inquiryId ? { inquiryId: result.inquiryId } : {}),
+        },
+        result.statusCode as any
+      );
+    }
+
+    return c.json(
+      {
+        success: true,
+        message: result.message,
+        inquiry: {
+          id: result.inquiry.id,
+          enquiryType: result.inquiry.enquiryType,
+          enquiryTypeLabel: result.inquiry.enquiryTypeLabel,
+          status: result.inquiry.status,
+          createdAt: result.inquiry.createdAt,
+        },
+      },
+      result.statusCode as any
+    );
+  } catch (err: any) {
+    console.error('[Worker POST /api/contact] Unexpected error:', err?.message || 'Unknown error');
+    return c.json(
+      {
+        success: false,
+        code: 'INTERNAL_ERROR',
+        error: 'Unable to send your message right now. Please try again shortly.',
+      },
+      500
+    );
+  }
+});
 
 // --- Public Demo Mode Routes (Isolated Ephemeral Store, Zero Production DB Writes) ---
 function getCloudflareDefaultCache(): Cache | null {
@@ -3354,6 +3416,7 @@ Allow: /wedding-reception-display
 Allow: /templates
 Allow: /pricing
 Allow: /blog
+Allow: /contact
 Allow: /zh-cn
 Allow: /zh-tw
 Allow: /ms

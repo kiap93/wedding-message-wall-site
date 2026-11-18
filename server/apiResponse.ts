@@ -69,6 +69,7 @@ const CSRF_EXEMPT_PATH_PREFIXES = [
   '/api/demo/',
   '/api/rsvps',
   '/api/messages',
+  '/api/contact',
 ];
 
 /**

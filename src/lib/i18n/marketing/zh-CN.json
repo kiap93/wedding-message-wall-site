@@ -73,7 +73,8 @@
       "couplePortalLogin": "新人入口登录",
       "createFreeDraft": "免费创建婚礼草稿",
       "payPerEventTerms": "按场次付费授权 ($5)",
-      "agencyPortal": "机构控制台"
+      "agencyPortal": "机构控制台",
+      "contactUs": "联系我们"
     },
     "copyright": "© {{year}} EventFrame.io. 保留所有权利。",
     "crafted": "匠心打造高端婚礼工作室平台"
@@ -918,7 +919,82 @@
       "/subscription": {
         "title": "EventFrame 价格方案 — 单场 $5 USD 按场次付费授权",
         "description": "透明的单场 $5.00 USD 一次性买断定价，享完整 12 个月使用权，零月费订阅。"
+      },
+      "/contact": {
+        "title": "联系我们 | EventFrame",
+        "description": "联系 EventFrame 团队，获取婚礼策划支持、技术协助、商务合作与账单付款咨询。"
       }
+    }
+  },
+  "contactPage": {
+    "hero": {
+      "eyebrow": "联系 EventFrame",
+      "title": "让您的每一场庆典都令人难忘。",
+      "description": "有任何问题、需要技术协助，或希望深入了解 EventFrame 能为您的婚礼与活动带来什么？欢迎随时与我们联系。"
+    },
+    "categories": {
+      "eyebrow": "选择咨询类别",
+      "title": "我们的团队如何为您提供协助？",
+      "general": {
+        "title": "一般咨询",
+        "desc": "了解婚礼主题套系、注册使用或工作室工作流程。"
+      },
+      "technical_support": {
+        "title": "技术支持",
+        "desc": "电子请柬、RSVP 问卷、座位平面图或现场大屏使用协助。"
+      },
+      "partnerships": {
+        "title": "商务合作",
+        "desc": "婚庆机构白标部署、场地合作及多场次授权方案。"
+      },
+      "billing": {
+        "title": "账单与付款",
+        "desc": "付款核验、收据开具、退款说明与 $5 单场授权咨询。"
+      }
+    },
+    "form": {
+      "sectionEyebrow": "在线留言",
+      "sectionTitle": "向我们发送咨询",
+      "sectionSubtitle": "填写以下信息，我们的团队将直接通过邮件回复您。",
+      "nameLabel": "您的姓名",
+      "namePlaceholder": "例如：林小姐",
+      "emailLabel": "电子邮箱",
+      "emailPlaceholder": "name@studio.com",
+      "categoryLabel": "咨询类别",
+      "subjectLabel": "主题",
+      "subjectPlaceholder": "简要说明您的咨询主题",
+      "eventNameLabel": "活动 / 婚礼名称",
+      "optionalTag": "选填",
+      "eventNamePlaceholder": "例如：Celia & Elias 婚礼",
+      "messageLabel": "详细留言",
+      "messagePlaceholder": "请告诉我们您的活动需求、遇到的问题或合作意向...",
+      "submitButton": "发送消息",
+      "submittingButton": "正在发送...",
+      "sendAnotherButton": "继续发送其他咨询",
+      "successTitle": "消息已送达",
+      "successMessage": "感谢您的联系！您的消息已成功发送，我们的团队会尽快回复您。",
+      "genericError": "暂时无法发送您的消息，请检查填写内容或直接发送邮件至 eventframeio@gmail.com。",
+      "validation": {
+        "nameRequired": "请填写您的姓名。",
+        "nameMin": "姓名至少需要 2 个字符。",
+        "emailRequired": "请填写您的电子邮箱。",
+        "emailInvalid": "请输入有效的电子邮箱地址。",
+        "categoryRequired": "请选择一个咨询类别。",
+        "subjectRequired": "请填写咨询主题。",
+        "subjectMin": "主题至少需要 2 个字符。",
+        "messageRequired": "请填写您的留言内容。",
+        "messageMin": "留言内容请至少输入 10 个字符。"
+      }
+    },
+    "aside": {
+      "directTitle": "直接电邮联系",
+      "directDesc": "习惯直接发邮件？欢迎随时致信",
+      "responseTitle": "响应承诺",
+      "responseDesc": "每条咨询都会进入工作室支持工单系统，并即时通过邮件发送确认回执。",
+      "supportHoursLabel": "服务时段",
+      "supportHoursValue": "周一至周日 · 婚礼当日优先响应",
+      "billingNoteLabel": "活动参考信息",
+      "billingNoteValue": "若涉及进行中的婚礼项目，建议附带您的活动名称以便更快核查。"
     }
   }
 }

@@ -73,7 +73,8 @@
       "couplePortalLogin": "Couple Portal Login",
       "createFreeDraft": "Create Free Draft Event",
       "payPerEventTerms": "Pay-Per-Event Licensing ($5)",
-      "agencyPortal": "Agency Portal"
+      "agencyPortal": "Agency Portal",
+      "contactUs": "Contact Us"
     },
     "copyright": "© {{year}} EventFrame.io. All rights reserved.",
     "crafted": "Crafted for luxury wedding studios"
@@ -918,7 +919,82 @@
       "/subscription": {
         "title": "EventFrame Pricing — $5 USD Pay-Per-Event Wedding Licensing",
         "description": "Transparent $5.00 USD one-time pay-per-event pricing with 12 months full access. Zero monthly subscriptions."
+      },
+      "/contact": {
+        "title": "Contact Us | EventFrame",
+        "description": "Get in touch with EventFrame for event planning support, technical assistance, business partnerships and billing enquiries."
       }
+    }
+  },
+  "contactPage": {
+    "hero": {
+      "eyebrow": "Contact EventFrame",
+      "title": "Let's Make Your Event Unforgettable.",
+      "description": "Have a question, need assistance, or want to explore what EventFrame can do for your events? We'd love to hear from you."
+    },
+    "categories": {
+      "eyebrow": "Select Enquiry Topic",
+      "title": "How can our team help?",
+      "general": {
+        "title": "General Enquiries",
+        "desc": "Questions about wedding suites, onboarding, or studio capabilities."
+      },
+      "technical_support": {
+        "title": "Technical Support",
+        "desc": "Help with invitations, RSVP forms, seating charts, or live displays."
+      },
+      "partnerships": {
+        "title": "Business Partnerships",
+        "desc": "White-label agency rollouts, venue collaborations, and bulk licensing."
+      },
+      "billing": {
+        "title": "Billing & Payments",
+        "desc": "Payment verification, receipts, refunds, and $5 event licensing."
+      }
+    },
+    "form": {
+      "sectionEyebrow": "Direct Message",
+      "sectionTitle": "Send us an enquiry",
+      "sectionSubtitle": "Share a few details below and we will reply directly to your email address.",
+      "nameLabel": "Full Name",
+      "namePlaceholder": "Jane Doe",
+      "emailLabel": "Email Address",
+      "emailPlaceholder": "jane@studio.com",
+      "categoryLabel": "Enquiry Type",
+      "subjectLabel": "Subject",
+      "subjectPlaceholder": "How can we assist you?",
+      "eventNameLabel": "Event Name",
+      "optionalTag": "Optional",
+      "eventNamePlaceholder": "e.g., Celia & Elias Wedding",
+      "messageLabel": "Message",
+      "messagePlaceholder": "Tell us about your event, question, or how our team can help...",
+      "submitButton": "Send Message",
+      "submittingButton": "Sending Message...",
+      "sendAnotherButton": "Send Another Message",
+      "successTitle": "Message received",
+      "successMessage": "Thank you for reaching out! Your message has been sent successfully. Our team will get back to you as soon as possible.",
+      "genericError": "We could not send your message right now. Please check your details or email us at eventframeio@gmail.com.",
+      "validation": {
+        "nameRequired": "Full name is required.",
+        "nameMin": "Full name must be at least 2 characters.",
+        "emailRequired": "Email address is required.",
+        "emailInvalid": "Please enter a valid email address.",
+        "categoryRequired": "Please select an enquiry category.",
+        "subjectRequired": "Subject is required.",
+        "subjectMin": "Subject must be at least 2 characters.",
+        "messageRequired": "Message is required.",
+        "messageMin": "Please write at least 10 characters in your message."
+      }
+    },
+    "aside": {
+      "directTitle": "Direct Contact",
+      "directDesc": "Prefer email? Reach our team anytime at",
+      "responseTitle": "Response Standards",
+      "responseDesc": "Every enquiry is logged with our studio support desk and acknowledged immediately by email.",
+      "supportHoursLabel": "Availability",
+      "supportHoursValue": "Monday – Sunday · Priority for live event days",
+      "billingNoteLabel": "Account & Event Ref",
+      "billingNoteValue": "Include your event name if your question relates to an active celebration."
     }
   }
 }

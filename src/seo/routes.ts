@@ -239,6 +239,25 @@ export const PUBLIC_SEO_ROUTES: Record<string, RouteMetadata> = {
       { name: 'Blog', path: '/blog' },
     ],
   },
+  '/contact': {
+    title: 'Contact Us | EventFrame',
+    description:
+      'Get in touch with EventFrame for event planning support, technical assistance, business partnerships and billing enquiries.',
+    canonicalPath: '/contact',
+    includeInSitemap: true,
+    isLocalizedMarketing: true,
+    priority: 0.75,
+    changefreq: 'monthly',
+    ogType: 'website',
+    ogImage: SEO_CONFIG.defaultOgImage,
+    ogImageAlt: 'Contact EventFrame Support and Partnerships',
+    twitterCard: 'summary_large_image',
+    structuredDataType: 'ContactPage',
+    breadcrumbs: [
+      { name: 'Home', path: '/' },
+      { name: 'Contact Us', path: '/contact' },
+    ],
+  },
 };
 
 // Private or billing-internal route patterns (Strictly marked noindex, nofollow)

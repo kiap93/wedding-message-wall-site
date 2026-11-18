@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   ShieldCheck,
+  Mail,
 } from 'lucide-react';
 import { DeveloperAdminIdentity } from '../../lib/developerApi';
 import { useUser } from '../../lib/UserContext';
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { id: 'users', label: 'Users', to: '/developer/users', icon: Users },
   { id: 'events', label: 'Events', to: '/developer/events', icon: CalendarHeart },
   { id: 'payments', label: 'Payments', to: '/developer/payments', icon: CreditCard },
+  { id: 'contact-enquiries', label: 'Contact Enquiries', to: '/developer/contact-enquiries', icon: Mail },
   { id: 'activity-logs', label: 'Activity Logs', to: '/developer/activity-logs', icon: ScrollText },
   { id: 'settings', label: 'Platform Settings', to: '/developer/settings', icon: Settings },
 ];

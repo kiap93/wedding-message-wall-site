@@ -13,6 +13,7 @@ import { normalizePathname } from './seo/canonical';
 import Home from './pages/Home';
 import TemplateSelector from './pages/TemplateSelector';
 import PricingPage from './pages/PricingPage';
+import ContactPage from './pages/ContactPage';
 import WeddingPlannerSoftware from './pages/marketing/WeddingPlannerSoftware';
 import WhiteLabelWeddingSoftware from './pages/marketing/WhiteLabelWeddingSoftware';
 import WeddingWebsiteBuilder from './pages/marketing/WeddingWebsiteBuilder';
@@ -52,6 +53,7 @@ const DeveloperUsers = lazy(() => import('./pages/developer/DeveloperUsers'));
 const DeveloperUserDetail = lazy(() => import('./pages/developer/DeveloperUserDetail'));
 const DeveloperEvents = lazy(() => import('./pages/developer/DeveloperEvents'));
 const DeveloperPayments = lazy(() => import('./pages/developer/DeveloperPayments'));
+const DeveloperContactEnquiries = lazy(() => import('./pages/developer/DeveloperContactEnquiries'));
 const DeveloperActivityLogs = lazy(() => import('./pages/developer/DeveloperActivityLogs'));
 const DeveloperSettings = lazy(() => import('./pages/developer/DeveloperSettings'));
 
@@ -320,6 +322,22 @@ export function AppRoutes() {
           }
         />
         <Route
+          path="/developer/contact-enquiries"
+          element={
+            <DeveloperRouteGuard>
+              {(admin) => (
+                <DeveloperLayout
+                  admin={admin}
+                  title="Contact Enquiries"
+                  breadcrumbs={[{ label: 'Contact Enquiries' }]}
+                >
+                  <DeveloperContactEnquiries />
+                </DeveloperLayout>
+              )}
+            </DeveloperRouteGuard>
+          }
+        />
+        <Route
           path="/developer/activity-logs"
           element={
             <DeveloperRouteGuard>
@@ -355,6 +373,8 @@ export function AppRoutes() {
         {/* Public English Marketing & Solution Routes */}
         <Route path="/templates" element={<TemplateSelector />} />
         <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+        <Route path="/en/contact" element={<ContactPage />} />
         <Route path="/wedding-website-builder" element={<WeddingWebsiteBuilder />} />
         <Route path="/wedding-seating-chart" element={<WeddingSeatingChart />} />
         <Route path="/wedding-planner-software" element={<WeddingPlannerSoftware />} />
@@ -376,6 +396,7 @@ export function AppRoutes() {
           <Route key={`${prefix}-slash`} path={`${prefix}/`} element={<Home />} />,
           <Route key={`${prefix}-templates`} path={`${prefix}/templates`} element={<TemplateSelector />} />,
           <Route key={`${prefix}-pricing`} path={`${prefix}/pricing`} element={<PricingPage />} />,
+          <Route key={`${prefix}-contact`} path={`${prefix}/contact`} element={<ContactPage />} />,
           <Route key={`${prefix}-blog`} path={`${prefix}/blog`} element={<BlogIndexPage />} />,
           <Route key={`${prefix}-blog-post`} path={`${prefix}/blog/:slug`} element={<BlogPostPage />} />,
           <Route key={`${prefix}-website`} path={`${prefix}/wedding-website-builder`} element={<WeddingWebsiteBuilder />} />,

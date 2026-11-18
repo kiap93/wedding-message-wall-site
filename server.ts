@@ -13,6 +13,7 @@ import cors from 'cors';
 import crypto from 'crypto';
 import { GoogleGenAI } from "@google/genai";
 import { sendEventFrameEmail } from './server/emailService';
+import { submitContactInquiry } from './server/contactService';
 import uploadRouter from './server/uploadRouter';
 import {
   activateEventPurchase,
@@ -386,6 +387,64 @@ async function startServer() {
         has_google: !!process.env.GOOGLE_CLIENT_ID
       }
     });
+  });
+
+  // --- Public Contact Us Submission Route ---
+  apiRouter.post('/contact', async (req, res) => {
+    try {
+      const forwardedFor = req.headers['x-forwarded-for'] as string | undefined;
+      const clientIp =
+        (req.headers['cf-connecting-ip'] as string | undefined)?.trim() ||
+        (forwardedFor ? forwardedFor.split(',')[0].trim() : '') ||
+        req.socket?.remoteAddress ||
+        '';
+
+      let supabase: any = null;
+      try {
+        supabase = getSupabaseAdmin();
+      } catch {
+        supabase = null;
+      }
+
+      const result = await submitContactInquiry(
+        {
+          supabase,
+          resendApiKey: process.env.RESEND_API_KEY,
+          clientIp,
+        },
+        req.body || {}
+      );
+
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({
+          success: false,
+          code: result.code,
+          error: result.error,
+          ...(result.issues ? { issues: result.issues } : {}),
+          ...(result.saved !== undefined ? { saved: result.saved } : {}),
+          ...(result.inquiryId ? { inquiryId: result.inquiryId } : {}),
+        });
+      }
+
+      return res.status(result.statusCode).json({
+        success: true,
+        message: result.message,
+        inquiry: {
+          id: result.inquiry.id,
+          enquiryType: result.inquiry.enquiryType,
+          enquiryTypeLabel: result.inquiry.enquiryTypeLabel,
+          status: result.inquiry.status,
+          createdAt: result.inquiry.createdAt,
+        },
+      });
+    } catch (err: any) {
+      console.error('[POST /api/contact] Unexpected error:', err?.message || 'Unknown error');
+      return res.status(500).json({
+        success: false,
+        code: 'INTERNAL_ERROR',
+        error: 'Unable to send your message right now. Please try again shortly.',
+      });
+    }
   });
 
   // --- Public Demo Mode Routes (Strict In-Memory, Zero Production Database Writes) ---

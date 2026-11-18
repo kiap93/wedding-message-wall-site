@@ -40,6 +40,7 @@ export const LOCALIZED_MARKETING_BASE_PATHS = new Set<string>([
   '/templates',
   '/pricing',
   '/blog',
+  '/contact',
   '/wedding-website-builder',
   '/wedding-seating-chart',
   '/wedding-planner-software',

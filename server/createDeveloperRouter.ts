@@ -24,6 +24,11 @@ import {
   issueAdminStripeRefund,
   retryStripeWebhookByIdOrPayment,
 } from './billingService';
+import {
+  listContactInquiries,
+  getContactInquiryById,
+  updateContactInquiry,
+} from './contactService';
 
 export interface DeveloperRouterDeps {
   getSupabase: () => any;
@@ -446,6 +451,60 @@ export function createDeveloperRouter(deps: DeveloperRouterDeps): express.Router
       res.json({ success: true, ...data });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to update platform settings' });
+    }
+  });
+
+  // 14. Contact Us Enquiries Management
+  router.get('/contact-enquiries', async (req, res) => {
+    try {
+      const supabase = (req as any).supabaseAdmin;
+      const result = await listContactInquiries(supabase, {
+        search: req.query.search as string | undefined,
+        enquiryType: (req.query.enquiryType || req.query.category) as string | undefined,
+        status: req.query.status as string | undefined,
+        page: req.query.page as string | undefined,
+        limit: req.query.limit as string | undefined,
+      });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to load contact enquiries' });
+    }
+  });
+
+  router.get('/contact-enquiries/:id', async (req, res) => {
+    try {
+      const supabase = (req as any).supabaseAdmin;
+      const inquiry = await getContactInquiryById(supabase, req.params.id);
+      if (!inquiry) {
+        return res.status(404).json({ error: 'Contact enquiry not found' });
+      }
+      res.json({ success: true, inquiry });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to load contact enquiry' });
+    }
+  });
+
+  router.patch('/contact-enquiries/:id', async (req, res) => {
+    try {
+      const supabase = (req as any).supabaseAdmin;
+      const admin = (req as any).superAdmin;
+      const body = req.body || {};
+      const result = await updateContactInquiry(
+        supabase,
+        req.params.id,
+        {
+          status: body.status,
+          internalNotes: body.internalNotes,
+          internal_notes: body.internal_notes,
+        },
+        admin
+      );
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({ error: result.error });
+      }
+      res.json({ success: true, inquiry: result.inquiry });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to update contact enquiry' });
     }
   });
 

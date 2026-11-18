@@ -216,6 +216,34 @@ export interface PlatformSettingsState {
   default_event_duration_months: number;
 }
 
+export type ContactEnquiryCategory = 'general' | 'technical_support' | 'partnerships' | 'billing';
+export type ContactEnquiryStatus = 'NEW' | 'IN_PROGRESS' | 'RESOLVED';
+
+export interface ContactInquiryRow {
+  id: string;
+  name: string;
+  email: string;
+  enquiryType: ContactEnquiryCategory;
+  enquiryTypeLabel: string;
+  subject: string;
+  eventName: string | null;
+  message: string;
+  status: ContactEnquiryStatus;
+  internalNotes: string | null;
+  adminNotificationSent: boolean;
+  customerAckSent: boolean;
+  notificationError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContactInquirySummary {
+  total: number;
+  newCount: number;
+  inProgressCount: number;
+  resolvedCount: number;
+}
+
 export const developerApi = {
   getMe: () => devFetch<{ success: boolean; admin: DeveloperAdminIdentity }>('/api/developer/me'),
 
@@ -358,4 +386,27 @@ export const developerApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
     }),
+
+  getContactEnquiries: (params: Record<string, any> = {}) =>
+    devFetch<PaginatedApiResponse<ContactInquiryRow> & { summary: ContactInquirySummary }>(
+      `/api/developer/contact-enquiries${buildQuery(params)}`
+    ),
+
+  getContactInquiryDetail: (id: string) =>
+    devFetch<{ success: boolean; inquiry: ContactInquiryRow }>(
+      `/api/developer/contact-enquiries/${encodeURIComponent(id)}`
+    ),
+
+  updateContactInquiry: (
+    id: string,
+    payload: { status?: ContactEnquiryStatus; internalNotes?: string | null }
+  ) =>
+    devFetch<{ success: boolean; inquiry: ContactInquiryRow }>(
+      `/api/developer/contact-enquiries/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    ),
 };
