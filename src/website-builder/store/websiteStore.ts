@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { apiFetch } from '../../lib/apiClient';
 import { WeddingEvent } from '../../types';
 import { 
   WebsiteConfig, 
@@ -26,6 +27,11 @@ interface WebsiteBuilderState {
   isPublishModalOpen: boolean;
   publicationStatus: 'draft' | 'published' | 'unpublished';
   publishedAt: string | null;
+  previewToken: string | null;
+  previewTokenExpiresAt: string | null;
+  previewUrl: string | null;
+  isGeneratingPreviewToken: boolean;
+  previewError: string | null;
 
   // History for undo/redo
   history: WebsiteConfig[];
@@ -56,6 +62,13 @@ interface WebsiteBuilderState {
   setIsPublishModalOpen: (open: boolean) => void;
   publishWebsite: () => Promise<{ success: boolean; url?: string; error?: string }>;
   unpublishWebsite: () => Promise<{ success: boolean; error?: string }>;
+  generatePreviewToken: (options?: { forceRegenerate?: boolean }) => Promise<{
+    success: boolean;
+    token?: string;
+    expiresAt?: string;
+    previewUrl?: string;
+    error?: string;
+  }>;
   getPreviewUrl: () => Promise<string>;
 
   // Story Milestones
@@ -123,6 +136,11 @@ export const useWebsiteStore = create<WebsiteBuilderState>((set, get) => ({
   isPublishModalOpen: false,
   publicationStatus: 'draft',
   publishedAt: null,
+  previewToken: null,
+  previewTokenExpiresAt: null,
+  previewUrl: null,
+  isGeneratingPreviewToken: false,
+  previewError: null,
 
   history: [],
   historyIndex: -1,
@@ -155,6 +173,11 @@ export const useWebsiteStore = create<WebsiteBuilderState>((set, get) => ({
       selectedSectionId: initialConfig.sections[0]?.id || null,
       publicationStatus: pubStatus,
       publishedAt: pubAt,
+      previewToken: null,
+      previewTokenExpiresAt: null,
+      previewUrl: null,
+      isGeneratingPreviewToken: false,
+      previewError: null,
       isPublishModalOpen: false,
       history: [initialConfig],
       historyIndex: 0,
@@ -599,11 +622,10 @@ export const useWebsiteStore = create<WebsiteBuilderState>((set, get) => ({
         return { success: true, url: '/demo/website' };
       }
 
-      const res = await fetch(`/api/projects/${project.id}/website/publish`, {
+      const res = await apiFetch(`/api/projects/${project.id}/website/publish`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
         },
         body: JSON.stringify({ website_config: config })
       });
@@ -642,11 +664,10 @@ export const useWebsiteStore = create<WebsiteBuilderState>((set, get) => ({
         return { success: true };
       }
 
-      const res = await fetch(`/api/projects/${project.id}/website/unpublish`, {
+      const res = await apiFetch(`/api/projects/${project.id}/website/unpublish`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
         }
       });
 
@@ -665,25 +686,101 @@ export const useWebsiteStore = create<WebsiteBuilderState>((set, get) => ({
     }
   },
 
+  generatePreviewToken: async (options) => {
+    const { project, previewToken, previewTokenExpiresAt, previewUrl } = get();
+    if (!project) {
+      return { success: false, error: 'No active wedding project selected.' };
+    }
+
+    if (project.id === 'demo') {
+      const demoUrl = '/demo/website?preview=true';
+      set({
+        previewToken: 'demo',
+        previewTokenExpiresAt: null,
+        previewUrl: demoUrl,
+        isGeneratingPreviewToken: false,
+        previewError: null,
+      });
+      return { success: true, token: 'demo', previewUrl: demoUrl };
+    }
+
+    const forceRegenerate = Boolean(options?.forceRegenerate);
+    if (!forceRegenerate && previewToken && previewUrl && previewTokenExpiresAt) {
+      const expiresMs = new Date(previewTokenExpiresAt).getTime();
+      if (Number.isFinite(expiresMs) && expiresMs - Date.now() > 60_000) {
+        return {
+          success: true,
+          token: previewToken,
+          expiresAt: previewTokenExpiresAt,
+          previewUrl,
+        };
+      }
+    }
+
+    set({ isGeneratingPreviewToken: true, previewError: null });
+    try {
+      const res = await apiFetch(`/api/projects/${encodeURIComponent(project.id)}/website/preview-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+
+      const data = await res.json().catch(() => ({} as Record<string, any>));
+      if (!res.ok) {
+        const message =
+          (typeof data?.error === 'string' && data.error) ||
+          data?.error?.message ||
+          `Failed to generate preview token (${res.status})`;
+        set({
+          isGeneratingPreviewToken: false,
+          previewError: message,
+        });
+        return { success: false, error: message };
+      }
+
+      const issuedToken = data.token || data.previewToken;
+      const expiresAt = data.expires_at || data.expiresAt || null;
+      const slugOrId = project.slug || project.id;
+      const resolvedUrl =
+        data.previewUrl ||
+        `/${encodeURIComponent(slugOrId)}/website?preview=true${issuedToken ? `&token=${encodeURIComponent(issuedToken)}` : ''}`;
+
+      set({
+        previewToken: issuedToken || null,
+        previewTokenExpiresAt: expiresAt,
+        previewUrl: resolvedUrl,
+        isGeneratingPreviewToken: false,
+        previewError: null,
+      });
+
+      return {
+        success: true,
+        token: issuedToken,
+        expiresAt: expiresAt || undefined,
+        previewUrl: resolvedUrl,
+      };
+    } catch (err: any) {
+      const message = err?.message || 'Unable to generate website preview token.';
+      set({
+        isGeneratingPreviewToken: false,
+        previewError: message,
+      });
+      return { success: false, error: message };
+    }
+  },
+
   getPreviewUrl: async () => {
     const { project } = get();
     if (!project) return '';
     if (project.id === 'demo') return '/demo/website?preview=true';
 
-    try {
-      const res = await fetch(`/api/projects/${project.id}/website/preview-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {})
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.previewUrl) return data.previewUrl;
-      }
-    } catch (e) {}
-    return `/${project.slug}/website?preview=true`;
+    const result = await get().generatePreviewToken();
+    if (result.success && result.previewUrl) {
+      return result.previewUrl;
+    }
+    return `/${encodeURIComponent(project.slug || project.id)}/website?preview=true`;
   },
 
   applyTemplatePreset: (presetId: string) => {

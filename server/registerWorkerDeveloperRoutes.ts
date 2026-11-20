@@ -31,13 +31,19 @@ import {
   getContactInquiryById,
   updateContactInquiry,
 } from './contactService';
+import {
+  LOGOUT_MARKER_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+  extractBearerFromAuthHeader,
+  selectPreferredSessionToken,
+} from './sessionToken';
 
 export function extractWorkerToken(c: any): string | null {
-  const authHeader = c.req.header('Authorization');
-  const bearer = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-  const cookieToken = getCookie(c, 'wedding_session');
-  const token = bearer || (cookieToken && cookieToken !== 'null' && cookieToken !== 'undefined' ? cookieToken : null);
-  return token || null;
+  return selectPreferredSessionToken({
+    bearerToken: extractBearerFromAuthHeader(c.req.header('Authorization')),
+    cookieToken: getCookie(c, SESSION_COOKIE_NAME),
+    loggedOutAtCookie: getCookie(c, LOGOUT_MARKER_COOKIE_NAME),
+  });
 }
 
 export function getWorkerServiceSupabase(c: any) {

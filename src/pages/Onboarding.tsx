@@ -45,10 +45,9 @@ export default function Onboarding() {
           const protocol = window.location.protocol;
           const hostParts = window.location.host.split('.');
           const baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
-          const token = localStorage.getItem('wedding_session_token');
 
           if (existingAgency.user_role === 'agency' && !isPreviewOrLocalDomain(window.location.hostname)) {
-            window.location.replace(`${protocol}//${existingAgency.slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
+            window.location.replace(`${protocol}//${existingAgency.slug}.${baseDomain}/workspace`);
           } else {
             window.location.replace('/workspace');
           }
@@ -97,10 +96,9 @@ export default function Onboarding() {
       const protocol = window.location.protocol;
       const hostParts = window.location.host.split('.');
       const baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
-      const token = localStorage.getItem('wedding_session_token');
-      
+
       if (role === 'agency' && !isPreviewOrLocalDomain(window.location.hostname)) {
-        window.location.replace(`${protocol}//${slug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
+        window.location.replace(`${protocol}//${slug}.${baseDomain}/workspace`);
       } else {
         window.location.replace(
           createdProjectId

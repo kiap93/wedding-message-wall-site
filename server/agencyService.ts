@@ -1063,14 +1063,34 @@ export async function resolveProjectWithAgency(
     };
   }
 
+  const cleanProjectId = String(projectId || '').trim();
+  if (!cleanProjectId || cleanProjectId === 'undefined' || cleanProjectId === 'null') {
+    return {
+      ok: false,
+      statusCode: 404,
+      code: 'PROJECT_NOT_FOUND',
+      error: 'Wedding event not found.',
+    };
+  }
+
   const { data: project, error: projErr } = await supabase
     .from('projects')
     .select('*')
-    .eq('id', projectId)
+    .eq('id', cleanProjectId)
     .limit(1)
     .maybeSingle();
 
   if (projErr) {
+    const code = String(projErr?.code || '');
+    const msg = String(projErr?.message || '').toLowerCase();
+    if (code === '22P02' || msg.includes('invalid input syntax for type uuid')) {
+      return {
+        ok: false,
+        statusCode: 404,
+        code: 'PROJECT_NOT_FOUND',
+        error: 'Wedding event not found.',
+      };
+    }
     return mapDatabaseError(projErr, 'Failed to load wedding event.');
   }
 

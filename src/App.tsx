@@ -68,15 +68,24 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading: isLoadingUser } = useUser();
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true);
   const [workspaces, setWorkspaces] = useState<any[]>([]);
+  const workspacesUserKeyRef = React.useRef<string | null>(null);
   const location = useLocation();
   const subdomain = getCurrentSubdomain();
+
+  const userIdentityKey = user ? String(user.id || user.sub || user.email || '') : null;
 
   useEffect(() => {
     let active = true;
     let redirected = false;
 
+    if (workspacesUserKeyRef.current !== userIdentityKey) {
+      workspacesUserKeyRef.current = userIdentityKey;
+      setWorkspaces([]);
+      setLoadingWorkspaces(Boolean(userIdentityKey));
+    }
+
     async function checkWorkspaces() {
-      if (!user) {
+      if (!user || !userIdentityKey) {
         if (active) {
           setLoadingWorkspaces(false);
           setWorkspaces([]);
@@ -84,15 +93,19 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (workspaces.length === 0 && active) {
+      const cachedForCurrentUser =
+        workspacesUserKeyRef.current === userIdentityKey ? workspaces : [];
+
+      if (cachedForCurrentUser.length === 0 && active) {
         setLoadingWorkspaces(true);
       }
 
       try {
-        const userWorkspaces = workspaces.length > 0 ? workspaces : await getUserWorkspaces();
-        if (!active) return;
+        const userWorkspaces =
+          cachedForCurrentUser.length > 0 ? cachedForCurrentUser : await getUserWorkspaces();
+        if (!active || workspacesUserKeyRef.current !== userIdentityKey) return;
 
-        if (workspaces.length === 0) {
+        if (cachedForCurrentUser.length === 0) {
           setWorkspaces(userWorkspaces);
         }
 
@@ -134,9 +147,8 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
             const protocol = window.location.protocol;
             const baseDomain = hostParts.slice(-2).join('.');
             if (currentHost !== `${slug}.${baseDomain}`) {
-              const token = localStorage.getItem('wedding_session_token');
               const nextParams = new URLSearchParams(location.search);
-              if (token) nextParams.set('token', token);
+              nextParams.delete('token');
               const nextSearch = nextParams.toString();
               redirected = true;
               window.location.replace(
@@ -162,7 +174,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
     };
-  }, [user?.id, isLoadingUser, subdomain]);
+  }, [userIdentityKey, isLoadingUser, subdomain]);
 
   if (isLoadingUser) {
     return (

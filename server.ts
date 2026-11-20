@@ -88,7 +88,15 @@ import {
   registerSSEClient,
   getDemoRoomStats
 } from './server/demoMessageService';
-import { createDeveloperRouter, verifySessionWithDb } from './server/createDeveloperRouter';
+import { createDeveloperRouter, verifySessionWithDb, extractBearerOrCookieToken } from './server/createDeveloperRouter';
+import {
+  SESSION_COOKIE_NAME,
+  CSRF_COOKIE_NAME,
+  LOGOUT_MARKER_COOKIE_NAME,
+  isNoStoreApiPath,
+  selectPreferredSessionToken,
+  extractBearerFromAuthHeader,
+} from './server/sessionToken';
 import {
   syncUserOnLogin,
   recordPlatformActivity,
@@ -142,6 +150,13 @@ import {
   broadcastProjectMessageUpsert,
   broadcastProjectConfigUpdate,
 } from './server/realtimeBus';
+import {
+  createProjectPreviewToken,
+  revokeProjectPreviewTokens,
+  publishProjectWebsite,
+  unpublishProjectWebsite,
+  getEventWebsiteData,
+} from './server/websitePreviewService';
 
 dotenv.config();
 
@@ -243,27 +258,74 @@ function buildCsrfCookieOptions(req: express.Request): express.CookieOptions {
   };
 }
 
-function issueSessionCookies(req: express.Request, res: express.Response, sessionToken: string): string {
-  const existingCsrf = typeof req.cookies?.wedding_csrf === 'string' && req.cookies.wedding_csrf.length >= 16
-    ? req.cookies.wedding_csrf
-    : null;
+function issueSessionCookies(
+  req: express.Request,
+  res: express.Response,
+  sessionToken: string,
+  options?: { rotateCsrf?: boolean }
+): string {
+  const existingCsrf =
+    !options?.rotateCsrf &&
+    typeof req.cookies?.[CSRF_COOKIE_NAME] === 'string' &&
+    req.cookies[CSRF_COOKIE_NAME].length >= 16
+      ? req.cookies[CSRF_COOKIE_NAME]
+      : null;
   const csrfToken = existingCsrf || generateCsrfToken();
-  res.cookie('wedding_session', sessionToken, buildSessionCookieOptions(req));
-  res.cookie('wedding_csrf', csrfToken, buildCsrfCookieOptions(req));
+  const https = isRequestHttps(req);
+  const domain = buildCookieDomain(req);
+
+  // If using a shared .eventframe.io domain cookie, purge any legacy host-only cookies
+  // so duplicate host-only cookies cannot shadow the authoritative domain cookie.
+  if (domain) {
+    const hostOnlyClear: express.CookieOptions = {
+      path: '/',
+      secure: https,
+      sameSite: https ? 'none' : 'lax',
+    };
+    res.clearCookie(SESSION_COOKIE_NAME, { ...hostOnlyClear, httpOnly: true });
+    res.clearCookie(CSRF_COOKIE_NAME, { ...hostOnlyClear, httpOnly: false });
+    res.clearCookie(LOGOUT_MARKER_COOKIE_NAME, { ...hostOnlyClear, httpOnly: true });
+  }
+
+  res.clearCookie(LOGOUT_MARKER_COOKIE_NAME, {
+    path: '/',
+    secure: https,
+    sameSite: https ? 'none' : 'lax',
+    httpOnly: true,
+    ...(domain ? { domain } : {}),
+  });
+  res.cookie(SESSION_COOKIE_NAME, sessionToken, buildSessionCookieOptions(req));
+  res.cookie(CSRF_COOKIE_NAME, csrfToken, buildCsrfCookieOptions(req));
   return csrfToken;
 }
 
 function clearSessionCookies(req: express.Request, res: express.Response) {
   const https = isRequestHttps(req);
   const domain = buildCookieDomain(req);
-  const clearOpts: express.CookieOptions = {
+  const hostOnlyOpts: express.CookieOptions = {
     path: '/',
     secure: https,
     sameSite: https ? 'none' : 'lax',
-    ...(domain ? { domain } : {}),
   };
-  res.clearCookie('wedding_session', { ...clearOpts, httpOnly: true });
-  res.clearCookie('wedding_csrf', { ...clearOpts, httpOnly: false });
+  // Clear host-only cookies unconditionally
+  res.clearCookie(SESSION_COOKIE_NAME, { ...hostOnlyOpts, httpOnly: true });
+  res.clearCookie(CSRF_COOKIE_NAME, { ...hostOnlyOpts, httpOnly: false });
+
+  // Also clear shared parent-domain cookies when applicable
+  if (domain) {
+    const domainOpts: express.CookieOptions = { ...hostOnlyOpts, domain };
+    res.clearCookie(SESSION_COOKIE_NAME, { ...domainOpts, httpOnly: true });
+    res.clearCookie(CSRF_COOKIE_NAME, { ...domainOpts, httpOnly: false });
+  }
+
+  // Record logout timestamp across domains so stale origin-scoped localStorage tokens
+  // minted before logout are rejected everywhere until a new login clears this marker.
+  res.cookie(LOGOUT_MARKER_COOKIE_NAME, String(Date.now()), {
+    ...hostOnlyOpts,
+    ...(domain ? { domain } : {}),
+    httpOnly: true,
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
 }
 
 const oauth2Client = new OAuth2Client(
@@ -353,6 +415,18 @@ async function startServer() {
   app.use(express.json());
 
   const apiRouter = express.Router();
+
+  // Cache-Control hardening for authentication & private/user-scoped API endpoints
+  apiRouter.use((req, res, next) => {
+    const fullApiPath = `/api${req.path}`;
+    if (isNoStoreApiPath(fullApiPath) || req.headers.authorization || req.cookies?.[SESSION_COOKIE_NAME]) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader('Vary', 'Cookie, Authorization');
+    }
+    next();
+  });
 
   // CSRF defense for cookie-authenticated mutations
   apiRouter.use((req, res, next) => {
@@ -786,10 +860,11 @@ async function startServer() {
         email: syncResult.user?.email || normalizedEmail,
         name: syncResult.user?.full_name || displayName,
         picture: syncResult.user?.avatar_url || payload.picture || null,
+        auth_ts: Date.now(),
       };
 
       const token = jwt.sign(user, JWT_SECRET, { algorithm: 'HS256', expiresIn: '7d' });
-      issueSessionCookies(req, res, token);
+      issueSessionCookies(req, res, token, { rotateCsrf: true });
 
       let userIsDeveloper = syncResult.user?.is_developer === true;
       try {
@@ -900,6 +975,7 @@ async function startServer() {
           email: check.user.email,
           name: check.user.name,
           picture: check.user.picture,
+          auth_ts: Date.now(),
         },
         JWT_SECRET,
         { algorithm: 'HS256', expiresIn: '7d' }
@@ -907,7 +983,7 @@ async function startServer() {
       const csrfToken = issueSessionCookies(req, res, freshToken);
 
       console.log(`[AUTH-ME] [${rid}] Verified ${check.user.email} (${check.user.role}) in ${Date.now() - start}ms`);
-      return res.json(buildSuccessResponse(check.user, { user: check.user, csrfToken }));
+      return res.json(buildSuccessResponse(check.user, { user: check.user, token: freshToken, csrfToken }));
     } catch {
       return res.status(401).json(buildErrorResponse('UNAUTHENTICATED', 'Invalid session'));
     }
@@ -915,10 +991,11 @@ async function startServer() {
 
   apiRouter.post('/auth/sync', async (req, res) => {
     try {
-      const authHeader = req.headers.authorization;
-      const bearer = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-      const cookieToken = req.cookies?.wedding_session;
-      const token = bearer || (cookieToken && cookieToken !== 'null' && cookieToken !== 'undefined' ? cookieToken : null);
+      const token = selectPreferredSessionToken({
+        bearerToken: extractBearerFromAuthHeader(req.headers.authorization),
+        cookieToken: req.cookies?.[SESSION_COOKIE_NAME],
+        loggedOutAtCookie: req.cookies?.[LOGOUT_MARKER_COOKIE_NAME],
+      });
 
       if (!token) {
         return res.status(401).json(buildErrorResponse('UNAUTHENTICATED', 'Authentication token is required.'));
@@ -956,11 +1033,12 @@ async function startServer() {
           email: sessionRes.user.email,
           name: sessionRes.user.name,
           picture: sessionRes.user.picture,
+          auth_ts: Date.now(),
         },
         JWT_SECRET,
         { algorithm: 'HS256', expiresIn: '7d' }
       );
-      const csrfToken = issueSessionCookies(req, res, sessionToken);
+      const csrfToken = issueSessionCookies(req, res, sessionToken, { rotateCsrf: true });
 
       return res.json(
         buildSuccessResponse(
@@ -1012,6 +1090,7 @@ async function startServer() {
           email: check.user.email,
           name: check.user.name,
           picture: check.user.picture,
+          auth_ts: Date.now(),
         },
         JWT_SECRET,
         { algorithm: 'HS256', expiresIn: '7d' }
@@ -1234,11 +1313,12 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
           email: sessionResolution.user.email,
           name: sessionResolution.user.name,
           picture: sessionResolution.user.picture,
+          auth_ts: Date.now(),
         },
         JWT_SECRET,
         { algorithm: 'HS256', expiresIn: '7d' }
       );
-      const csrfToken = issueSessionCookies(req, res, sessionToken);
+      const csrfToken = issueSessionCookies(req, res, sessionToken, { rotateCsrf: true });
 
       res.json(buildSuccessResponse({ user: sessionResolution.user, token: sessionToken, csrfToken }, { user: sessionResolution.user, token: sessionToken, csrfToken }));
     } catch (error: any) {
@@ -1374,8 +1454,7 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
   });
 
   apiRouter.get('/agencies/me', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    const token = extractBearerOrCookieToken(req);
     if (!token) return res.status(401).json(buildErrorResponse('UNAUTHENTICATED', 'Not authenticated'));
 
     try {
@@ -1494,8 +1573,7 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
 
   // --- Project Routes ---
   apiRouter.get('/projects', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    const token = extractBearerOrCookieToken(req);
     if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
@@ -1520,8 +1598,7 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
   });
 
   apiRouter.get('/projects/:id', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    const token = extractBearerOrCookieToken(req);
     if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
@@ -1545,9 +1622,8 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
   });
 
   apiRouter.put('/projects/:id', async (req, res) => {
-    const authHeader = req.headers.authorization;
     const pinHeader = typeof req.headers['x-event-pin'] === 'string' ? req.headers['x-event-pin'] : null;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    const token = extractBearerOrCookieToken(req);
 
     if (!token && !pinHeader) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
@@ -1588,8 +1664,7 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
   });
 
   apiRouter.post('/projects', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    const token = extractBearerOrCookieToken(req);
     if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
@@ -1628,8 +1703,7 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
   });
 
   apiRouter.delete('/projects/:id', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    const token = extractBearerOrCookieToken(req);
     if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
@@ -1660,8 +1734,7 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
   });
 
   apiRouter.post('/agencies', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    const token = extractBearerOrCookieToken(req);
     if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
@@ -1689,8 +1762,7 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
   });
 
   apiRouter.put('/agencies/:id', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    const token = extractBearerOrCookieToken(req);
     if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
@@ -1714,8 +1786,7 @@ function analyzeMessagesHeuristic(messages: any[]): Array<{ id: string; classifi
   });
 
   apiRouter.post('/onboard', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    const token = extractBearerOrCookieToken(req);
     if (!token) return res.status(401).json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' });
 
     try {
@@ -2276,18 +2347,41 @@ Return ONLY a valid JSON array of objects with the following schema:
     return res.json(buildSuccessResponse(result.data, { project: result.data }));
   });
 
-  // --- Wedding Website Publishing, Lifecycle & SEO Endpoints ---
-  const RESERVED_SLUGS = [
-    'login', 'verify', 'reset-password', 'onboarding', 'workspace', 'editor',
-    'website-studio', 'templates', 'pricing', 'subscription', 'api', 'couple',
-    'display', 'guest', 'rsvp', 'invitation', 'e', 'g', 'r', 'event', 'agency',
-    'developer'
-  ];
+  async function resolveExpressSessionUser(req: express.Request): Promise<{
+    user: any | null;
+    authError?: { statusCode: number; error: string; code: string };
+  }> {
+    const token = extractBearerOrCookieToken(req);
+    if (!token) {
+      return {
+        user: null,
+        authError: { statusCode: 401, error: 'Not authenticated', code: 'UNAUTHENTICATED' },
+      };
+    }
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      const supabase = getSupabaseAdmin();
+      const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
+      if (!activeCheck.ok) {
+        const errRes = activeCheck as { ok: false; statusCode: number; error: string; code: string };
+        return {
+          user: null,
+          authError: { statusCode: errRes.statusCode, error: errRes.error, code: errRes.code },
+        };
+      }
+      return { user: activeCheck.user };
+    } catch {
+      return {
+        user: null,
+        authError: { statusCode: 401, error: 'Invalid session', code: 'UNAUTHENTICATED' },
+      };
+    }
+  }
 
   // Helper to authenticate project owner
   async function verifyProjectAccess(req: express.Request, projectId: string) {
-    const authHeader = req.headers.authorization;
-    const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
+    const token = extractBearerOrCookieToken(req);
     const pinHeader = req.headers['x-event-pin'] as string | undefined;
 
     // Support demo project and test execution without database connection
@@ -2770,76 +2864,34 @@ Return ONLY a valid JSON array of objects with the following schema:
   apiRouter.post('/projects/:id/website/publish', async (req, res) => {
     try {
       const { id } = req.params;
-      const { website_config } = req.body;
-
-      const { authorized, project, agency } = await verifyProjectAccess(req, id);
-      if (!authorized || !project) {
-        return res.status(403).json({ error: 'Unauthorized to publish this website' });
-      }
-
-      // Check payment & eligibility (USD $5 pay-per-event requirement)
-      const isEligible = isEventActive(project, agency);
-      if (!isEligible) {
-        return res.status(402).json({
-          error: 'Event license payment required ($5.00 USD for 12 months) before publishing.',
-          code: 'PAYMENT_REQUIRED',
-          eventId: project.id
+      const pinHeader = req.headers['x-event-pin'] as string | undefined;
+      const { user, authError } = await resolveExpressSessionUser(req);
+      if (!user && !pinHeader) {
+        return res.status(authError?.statusCode || 401).json({
+          error: authError?.error || 'Not authenticated',
+          code: authError?.code || 'UNAUTHENTICATED',
         });
       }
 
-      // Validate slug
-      if (!project.slug || RESERVED_SLUGS.includes(project.slug.toLowerCase())) {
-        return res.status(400).json({
-          error: `Event slug '${project.slug}' is reserved or invalid. Please update the event slug.`
-        });
-      }
-
-      // Determine snapshot to publish
-      const configToPublish = website_config || project.website_config;
-      if (!configToPublish) {
-        return res.status(400).json({ error: 'No website configuration found to publish' });
-      }
-
-      const publishedAt = new Date().toISOString();
-
-      // Separate draft vs published:
-      // - website_published_config holds immutable snapshot for public visitors
-      // - website_config remains current draft
-      // - website_status becomes 'published'
-      const updatePayload: any = {
-        website_status: 'published',
-        website_published_at: publishedAt,
-        website_published_config: configToPublish,
-        updated_at: publishedAt
-      };
-
-      // Also persist the latest draft if passed
-      if (website_config) {
-        updatePayload.website_config = website_config;
-      }
-
-      const { data: updated, error: updateErr } = await getSupabaseAdmin()
-        .from('projects')
-        .update(updatePayload)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (updateErr) {
-        console.error('Publish error:', updateErr);
-        return res.status(500).json({ error: updateErr.message });
-      }
-
-      res.json({
-        success: true,
-        status: 'published',
-        publishedAt,
-        publicUrl: `/${project.slug}/website`,
-        project: updated
+      const result = await publishProjectWebsite(getSupabaseAdmin(), {
+        projectId: id,
+        authUser: user,
+        pin: pinHeader || null,
+        websiteConfig: req.body?.website_config,
       });
+
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({
+          error: result.error,
+          code: result.code,
+          ...(result.statusCode === 402 ? { eventId: id } : {}),
+        });
+      }
+
+      return res.json(result.data);
     } catch (err: any) {
       console.error('Publish website route error:', err);
-      res.status(500).json({ error: err.message || 'Internal server error' });
+      return res.status(500).json({ error: err.message || 'Internal server error' });
     }
   });
 
@@ -2847,62 +2899,88 @@ Return ONLY a valid JSON array of objects with the following schema:
   apiRouter.post('/projects/:id/website/unpublish', async (req, res) => {
     try {
       const { id } = req.params;
-      const { authorized, project } = await verifyProjectAccess(req, id);
-      if (!authorized || !project) {
-        return res.status(403).json({ error: 'Unauthorized to unpublish this website' });
+      const pinHeader = req.headers['x-event-pin'] as string | undefined;
+      const { user, authError } = await resolveExpressSessionUser(req);
+      if (!user && !pinHeader) {
+        return res.status(authError?.statusCode || 401).json({
+          error: authError?.error || 'Not authenticated',
+          code: authError?.code || 'UNAUTHENTICATED',
+        });
       }
 
-      const { data: updated, error: updateErr } = await getSupabaseAdmin()
-        .from('projects')
-        .update({
-          website_status: 'unpublished',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (updateErr) {
-        return res.status(500).json({ error: updateErr.message });
-      }
-
-      res.json({
-        success: true,
-        status: 'unpublished',
-        project: updated
+      const result = await unpublishProjectWebsite(getSupabaseAdmin(), {
+        projectId: id,
+        authUser: user,
+        pin: pinHeader || null,
       });
+
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({ error: result.error, code: result.code });
+      }
+
+      return res.json(result.data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: err.message || 'Internal server error' });
     }
   });
 
-  // 3. Generate/Get Revocable Preview Token
+  // 3. Generate Expiring Hashed Preview Token
   apiRouter.post('/projects/:id/website/preview-token', async (req, res) => {
     try {
       const { id } = req.params;
-      const { authorized, project } = await verifyProjectAccess(req, id);
-      if (!authorized || !project) {
-        return res.status(403).json({ error: 'Unauthorized to access preview token' });
+      const { user, authError } = await resolveExpressSessionUser(req);
+      if (!user) {
+        return res.status(authError?.statusCode || 401).json({
+          error: authError?.error || 'Not authenticated',
+          code: authError?.code || 'UNAUTHENTICATED',
+        });
       }
 
-      let previewToken = project.website_preview_token;
-      if (!previewToken) {
-        previewToken = crypto.randomBytes(16).toString('hex');
-        await getSupabaseAdmin()
-          .from('projects')
-          .update({ website_preview_token: previewToken })
-          .eq('id', id);
-      }
-
-      res.json({
-        success: true,
-        previewToken,
-        previewUrl: `/${project.slug}/website?preview=true&token=${previewToken}`
+      const result = await createProjectPreviewToken(getSupabaseAdmin(), {
+        projectId: id,
+        authUser: user,
+        ttlMinutes: req.body?.ttlMinutes ?? req.body?.ttl_minutes,
       });
+
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({ error: result.error, code: result.code });
+      }
+
+      return res.status(200).json(result.data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: err.message || 'Internal server error' });
     }
   });
+
+  // 4. Revoke Website Preview Token(s)
+  const handleRevokePreviewToken = async (req: express.Request, res: express.Response) => {
+    try {
+      const { id } = req.params;
+      const { user, authError } = await resolveExpressSessionUser(req);
+      if (!user) {
+        return res.status(authError?.statusCode || 401).json({
+          error: authError?.error || 'Not authenticated',
+          code: authError?.code || 'UNAUTHENTICATED',
+        });
+      }
+
+      const result = await revokeProjectPreviewTokens(getSupabaseAdmin(), {
+        projectId: id,
+        authUser: user,
+        token: req.body?.token || (typeof req.query.token === 'string' ? req.query.token : null),
+      });
+
+      if (result.ok === false) {
+        return res.status(result.statusCode).json({ error: result.error, code: result.code });
+      }
+
+      return res.status(200).json(result.data);
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  };
+  apiRouter.post('/projects/:id/website/preview-token/revoke', handleRevokePreviewToken);
+  apiRouter.delete('/projects/:id/website/preview-token', handleRevokePreviewToken);
 
   // =========================================================================
   // MULTILINGUAL TRANSLATION ENGINE API ENDPOINTS
@@ -3111,118 +3189,26 @@ Return ONLY a valid JSON array of objects with the following schema:
   apiRouter.get('/events/:slug/website-data', async (req, res) => {
     try {
       const { slug } = req.params;
-      const { token: previewToken } = req.query;
+      const previewToken = typeof req.query.token === 'string' ? req.query.token : null;
+      const { user } = await resolveExpressSessionUser(req);
 
-      // Demo fallback
-      if (slug === 'demo') {
-        return res.json({
-          status: 'published',
-          published: true,
-          isPreview: false,
-          project: {
-            id: 'demo',
-            slug: 'demo',
-            name: 'Lucas & Sofia Wedding',
-            groom_name: 'Lucas',
-            bride_name: 'Sofia',
-            wedding_date: '2025-09-20',
-            location: 'San Francisco, CA',
-            website_status: 'published'
-          }
-        });
-      }
-
-      const { data: project, error } = await getSupabaseAdmin()
-        .from('projects')
-        .select('id, agency_id, name, slug, groom_name, bride_name, wedding_date, location, theme_id, image_url, website_status, website_published_at, website_published_config, website_config, website_preview_token, access_password')
-        .eq('slug', slug)
-        .maybeSingle();
-
-      if (error || !project) {
-        return res.status(404).json({ error: 'Wedding celebration not found' });
-      }
-
-      const isPublished = project.website_status === 'published';
-      const isPasswordProtected = Boolean(project.access_password && String(project.access_password).trim().length > 0);
-
-      // Safe project payload (excludes private agency/auth tokens and passwords)
-      const safeProject = {
-        id: project.id,
-        name: project.name,
-        slug: project.slug,
-        groom_name: project.groom_name,
-        bride_name: project.bride_name,
-        wedding_date: project.wedding_date,
-        location: project.location,
-        theme_id: project.theme_id,
-        image_url: project.image_url,
-        website_status: project.website_status,
-        website_published_at: project.website_published_at
-      };
-
-      if (isPublished) {
-        return res.json({
-          status: 'published',
-          published: true,
-          isPreview: false,
-          isPasswordProtected,
-          config: project.website_published_config || project.website_config,
-          project: safeProject
-        });
-      }
-
-      // Check if authorized preview
-      let isAuthorizedPreview = false;
-      if (previewToken && project.website_preview_token && previewToken === project.website_preview_token) {
-        isAuthorizedPreview = true;
-      } else {
-        // Check session token
-        const authHeader = req.headers.authorization;
-        const sessionToken = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || req.cookies.wedding_session;
-        if (sessionToken) {
-          try {
-            const decoded = jwt.verify(sessionToken, JWT_SECRET, { algorithms: ['HS256'] }) as any;
-            const supabase = getSupabaseAdmin();
-            const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, process.env.SUPER_ADMIN_EMAILS);
-            if (activeCheck.ok) {
-              if (hasExplicitAdminAgencyAccess(activeCheck.user)) {
-                isAuthorizedPreview = true;
-              } else {
-                const userOrgs = await resolveUserOrganizations(supabase, activeCheck.user);
-                if (userOrgs.some((org) => String(org.id) === String(project.agency_id))) {
-                  isAuthorizedPreview = true;
-                }
-              }
-            }
-          } catch (e) {}
-        }
-      }
-
-      if (isAuthorizedPreview) {
-        return res.json({
-          status: project.website_status || 'draft',
-          published: false,
-          isPreview: true,
-          isPasswordProtected,
-          config: project.website_config,
-          project: safeProject
-        });
-      }
-
-      // Unpublished / Private to public visitors
-      return res.status(200).json({
-        status: project.website_status || 'draft',
-        published: false,
-        isPreview: false,
-        isPasswordProtected,
-        error: project.website_status === 'unpublished' 
-          ? 'This wedding website is currently unpublished.'
-          : 'This wedding website is currently in private draft mode.',
-        project: safeProject
+      const result = await getEventWebsiteData(getSupabaseAdmin(), {
+        slug,
+        previewToken,
+        authUser: user,
       });
+
+      if (result.isNoStore) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Vary', 'Cookie, Authorization');
+      }
+
+      return res.status(result.statusCode).json(result.body);
     } catch (err: any) {
       console.error('website-data error:', err);
-      res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: err.message || 'Internal server error' });
     }
   });
 

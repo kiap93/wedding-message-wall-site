@@ -8,6 +8,12 @@ import { processAndUploadImage, deleteImageFiles } from './storage';
 import { buildErrorResponse, buildSuccessResponse } from './apiResponse';
 import { authorizeProjectAccess, resolveProjectWithAgency } from './agencyService';
 import { resolveAuthenticatedSessionUser } from './developerAdminService';
+import {
+  LOGOUT_MARKER_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+  extractBearerFromAuthHeader,
+  selectPreferredSessionToken,
+} from './sessionToken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
 const uploadRouter = express.Router();
@@ -80,9 +86,12 @@ async function authorizeUploadRequest(
   | { ok: true; actorId: string }
   | { ok: false; statusCode: number; code: string; message: string }
 > {
-  const authHeader = req.headers.authorization;
   const cookies = req.cookies || {};
-  const token = (authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null) || cookies.wedding_session;
+  const token = selectPreferredSessionToken({
+    bearerToken: extractBearerFromAuthHeader(req.headers.authorization),
+    cookieToken: cookies[SESSION_COOKIE_NAME],
+    loggedOutAtCookie: cookies[LOGOUT_MARKER_COOKIE_NAME],
+  });
   const pinHeader = typeof req.headers['x-event-pin'] === 'string' ? req.headers['x-event-pin'].trim() : '';
   const db = getSupabaseDb();
 

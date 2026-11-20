@@ -66,6 +66,12 @@ import {
   validateCookieMutationCsrf,
 } from '../server/apiResponse';
 import {
+  SESSION_COOKIE_NAME,
+  CSRF_COOKIE_NAME,
+  LOGOUT_MARKER_COOKIE_NAME,
+  isNoStoreApiPath,
+} from '../server/sessionToken';
+import {
   listProjectMessages,
   createGuestMessage,
   moderateMessageStatus,
@@ -74,6 +80,13 @@ import {
   updateRsvpVipAuthorized,
   getPublicEventCounts,
 } from '../server/messageAndRsvpService';
+import {
+  createProjectPreviewToken,
+  revokeProjectPreviewTokens,
+  publishProjectWebsite,
+  unpublishProjectWebsite,
+  getEventWebsiteData,
+} from '../server/websitePreviewService';
 import { buildSitemapXml } from '../src/seo/sitemap';
 import {
   buildLocalizedRoutePath,
@@ -174,13 +187,30 @@ function getWorkerCookieDomain(c: any): string | undefined {
   return undefined;
 }
 
-function issueWorkerSessionCookies(c: any, sessionToken: string): string {
-  const existingCsrf = getCookie(c, 'wedding_csrf');
+function issueWorkerSessionCookies(
+  c: any,
+  sessionToken: string,
+  options?: { rotateCsrf?: boolean }
+): string {
+  const existingCsrf = !options?.rotateCsrf ? getCookie(c, CSRF_COOKIE_NAME) : null;
   const csrfToken = existingCsrf && existingCsrf.length >= 16 ? existingCsrf : generateCsrfToken();
   const https = isWorkerHttps(c);
   const domain = getWorkerCookieDomain(c);
 
-  setCookie(c, 'wedding_session', sessionToken, {
+  if (domain) {
+    deleteCookie(c, SESSION_COOKIE_NAME, { path: '/', secure: https, sameSite: https ? 'None' : 'Lax' });
+    deleteCookie(c, CSRF_COOKIE_NAME, { path: '/', secure: https, sameSite: https ? 'None' : 'Lax' });
+    deleteCookie(c, LOGOUT_MARKER_COOKIE_NAME, { path: '/', secure: https, sameSite: https ? 'None' : 'Lax' });
+  }
+
+  deleteCookie(c, LOGOUT_MARKER_COOKIE_NAME, {
+    path: '/',
+    secure: https,
+    sameSite: https ? 'None' : 'Lax',
+    ...(domain ? { domain } : {}),
+  });
+
+  setCookie(c, SESSION_COOKIE_NAME, sessionToken, {
     httpOnly: true,
     secure: https,
     sameSite: https ? 'None' : 'Lax',
@@ -188,7 +218,7 @@ function issueWorkerSessionCookies(c: any, sessionToken: string): string {
     path: '/',
     ...(domain ? { domain } : {}),
   });
-  setCookie(c, 'wedding_csrf', csrfToken, {
+  setCookie(c, CSRF_COOKIE_NAME, csrfToken, {
     httpOnly: false,
     secure: https,
     sameSite: https ? 'None' : 'Lax',
@@ -202,14 +232,29 @@ function issueWorkerSessionCookies(c: any, sessionToken: string): string {
 function clearWorkerSessionCookies(c: any) {
   const https = isWorkerHttps(c);
   const domain = getWorkerCookieDomain(c);
-  const clearOpts: any = {
+  const hostOnlyOpts: any = {
     path: '/',
     secure: https,
     sameSite: https ? 'None' : 'Lax',
-    ...(domain ? { domain } : {}),
   };
-  deleteCookie(c, 'wedding_session', clearOpts);
-  deleteCookie(c, 'wedding_csrf', clearOpts);
+
+  deleteCookie(c, SESSION_COOKIE_NAME, hostOnlyOpts);
+  deleteCookie(c, CSRF_COOKIE_NAME, hostOnlyOpts);
+
+  if (domain) {
+    const domainOpts: any = { ...hostOnlyOpts, domain };
+    deleteCookie(c, SESSION_COOKIE_NAME, domainOpts);
+    deleteCookie(c, CSRF_COOKIE_NAME, domainOpts);
+  }
+
+  setCookie(c, LOGOUT_MARKER_COOKIE_NAME, String(Date.now()), {
+    httpOnly: true,
+    secure: https,
+    sameSite: https ? 'None' : 'Lax',
+    maxAge: 60 * 60 * 24 * 30,
+    path: '/',
+    ...(domain ? { domain } : {}),
+  });
 }
 
 // CORS Middleware
@@ -242,16 +287,16 @@ app.use('*', async (c, next) => {
   await next();
 });
 
-// CSRF Protection for Cookie-Authenticated Mutations
+// Cache-Control hardening & CSRF Protection for /api/*
 app.use('/api/*', async (c, next) => {
   const authHeader = String(c.req.header('Authorization') || '');
   const csrfCheck = validateCookieMutationCsrf({
     method: c.req.method,
     path: c.req.path,
-    hasSessionCookie: Boolean(getCookie(c, 'wedding_session')),
+    hasSessionCookie: Boolean(getCookie(c, SESSION_COOKIE_NAME)),
     hasBearerToken: authHeader.startsWith('Bearer '),
     hasEventPin: Boolean(c.req.header('x-event-pin')),
-    csrfCookie: getCookie(c, 'wedding_csrf') || null,
+    csrfCookie: getCookie(c, CSRF_COOKIE_NAME) || null,
     csrfHeader: c.req.header('x-csrf-token') || null,
     origin: c.req.header('Origin') || null,
     host: c.req.header('Host') || null,
@@ -262,6 +307,13 @@ app.use('/api/*', async (c, next) => {
     return c.json(buildErrorResponse(csrfCheck.code, csrfCheck.message), csrfCheck.statusCode as any);
   }
   await next();
+
+  if (isNoStoreApiPath(c.req.path) || authHeader || getCookie(c, SESSION_COOKIE_NAME)) {
+    c.res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    c.res.headers.set('Pragma', 'no-cache');
+    c.res.headers.set('Expires', '0');
+    c.res.headers.set('Vary', 'Cookie, Authorization');
+  }
 });
 
 // Health check
@@ -837,13 +889,15 @@ app.get('/api/auth/callback', async (c) => {
     };
 
     // Sign our session JWT & issue session + CSRF cookies (never store Google access/ID tokens)
+    const nowMs = Date.now();
     const token = await sign({
       ...user,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60)
+      auth_ts: nowMs,
+      iat: Math.floor(nowMs / 1000),
+      exp: Math.floor(nowMs / 1000) + (7 * 24 * 60 * 60)
     }, jwtSecret, 'HS256');
 
-    issueWorkerSessionCookies(c, token);
+    issueWorkerSessionCookies(c, token, { rotateCsrf: true });
 
     let userIsDeveloper = syncResult.user?.is_developer === true;
     try {
@@ -919,6 +973,7 @@ app.get('/api/auth/me', async (c) => {
     }
 
     const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+    const nowMs = Date.now();
     const freshToken = await sign(
       {
         id: check.user.id,
@@ -928,14 +983,15 @@ app.get('/api/auth/me', async (c) => {
         email: check.user.email,
         name: check.user.name,
         picture: check.user.picture,
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+        auth_ts: nowMs,
+        iat: Math.floor(nowMs / 1000),
+        exp: Math.floor(nowMs / 1000) + 7 * 24 * 60 * 60,
       },
       jwtSecret,
       'HS256'
     );
     const csrfToken = issueWorkerSessionCookies(c, freshToken);
-    return c.json(buildSuccessResponse(check.user, { user: check.user, csrfToken }));
+    return c.json(buildSuccessResponse(check.user, { user: check.user, token: freshToken, csrfToken }));
   } catch {
     return c.json(buildErrorResponse('UNAUTHENTICATED', 'Invalid session'), 401);
   }
@@ -980,6 +1036,7 @@ app.post('/api/auth/sync', async (c) => {
       return c.json(buildErrorResponse(sessionRes.code, sessionRes.error), sessionRes.statusCode as any);
     }
 
+    const nowMs = Date.now();
     const sessionToken = await sign(
       {
         id: sessionRes.user.id,
@@ -989,13 +1046,14 @@ app.post('/api/auth/sync', async (c) => {
         email: sessionRes.user.email,
         name: sessionRes.user.name,
         picture: sessionRes.user.picture,
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+        auth_ts: nowMs,
+        iat: Math.floor(nowMs / 1000),
+        exp: Math.floor(nowMs / 1000) + 7 * 24 * 60 * 60,
       },
       jwtSecret,
       'HS256'
     );
-    const csrfToken = issueWorkerSessionCookies(c, sessionToken);
+    const csrfToken = issueWorkerSessionCookies(c, sessionToken, { rotateCsrf: true });
 
     return c.json(
       buildSuccessResponse(
@@ -1031,6 +1089,7 @@ app.post('/api/auth/refresh', async (c) => {
     }
 
     const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+    const nowMs = Date.now();
     const refreshedToken = await sign(
       {
         id: check.user.id,
@@ -1040,8 +1099,9 @@ app.post('/api/auth/refresh', async (c) => {
         email: check.user.email,
         name: check.user.name,
         picture: check.user.picture,
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+        auth_ts: nowMs,
+        iat: Math.floor(nowMs / 1000),
+        exp: Math.floor(nowMs / 1000) + 7 * 24 * 60 * 60,
       },
       jwtSecret,
       'HS256'
@@ -1283,6 +1343,7 @@ app.post('/api/auth/verify', async (c) => {
       return c.json({ error: sessionResolution.error, code: sessionResolution.code }, sessionResolution.statusCode as any);
     }
 
+    const nowMs = Date.now();
     const sessionToken = await sign({
       id: sessionResolution.user.id,
       sub: sessionResolution.user.sub,
@@ -1290,11 +1351,12 @@ app.post('/api/auth/verify', async (c) => {
       email: sessionResolution.user.email,
       name: sessionResolution.user.name,
       picture: sessionResolution.user.picture,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60)
+      auth_ts: nowMs,
+      iat: Math.floor(nowMs / 1000),
+      exp: Math.floor(nowMs / 1000) + (7 * 24 * 60 * 60)
     }, jwtSecret, 'HS256');
 
-    const csrfToken = issueWorkerSessionCookies(c, sessionToken);
+    const csrfToken = issueWorkerSessionCookies(c, sessionToken, { rotateCsrf: true });
     return c.json(buildSuccessResponse({ user: sessionResolution.user, token: sessionToken, csrfToken }, { user: sessionResolution.user, token: sessionToken, csrfToken }));
   } catch (error: any) {
     console.error('Token verification failed:', error.message);
@@ -1443,10 +1505,8 @@ const getSupabase = (c: any) => {
 };
 
 async function authorizeWorkerUpload(c: any, eventId?: string | null) {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
   const pinHeader = (c.req.header('x-event-pin') || '').trim();
-  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const token = extractWorkerToken(c);
   const supabase = getWorkerSupabase(c);
 
   if (token) {
@@ -1917,10 +1977,8 @@ app.put('/api/projects/:id', async (c) => updateProject(c));
 app.patch('/api/projects/:id', async (c) => updateProject(c));
 
 async function updateProject(c: any) {
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
   const pinHeader = c.req.header('x-event-pin');
-  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const token = extractWorkerToken(c);
 
   if (!token && !pinHeader) return c.json({ error: 'Not authenticated', code: 'UNAUTHENTICATED' }, 401);
 
@@ -2023,6 +2081,160 @@ app.post('/api/projects', async (c) => {
     return c.json({ error: 'Internal server error', code: 'DATABASE_ERROR' }, 500);
   }
 });
+
+// --- Website Publishing, Unpublishing & Secure Preview Token API (Cloudflare Worker) ---
+async function resolveOptionalWorkerUser(c: any, supabase: any) {
+  const token = extractWorkerToken(c);
+  if (!token) return null;
+  try {
+    const jwtSecret = c.env?.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
+    const payload = (await verify(token, jwtSecret, 'HS256')) as any;
+    const activeCheck = await resolveAuthenticatedSessionUser(supabase, payload, c.env?.SUPER_ADMIN_EMAILS);
+    return activeCheck.ok ? activeCheck.user : null;
+  } catch {
+    return null;
+  }
+}
+
+app.post('/api/projects/:id/website/publish', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const pinHeader = c.req.header('x-event-pin');
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) return c.json({ error: 'Database configuration missing', code: 'DATABASE_ERROR' }, 500);
+
+    let authUser: any = null;
+    if (!pinHeader) {
+      const check = await verifyWorkerSessionWithDb(c);
+      if (!check.ok) {
+        const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+        return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+      }
+      authUser = check.user;
+    } else {
+      authUser = await resolveOptionalWorkerUser(c, supabase);
+    }
+
+    const body = await c.req.json().catch(() => ({} as Record<string, any>));
+    const result = await publishProjectWebsite(supabase, {
+      projectId: id,
+      authUser,
+      pin: pinHeader || null,
+      websiteConfig: body?.website_config,
+    });
+
+    if (result.ok === false) {
+      return c.json(
+        {
+          error: result.error,
+          code: result.code,
+          ...(result.statusCode === 402 ? { eventId: id } : {}),
+        },
+        result.statusCode as any
+      );
+    }
+
+    return c.json(result.data, 200);
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Internal server error' }, 500);
+  }
+});
+
+app.post('/api/projects/:id/website/unpublish', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const pinHeader = c.req.header('x-event-pin');
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) return c.json({ error: 'Database configuration missing', code: 'DATABASE_ERROR' }, 500);
+
+    let authUser: any = null;
+    if (!pinHeader) {
+      const check = await verifyWorkerSessionWithDb(c);
+      if (!check.ok) {
+        const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+        return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+      }
+      authUser = check.user;
+    } else {
+      authUser = await resolveOptionalWorkerUser(c, supabase);
+    }
+
+    const result = await unpublishProjectWebsite(supabase, {
+      projectId: id,
+      authUser,
+      pin: pinHeader || null,
+    });
+
+    if (result.ok === false) {
+      return c.json({ error: result.error, code: result.code }, result.statusCode as any);
+    }
+
+    return c.json(result.data, 200);
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Internal server error' }, 500);
+  }
+});
+
+app.post('/api/projects/:id/website/preview-token', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const check = await verifyWorkerSessionWithDb(c);
+    if (!check.ok) {
+      const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+      return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+    }
+
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) return c.json({ error: 'Database configuration missing', code: 'DATABASE_ERROR' }, 500);
+
+    const body = await c.req.json().catch(() => ({} as Record<string, any>));
+    const result = await createProjectPreviewToken(supabase, {
+      projectId: id,
+      authUser: check.user,
+      ttlMinutes: body?.ttlMinutes ?? body?.ttl_minutes,
+    });
+
+    if (result.ok === false) {
+      return c.json({ error: result.error, code: result.code }, result.statusCode as any);
+    }
+
+    return c.json(result.data, 200);
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Internal server error' }, 500);
+  }
+});
+
+async function handleWorkerRevokePreviewToken(c: any) {
+  try {
+    const id = c.req.param('id');
+    const check = await verifyWorkerSessionWithDb(c);
+    if (!check.ok) {
+      const errRes = check as { ok: false; statusCode: number; error: string; code: string };
+      return c.json({ error: errRes.error, code: errRes.code }, errRes.statusCode as any);
+    }
+
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) return c.json({ error: 'Database configuration missing', code: 'DATABASE_ERROR' }, 500);
+
+    const body = await c.req.json().catch(() => ({} as Record<string, any>));
+    const result = await revokeProjectPreviewTokens(supabase, {
+      projectId: id,
+      authUser: check.user,
+      token: body?.token || c.req.query('token') || null,
+    });
+
+    if (result.ok === false) {
+      return c.json({ error: result.error, code: result.code }, result.statusCode as any);
+    }
+
+    return c.json(result.data, 200);
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Internal server error' }, 500);
+  }
+}
+
+app.post('/api/projects/:id/website/preview-token/revoke', handleWorkerRevokePreviewToken);
+app.delete('/api/projects/:id/website/preview-token', handleWorkerRevokePreviewToken);
 
 // --- Template Routes (Staff Only for Mutations) ---
 app.post('/api/ai/generate-template', async (c) => {
@@ -2792,9 +3004,7 @@ async function verifyProjectAccessWorker(c: any, projectId: string) {
     configureSupabase(supabaseUrl, serviceRoleKey);
   }
 
-  const tokenHeader = c.req.header('Authorization');
-  const cookieToken = getCookie(c, 'wedding_session');
-  const token = (tokenHeader?.startsWith('Bearer ') ? tokenHeader.substring(7) : null) || cookieToken;
+  const token = extractWorkerToken(c);
   const pinHeader = c.req.header('x-event-pin');
 
   const supabase = getWorkerSupabase(c);
@@ -3176,135 +3386,35 @@ app.delete('/api/projects/:id/guest-groups/:groupId', async (c) => {
 app.get('/api/events/:slug/website-data', async (c) => {
   try {
     const slug = c.req.param('slug');
-    const previewToken = c.req.query('token');
+    const previewToken = c.req.query('token') || null;
 
     if (slug === 'demo') {
-      return c.json({
-        status: 'published',
-        published: true,
-        isPreview: false,
-        isPasswordProtected: false,
-        project: {
-          id: 'demo',
-          slug: 'demo',
-          name: 'Lucas & Sofia Wedding',
-          groom_name: 'Lucas',
-          bride_name: 'Sofia',
-          wedding_date: '2025-09-20',
-          location: 'San Francisco, CA',
-          website_status: 'published',
-        },
-      });
+      const demoRes = await getEventWebsiteData(null, { slug: 'demo', previewToken });
+      return c.json(demoRes.body, demoRes.statusCode as any);
     }
 
-    const supabaseUrl = c.env.SUPABASE_URL || c.env.VITE_SUPABASE_URL;
-    const supabaseKey =
-      c.env.SUPABASE_SERVICE_ROLE_KEY ||
-      c.env.SUPABASE_SERVICE_KEY ||
-      c.env.SUPABASE_SECRET_KEY ||
-      c.env.VITE_SUPABASE_ANON_KEY ||
-      c.env.SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
+    const supabase = getWorkerSupabase(c);
+    if (!supabase) {
       return c.json({ error: 'Database configuration missing' }, 500);
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const { data: project, error } = await supabase
-      .from('projects')
-      .select(
-        'id, agency_id, name, slug, groom_name, bride_name, wedding_date, location, theme_id, image_url, website_status, website_published_at, website_published_config, website_config, website_preview_token, access_password'
-      )
-      .eq('slug', slug)
-      .maybeSingle();
-
-    if (error || !project) {
-      return c.json({ error: 'Wedding celebration not found' }, 404);
-    }
-
-    const isPublished = project.website_status === 'published';
-    const isPasswordProtected = Boolean(
-      project.access_password && String(project.access_password).trim().length > 0
-    );
-
-    const safeProject = {
-      id: project.id,
-      name: project.name,
-      slug: project.slug,
-      groom_name: project.groom_name,
-      bride_name: project.bride_name,
-      wedding_date: project.wedding_date,
-      location: project.location,
-      theme_id: project.theme_id,
-      image_url: project.image_url,
-      website_status: project.website_status,
-      website_published_at: project.website_published_at,
-    };
-
-    if (isPublished) {
-      return c.json({
-        status: 'published',
-        published: true,
-        isPreview: false,
-        isPasswordProtected,
-        config: project.website_published_config || project.website_config,
-        project: safeProject,
-      });
-    }
-
-    let isAuthorizedPreview = false;
-    if (previewToken && project.website_preview_token && previewToken === project.website_preview_token) {
-      isAuthorizedPreview = true;
-    } else {
-      const authHeader = c.req.header('Authorization');
-      const cookieToken = getCookie(c, 'wedding_session');
-      const sessionToken =
-        (authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null) || cookieToken;
-      if (sessionToken) {
-        try {
-          const jwtSecret = c.env.JWT_SECRET || 'wedding-v1-sync-key-2024-secret-auth-v2';
-          const decoded = (await verify(sessionToken, jwtSecret, 'HS256')) as any;
-          const activeCheck = await resolveAuthenticatedSessionUser(supabase, decoded, c.env.SUPER_ADMIN_EMAILS);
-          if (activeCheck.ok) {
-            if (hasExplicitAdminAgencyAccess(activeCheck.user)) {
-              isAuthorizedPreview = true;
-            } else {
-              const userOrgs = await resolveUserOrganizations(supabase, activeCheck.user);
-              if (userOrgs.some((org) => String(org.id) === String(project.agency_id))) {
-                isAuthorizedPreview = true;
-              }
-            }
-          }
-        } catch {
-          // Ignore invalid session token
-        }
-      }
-    }
-
-    if (isAuthorizedPreview) {
-      return c.json({
-        status: project.website_status || 'draft',
-        published: false,
-        isPreview: true,
-        isPasswordProtected,
-        config: project.website_config,
-        project: safeProject,
-      });
-    }
-
-    return c.json({
-      status: project.website_status || 'draft',
-      published: false,
-      isPreview: false,
-      isPasswordProtected,
-      error:
-        project.website_status === 'unpublished'
-          ? 'This wedding website is currently unpublished.'
-          : 'This wedding website is currently in private draft mode.',
-      project: safeProject,
+    const authUser = await resolveOptionalWorkerUser(c, supabase);
+    const result = await getEventWebsiteData(supabase, {
+      slug,
+      previewToken,
+      authUser,
     });
+
+    if (result.isNoStore) {
+      c.header('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      c.header('Pragma', 'no-cache');
+      c.header('Expires', '0');
+      c.header('Vary', 'Cookie, Authorization');
+    }
+
+    return c.json(result.body, result.statusCode as any);
   } catch (err: any) {
-    return c.json({ error: err.message || 'Internal error' }, 500);
+    return c.json({ error: err?.message || 'Internal error' }, 500);
   }
 });
 

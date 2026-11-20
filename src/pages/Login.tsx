@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { API_BASE } from '../lib/config';
-import { extractApiErrorMessage } from '../lib/auth';
+import { extractApiErrorMessage, clearClientAuthStorage } from '../lib/auth';
 import { useUser } from '../lib/UserContext';
 import AuthLayout from '../layouts/AuthLayout';
 import Button from '../design-system/components/Button';
@@ -60,7 +60,7 @@ export default function Login() {
     setLoading(true);
     setError(null);
     setShowSetupHelper(false);
-    localStorage.removeItem('wedding_session_token');
+    clearClientAuthStorage();
     
     const currentOrigin = window.location.origin;
     const googleAuthParams = new URLSearchParams({ origin: currentOrigin });
@@ -121,7 +121,7 @@ export default function Login() {
     }
 
     try {
-      localStorage.removeItem('wedding_session_token');
+      clearClientAuthStorage();
 
       const endpoint = mode === 'forgot-password' ? '/api/auth/forgot-password' : '/api/auth/email';
       const response = await fetch(`${API_BASE}${endpoint}`, {

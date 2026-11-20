@@ -29,6 +29,12 @@ import {
   getContactInquiryById,
   updateContactInquiry,
 } from './contactService';
+import {
+  LOGOUT_MARKER_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+  extractBearerFromAuthHeader,
+  selectPreferredSessionToken,
+} from './sessionToken';
 
 export interface DeveloperRouterDeps {
   getSupabase: () => any;
@@ -39,11 +45,11 @@ export interface DeveloperRouterDeps {
 }
 
 export function extractBearerOrCookieToken(req: express.Request): string | null {
-  const authHeader = req.headers.authorization;
-  const bearer = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-  const cookieToken = req.cookies?.wedding_session;
-  const token = bearer || (cookieToken && cookieToken !== 'null' && cookieToken !== 'undefined' ? cookieToken : null);
-  return token || null;
+  return selectPreferredSessionToken({
+    bearerToken: extractBearerFromAuthHeader(req.headers.authorization),
+    cookieToken: req.cookies?.[SESSION_COOKIE_NAME],
+    loggedOutAtCookie: req.cookies?.[LOGOUT_MARKER_COOKIE_NAME],
+  });
 }
 
 /**

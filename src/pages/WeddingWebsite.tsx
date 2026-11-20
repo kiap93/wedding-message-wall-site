@@ -7,6 +7,7 @@ import { createDefaultWebsiteConfig } from '../website-builder/presets';
 import { WeddingWebsiteRenderer } from '../website-builder/WeddingWebsiteRenderer';
 import { TranslationProvider } from '../lib/i18n/TranslationContext';
 import { API_BASE } from '../lib/config';
+import { getAuthToken } from '../lib/auth';
 import { PageSEO } from '../components/SEO';
 import { SEO_CONFIG } from '../seo/config';
 import { getWeddingEventSchema } from '../seo/structuredData';
@@ -18,6 +19,7 @@ interface WebsiteDataResponse {
   isPasswordProtected?: boolean;
   config?: WebsiteConfig;
   project?: WeddingEvent;
+  code?: string;
   error?: string;
 }
 
@@ -34,12 +36,14 @@ export default function WeddingWebsite() {
   const [isPasswordProtected, setIsPasswordProtected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
   useEffect(() => {
     async function fetchEventWebsite() {
       if (!slug) {
         setErrorMessage('No wedding event slug provided.');
+        setErrorCode(null);
         setIsLoading(false);
         return;
       }
@@ -47,12 +51,13 @@ export default function WeddingWebsite() {
       try {
         setIsLoading(true);
         setErrorMessage(null);
+        setErrorCode(null);
 
         // Include preview token and session if available
         const queryParams = new URLSearchParams();
         if (previewToken) queryParams.set('token', previewToken);
 
-        const token = localStorage.getItem('wedding_session_token');
+        const token = getAuthToken();
         const headers: Record<string, string> = {};
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
@@ -61,7 +66,8 @@ export default function WeddingWebsite() {
         const endpoint = `${API_BASE}/api/events/${slug}/website-data${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
         const response = await fetch(endpoint, {
           headers,
-          credentials: 'include'
+          credentials: 'include',
+          cache: 'no-store',
         });
 
         if (!response.ok && response.status === 404) {
@@ -78,9 +84,10 @@ export default function WeddingWebsite() {
           setProject(data.project);
         }
 
-        if (data.error && !data.published && !data.isPreview) {
-          // Event exists but is unpublished or draft to public guests
-          setErrorMessage(data.error);
+        if ((data.error || !response.ok) && !data.published && !data.isPreview) {
+          // Event exists but is unpublished, draft, or preview token rejected (expired/revoked/mismatched)
+          setErrorCode(data.code || null);
+          setErrorMessage(data.error || 'This wedding website preview is not accessible.');
           setIsLoading(false);
           return;
         }
@@ -178,13 +185,19 @@ export default function WeddingWebsite() {
     );
   }
 
-  // State 1: Unpublished or Private Draft Screen (Visible to public guests when site is not live)
+  // State 1: Unpublished, Private Draft, or Invalid/Expired Preview Token Screen
   if (errorMessage && !isPreview && (!config || publicationStatus !== 'published')) {
     const coupleName = project?.groom_name && project?.bride_name
       ? `${project.groom_name} & ${project.bride_name}`
       : project?.name || 'Wedding Celebration';
 
     const isUnpublished = publicationStatus === 'unpublished';
+    const isTokenExpired = errorCode === 'PREVIEW_TOKEN_EXPIRED';
+    const isTokenRejected =
+      isTokenExpired ||
+      errorCode === 'PREVIEW_TOKEN_REVOKED' ||
+      errorCode === 'PREVIEW_TOKEN_PROJECT_MISMATCH' ||
+      errorCode === 'INVALID_PREVIEW_TOKEN';
 
     return (
       <div className="min-h-screen bg-[#FAF9F7] flex flex-col items-center justify-center p-6 text-center antialiased selection:bg-amber-100">
@@ -197,12 +210,22 @@ export default function WeddingWebsite() {
         />
         <div className="w-full max-w-md bg-white rounded-2xl border border-stone-200/80 shadow-subtle p-8 sm:p-10 space-y-6">
           <div className="w-16 h-16 rounded-full border border-stone-200 bg-[#FAF9F7] flex items-center justify-center mx-auto text-stone-500">
-            {isUnpublished ? <Lock className="w-7 h-7 text-stone-400" /> : <Sparkles className="w-7 h-7 text-amber-600" />}
+            {isUnpublished || isTokenRejected ? (
+              <Lock className="w-7 h-7 text-stone-400" />
+            ) : (
+              <Sparkles className="w-7 h-7 text-amber-600" />
+            )}
           </div>
 
           <div className="space-y-2">
             <span className="text-[11px] font-mono uppercase tracking-widest text-stone-400 block">
-              {isUnpublished ? 'Website Temporarily Offline' : 'Private Wedding Preview'}
+              {isTokenExpired
+                ? 'Preview Link Expired'
+                : isTokenRejected
+                  ? 'Preview Access Unavailable'
+                  : isUnpublished
+                    ? 'Website Temporarily Offline'
+                    : 'Private Wedding Preview'}
             </span>
             <h1 className="text-2xl sm:text-3xl font-serif text-stone-900 tracking-tight">
               {coupleName}
@@ -228,12 +251,16 @@ export default function WeddingWebsite() {
 
           <div className="space-y-2 text-xs text-stone-500 leading-relaxed max-w-xs mx-auto">
             <p>
-              {isUnpublished
-                ? 'This wedding website has been temporarily taken offline by the hosts. Please check back later or contact the couple directly.'
-                : 'This wedding website is currently in private preparation and has not yet been published to wedding guests.'}
+              {isTokenRejected
+                ? errorMessage
+                : isUnpublished
+                  ? 'This wedding website has been temporarily taken offline by the hosts. Please check back later or contact the couple directly.'
+                  : 'This wedding website is currently in private preparation and has not yet been published to wedding guests.'}
             </p>
             <p className="text-[11px] text-stone-400 pt-1">
-              If you are the event host or planner, log into your EventFrame Workspace or Studio to publish your site.
+              {isTokenRejected
+                ? 'If you are the event host or planner, open Website Studio to generate a fresh preview token.'
+                : 'If you are the event host or planner, log into your EventFrame Workspace or Studio to publish your site.'}
             </p>
           </div>
 
@@ -250,7 +277,7 @@ export default function WeddingWebsite() {
                 onClick={() => navigate(`/website-studio/${project.id}`)}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors"
               >
-                <span>Host Login</span>
+                <span>{isTokenExpired ? 'Regenerate in Studio' : 'Host Login'}</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </button>
             )}

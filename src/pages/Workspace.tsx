@@ -134,9 +134,19 @@ export default function Workspace() {
 
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showRSVPPreview, setShowRSVPPreview] = useState(false);
+  const [generatingPreviewProjectId, setGeneratingPreviewProjectId] = useState<string | null>(null);
+  const [draftPreviewState, setDraftPreviewState] = useState<{
+    projectId: string;
+    url: string;
+    expiresAt: string | null;
+  } | null>(null);
+  const [draftPreviewError, setDraftPreviewError] = useState<string | null>(null);
 
   const editingEventIdRef = useRef<string | null>(null);
   editingEventIdRef.current = editingEvent?.id ?? null;
+  const eventsEpochRef = useRef(0);
+  const eventsAbortRef = useRef<AbortController | null>(null);
+  const lastWorkspaceUserRef = useRef<string | null>(null);
 
   const resetEditorState = useCallback(() => {
     editingEventIdRef.current = null;
@@ -171,13 +181,22 @@ export default function Workspace() {
 
   const fetchEvents = useCallback(
     async (agencyId: string) => {
+      const epoch = ++eventsEpochRef.current;
+      eventsAbortRef.current?.abort();
+      const controller = new AbortController();
+      eventsAbortRef.current = controller;
+
       setIsLoadingEvents(true);
       setEventsLoadError(null);
       setEvents([]);
       try {
         const response = await authenticatedFetch(
-          `${API_BASE}/api/projects?agency_id=${encodeURIComponent(agencyId)}`
+          `${API_BASE}/api/projects?agency_id=${encodeURIComponent(agencyId)}`,
+          { signal: controller.signal, cache: 'no-store' }
         );
+        if (epoch !== eventsEpochRef.current || controller.signal.aborted) {
+          return;
+        }
         if (!response.ok) {
           const errBody = await response.json().catch(() => ({}));
           const errCode = errBody?.code || errBody?.error?.code;
@@ -194,20 +213,49 @@ export default function Workspace() {
           }
         } else {
           const payload = await response.json().catch(() => ({}));
+          if (epoch !== eventsEpochRef.current || controller.signal.aborted) {
+            return;
+          }
           const rawList = Array.isArray(payload?.data) ? payload.data : [];
           const eventList = rawList.map(normalizeEventRecord);
           setEvents(eventList);
         }
       } catch (error: any) {
+        if (epoch !== eventsEpochRef.current || controller.signal.aborted) {
+          return;
+        }
         console.error('Error fetching events:', error);
         setEvents([]);
         setEventsLoadError(error?.message || 'Unable to connect to load wedding events.');
       } finally {
-        setIsLoadingEvents(false);
+        if (eventsAbortRef.current === controller) {
+          eventsAbortRef.current = null;
+        }
+        if (epoch === eventsEpochRef.current) {
+          setIsLoadingEvents(false);
+        }
       }
     },
     [clearActiveAgency, refreshAuthorizedAgencies]
   );
+
+  // Immediately wipe cached workspace/events/editor state whenever the authenticated user changes or logs out
+  useEffect(() => {
+    const currentUserKey = user ? String(user.id || user.sub || user.email || '') : null;
+    if (lastWorkspaceUserRef.current !== currentUserKey) {
+      lastWorkspaceUserRef.current = currentUserKey;
+      eventsEpochRef.current += 1;
+      eventsAbortRef.current?.abort();
+      eventsAbortRef.current = null;
+      setAgency(null);
+      setEvents([]);
+      setEventsLoadError(null);
+      setGeneratingPreviewProjectId(null);
+      setDraftPreviewState(null);
+      setDraftPreviewError(null);
+      resetEditorState();
+    }
+  }, [user, resetEditorState]);
 
   // Load verified agency and events only when active agency or user session changes (never refetch on ?view= switches)
   useEffect(() => {
@@ -436,8 +484,7 @@ export default function Workspace() {
 
         if (!isPreviewOrLocal) {
           const baseDomain = hostParts.length > 2 ? hostParts.slice(-2).join('.') : hostParts.join('.');
-          const token = localStorage.getItem('wedding_session_token');
-          window.location.replace(`${protocol}//${newSlug}.${baseDomain}/workspace${token ? `?token=${token}` : ''}`);
+          window.location.replace(`${protocol}//${newSlug}.${baseDomain}/workspace`);
         } else {
           window.location.reload();
         }
@@ -605,21 +652,42 @@ export default function Workspace() {
   };
 
   const handleOpenDraftPreview = async (projectId: string) => {
+    setGeneratingPreviewProjectId(projectId);
+    setDraftPreviewError(null);
     try {
-      const response = await authenticatedFetch(`${API_BASE}/api/projects/${projectId}/website/preview-token`, {
-        method: 'POST'
+      const response = await authenticatedFetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}/website/preview-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
       });
+      const data = await response.json().catch(() => ({} as Record<string, any>));
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to generate preview token');
+        throw new Error(extractApiErrorMessage(data, 'Failed to generate preview token'));
       }
-      const data = await response.json();
-      if (data.previewUrl) {
-        window.open(data.previewUrl, '_blank');
+      const token = data.token || data.previewToken;
+      const slugOrId = editingEvent?.slug || projectId;
+      const resolvedPreviewUrl =
+        data.previewUrl ||
+        `/${encodeURIComponent(slugOrId)}/website?preview=true${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+      const expiresAt = data.expires_at || data.expiresAt || null;
+
+      setDraftPreviewState({
+        projectId,
+        url: resolvedPreviewUrl,
+        expiresAt,
+      });
+
+      const opened = window.open(resolvedPreviewUrl, '_blank', 'noopener,noreferrer');
+      if (!opened) {
+        // Popup may be blocked in embedded iframes; inline preview link bar stays visible for direct click
       }
     } catch (err: any) {
       console.error('Error opening preview:', err);
-      alert('Could not open preview: ' + err.message);
+      setDraftPreviewError(err?.message || 'Could not generate private preview link.');
+    } finally {
+      setGeneratingPreviewProjectId((prev) => (prev === projectId ? null : prev));
     }
   };
 
@@ -1853,10 +1921,13 @@ export default function Workspace() {
                   <Button
                     variant="outline"
                     size="md"
+                    isLoading={generatingPreviewProjectId === editingEvent.id}
                     onClick={() => handleOpenDraftPreview(editingEvent.id!)}
                     rightIcon={<Eye className="w-4 h-4" />}
                   >
-                    Preview Draft (Private Link)
+                    {generatingPreviewProjectId === editingEvent.id
+                      ? 'Generating Preview Link...'
+                      : 'Preview Draft (Private Link)'}
                   </Button>
 
                   {editingEvent.website_status === 'published' && (
@@ -1871,6 +1942,59 @@ export default function Workspace() {
                     </Button>
                   )}
                 </div>
+
+                {draftPreviewError && (
+                  <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-xs text-red-800 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                      <span>{draftPreviewError}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDraftPreview(editingEvent.id!)}
+                      className="px-2.5 py-1 rounded bg-white border border-red-200 text-[11px] font-medium text-red-700 hover:bg-red-100 shrink-0"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
+                {draftPreviewState && draftPreviewState.projectId === editingEvent.id && (
+                  <div className="p-3 rounded-xl border border-[#E8E8E5] bg-[#FAF9F7] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="font-medium text-[#252525]">
+                        Temporary Private Preview Link Ready
+                      </div>
+                      <div className="font-mono text-[11px] text-[#777777] truncate">
+                        {draftPreviewState.url}
+                      </div>
+                      {draftPreviewState.expiresAt && (
+                        <div className="text-[11px] text-[#777777]">
+                          Expires {new Date(draftPreviewState.expiresAt).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDraftPreview(editingEvent.id!)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E8E8E5] bg-white hover:bg-stone-50 text-xs font-medium text-[#252525]"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Regenerate</span>
+                      </button>
+                      <a
+                        href={draftPreviewState.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#252525] text-white text-xs font-medium hover:bg-[#111111]"
+                      >
+                        <span>Open Preview</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

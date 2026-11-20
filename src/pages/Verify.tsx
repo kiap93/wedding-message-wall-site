@@ -13,7 +13,7 @@ export default function Verify() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Verifying your email address...');
   const navigate = useNavigate();
-  const { setUser, refreshUser } = useUser();
+  const { establishSession, refreshUser } = useUser();
 
   useEffect(() => {
     if (!token) {
@@ -30,6 +30,7 @@ export default function Verify() {
           method: 'POST',
           headers: { 'X-Requested-With': 'EventFrame' },
           credentials: 'include',
+          cache: 'no-store',
         });
         const raw = await response.json().catch(() => null);
         const data = unwrapApiData<any>(raw) || {};
@@ -38,11 +39,11 @@ export default function Verify() {
         let verifiedUser = data.user || raw?.user || null;
 
         if (response.ok && verifiedToken) {
-          setAuthToken(verifiedToken);
-          if (csrfToken) setCsrfTokenMemory(csrfToken);
           if (verifiedUser) {
-            setUser(verifiedUser);
+            establishSession(verifiedUser, verifiedToken, csrfToken);
           } else {
+            setAuthToken(verifiedToken);
+            if (csrfToken) setCsrfTokenMemory(csrfToken);
             verifiedUser = await refreshUser();
           }
           const isDev = verifiedUser?.is_developer === true || verifiedUser?.isDeveloper === true;

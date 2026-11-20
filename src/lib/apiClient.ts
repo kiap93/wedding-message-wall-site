@@ -4,7 +4,18 @@ const SESSION_TOKEN_KEY = 'wedding_session_token';
 const CSRF_COOKIE_NAME = 'wedding_csrf';
 
 let inMemoryCsrfToken: string | null = null;
+let clientAuthEpoch = 0;
 let activeRefreshPromise: Promise<{ token?: string; csrfToken?: string } | null> | null = null;
+
+export function getClientAuthEpoch(): number {
+  return clientAuthEpoch;
+}
+
+export function bumpClientAuthEpoch(): number {
+  clientAuthEpoch += 1;
+  activeRefreshPromise = null;
+  return clientAuthEpoch;
+}
 
 export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -21,10 +32,36 @@ export function setAuthToken(token: string): void {
 export function removeAuthToken(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(SESSION_TOKEN_KEY);
+  localStorage.removeItem('token');
 }
 
 export function setCsrfTokenMemory(token?: string | null): void {
   inMemoryCsrfToken = token ? String(token).trim() : null;
+}
+
+/**
+ * Clears all EventFrame authentication and user/organization-scoped client caches
+ * while preserving unrelated UI/language preferences (e.g. `ef_marketing_lang`, `ef_lang_*`).
+ */
+export function clearClientAuthStorage(): void {
+  bumpClientAuthEpoch();
+  removeAuthToken();
+  setCsrfTokenMemory(null);
+  if (typeof window === 'undefined') return;
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
+      if (k && k.startsWith('ef_active_agency_')) {
+        keysToRemove.push(k);
+      }
+    }
+    for (const k of keysToRemove) {
+      window.localStorage.removeItem(k);
+    }
+  } catch {
+    // Ignore storage access errors in restricted contexts
+  }
 }
 
 export function getCsrfToken(): string | null {
@@ -111,6 +148,7 @@ export async function refreshAuthSession(): Promise<{ token?: string; csrfToken?
     return activeRefreshPromise;
   }
 
+  const requestEpoch = clientAuthEpoch;
   activeRefreshPromise = (async () => {
     try {
       const token = getAuthToken();
@@ -126,13 +164,17 @@ export async function refreshAuthSession(): Promise<{ token?: string; csrfToken?
         method: 'POST',
         headers,
         credentials: 'include',
+        cache: 'no-store',
       });
 
-      if (!res.ok) {
+      if (!res.ok || requestEpoch !== clientAuthEpoch) {
         return null;
       }
 
       const json = await res.json().catch(() => null);
+      if (requestEpoch !== clientAuthEpoch) {
+        return null;
+      }
       const data = unwrapApiData<any>(json) || {};
       const nextToken = data.token || json?.token;
       const nextCsrf = data.csrfToken || json?.csrfToken;
@@ -148,7 +190,9 @@ export async function refreshAuthSession(): Promise<{ token?: string; csrfToken?
     } catch {
       return null;
     } finally {
-      activeRefreshPromise = null;
+      if (requestEpoch === clientAuthEpoch) {
+        activeRefreshPromise = null;
+      }
     }
   })();
 
@@ -162,6 +206,7 @@ export interface ApiFetchOptions extends RequestInit {
 export async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Response> {
   const { skipAuthRefresh = false, ...fetchOptions } = options;
   const method = (fetchOptions.method || 'GET').toUpperCase();
+  const requestEpoch = clientAuthEpoch;
   const initialHeaders = buildRequestHeaders(fetchOptions.headers, method);
 
   const response = await fetch(url, {
@@ -169,9 +214,11 @@ export async function apiFetch(url: string, options: ApiFetchOptions = {}): Prom
     method,
     headers: initialHeaders,
     credentials: 'include',
+    cache: fetchOptions.cache ?? 'no-store',
   });
 
   const isAuthUtilityRoute =
+    url.includes('/api/auth/me') ||
     url.includes('/api/auth/refresh') ||
     url.includes('/api/auth/logout') ||
     url.includes('/api/auth/login') ||
@@ -179,7 +226,7 @@ export async function apiFetch(url: string, options: ApiFetchOptions = {}): Prom
 
   if (response.status === 401 && !skipAuthRefresh && !isAuthUtilityRoute) {
     const refreshed = await refreshAuthSession();
-    if (refreshed?.token || refreshed?.csrfToken) {
+    if (requestEpoch === clientAuthEpoch && (refreshed?.token || refreshed?.csrfToken)) {
       const retryHeaders = new Headers(fetchOptions.headers || {});
       retryHeaders.set('X-Requested-With', 'EventFrame');
       if (refreshed.token) {
@@ -194,6 +241,7 @@ export async function apiFetch(url: string, options: ApiFetchOptions = {}): Prom
         method,
         headers: retryHeaders,
         credentials: 'include',
+        cache: fetchOptions.cache ?? 'no-store',
       });
     }
   }

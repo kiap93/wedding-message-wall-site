@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Agency } from '../types';
 import { API_BASE } from './config';
 import { authenticatedFetch, extractApiErrorMessage } from './auth';
@@ -68,6 +68,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [isLoadingAuthorizedAgencies, setIsLoadingAuthorizedAgencies] = useState(true);
   const [authorizedAgenciesError, setAuthorizedAgenciesError] = useState<string | null>(null);
 
+  const agenciesEpochRef = useRef(0);
+  const agenciesAbortRef = useRef<AbortController | null>(null);
+  const lastUserIdentityRef = useRef<string | null>(null);
+
   const subdomain = getCurrentSubdomain();
   const userIdentityKey = user ? String(user.id || user.sub || user.email || '') : null;
 
@@ -117,7 +121,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   // 2. Load server-verified agencies for the authenticated user (/api/agencies/me)
   const loadAuthorizedAgencies = useCallback(async (): Promise<Agency[]> => {
+    const epoch = ++agenciesEpochRef.current;
+    agenciesAbortRef.current?.abort();
+
     if (!userIdentityKey) {
+      agenciesAbortRef.current = null;
       setAuthorizedAgencies([]);
       setActiveAgencyId(null);
       setAuthorizedAgenciesError(null);
@@ -125,11 +133,21 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       return [];
     }
 
+    const controller = new AbortController();
+    agenciesAbortRef.current = controller;
+
     setIsLoadingAuthorizedAgencies(true);
     setAuthorizedAgenciesError(null);
 
     try {
-      const response = await authenticatedFetch(`${API_BASE}/api/agencies/me`);
+      const response = await authenticatedFetch(`${API_BASE}/api/agencies/me`, {
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+      if (epoch !== agenciesEpochRef.current || controller.signal.aborted) {
+        return [];
+      }
+
       if (response.status === 401) {
         writeStoredAgencyId(userIdentityKey, null);
         setAuthorizedAgencies([]);
@@ -139,6 +157,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       }
 
       const payload = await response.json().catch(() => ({}));
+      if (epoch !== agenciesEpochRef.current || controller.signal.aborted) {
+        return [];
+      }
+
       if (!response.ok) {
         const msg = extractApiErrorMessage(
           payload,
@@ -185,17 +207,35 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
       return list;
     } catch (err: any) {
+      if (epoch !== agenciesEpochRef.current || controller.signal.aborted) {
+        return [];
+      }
       console.error('Error fetching authorized user agencies:', err);
       setAuthorizedAgencies([]);
       setActiveAgencyId(null);
       setAuthorizedAgenciesError(err?.message || 'Network error while loading workspace.');
       return [];
     } finally {
-      setIsLoadingAuthorizedAgencies(false);
+      if (agenciesAbortRef.current === controller) {
+        agenciesAbortRef.current = null;
+      }
+      if (epoch === agenciesEpochRef.current) {
+        setIsLoadingAuthorizedAgencies(false);
+      }
     }
   }, [userIdentityKey, subdomain]);
 
   useEffect(() => {
+    if (lastUserIdentityRef.current !== userIdentityKey) {
+      lastUserIdentityRef.current = userIdentityKey;
+      agenciesEpochRef.current += 1;
+      agenciesAbortRef.current?.abort();
+      agenciesAbortRef.current = null;
+      setAuthorizedAgencies([]);
+      setActiveAgencyId(null);
+      setAuthorizedAgenciesError(null);
+    }
+
     if (isLoadingUser) return;
     if (!userIdentityKey) {
       setAuthorizedAgencies([]);
